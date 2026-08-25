@@ -43,6 +43,7 @@ import { bundledLocaleOptions, bundledLocales } from "@/lib/locales";
 
 const CodeMirror = dynamic(() => import("@uiw/react-codemirror"), { ssr: false });
 const appBasePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+const mainsailUrl = process.env.NEXT_PUBLIC_MAINSAIL_URL ?? "/";
 const heaterCacheKey = "klipper-editor-heater-cache";
 const heaterColorCacheKey = "klipper-editor-heater-colors";
 const hideBackupFilesKey = "klipper-editor-hide-backup-files";
@@ -2048,6 +2049,14 @@ export default function Home() {
             </button>
           </div>
           <div className="toolbar-actions">
+            <a
+              className="icon-button mainsail-button"
+              href={mainsailUrl}
+              title={t("actions.backToMainsail")}
+              aria-label={t("actions.backToMainsail")}
+            >
+              <MdHome className="action-icon plain-action-icon" />
+            </a>
             <a className="icon-button help-button" href={apiPath("/help")} target="_blank" rel="noreferrer" title={t("actions.help")}>
               <IoHelpCircleOutline className="action-icon plain-action-icon" />
             </a>

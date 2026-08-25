@@ -28,6 +28,7 @@ Features:
 - backup copies on save, configurable from options
 - Moonraker firmware restart button blocked during active prints
 - help page at `/editor/help`
+- optional Mainsail sidebar link through `.theme/navi.json`
 
 ## Local development
 
@@ -52,6 +53,7 @@ curl -fsSL https://raw.githubusercontent.com/iscorporacion/klipper_editor/main/i
 
 This downloads the precompiled GitHub Release and avoids building Next.js on the printer.
 The installer also registers Klipper Editor in Moonraker Update Manager so Mainsail can show future updates.
+It also adds a Mainsail sidebar link named `code editor` through `printer_data/config/.theme/navi.json`.
 
 Source install, useful for development hosts:
 

@@ -8,11 +8,13 @@ MOONRAKER_URL="${RATOS_MOONRAKER_URL:-http://127.0.0.1:7125}"
 PUBLIC_HOST="${KLIPPER_EDITOR_PUBLIC_HOST:-}"
 SERVICE_NAME="${KLIPPER_EDITOR_SERVICE_NAME:-klipper-editor}"
 CONFIGURE_UPDATE_MANAGER="${KLIPPER_EDITOR_CONFIGURE_UPDATE_MANAGER:-true}"
+CONFIGURE_MAINSAIL_LINK="${KLIPPER_EDITOR_CONFIGURE_MAINSAIL_LINK:-true}"
 NGINX_SNIPPET="/etc/nginx/snippets/${APP_NAME}.conf"
 SYSTEMD_UNIT="/etc/systemd/system/${SERVICE_NAME}.service"
 APP_DIR="${KLIPPER_EDITOR_APP_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 START_COMMAND="${KLIPPER_EDITOR_START_COMMAND:-/usr/bin/env npm run start -- -p ${APP_PORT}}"
 SERVICE_USER="${SUDO_USER:-$USER}"
+SERVICE_GROUP="$(id -gn "${SERVICE_USER}")"
 
 log() {
   printf '%s\n' "$*"
@@ -185,6 +187,27 @@ MOONRAKER
   log "Moonraker update manager entry added to ${moonraker_config}"
 }
 
+configure_mainsail_link() {
+  local link_script="${APP_DIR}/scripts/configure-mainsail-link.mjs"
+
+  if [[ ! -f "${link_script}" ]]; then
+    log "Mainsail link skipped: ${link_script} was not found."
+    return 0
+  fi
+
+  RATOS_VIEWER_ROOT="${CONFIG_ROOT}" \
+  RATOS_MOONRAKER_URL="${MOONRAKER_URL}" \
+  NEXT_PUBLIC_BASE_PATH="${BASE_PATH}" \
+  node "${link_script}" || {
+    log "Mainsail sidebar link could not be configured automatically."
+    return 0
+  }
+
+  if [[ -d "${CONFIG_ROOT}/.theme" ]]; then
+    run_sudo chown -R "${SERVICE_USER}:${SERVICE_GROUP}" "${CONFIG_ROOT}/.theme" || true
+  fi
+}
+
 require_command node
 require_command nginx
 require_command systemctl
@@ -207,6 +230,7 @@ log "Config root: ${CONFIG_ROOT}"
 log "Moonraker URL: ${MOONRAKER_URL}"
 log "Base path: ${BASE_PATH}"
 log "Port: ${APP_PORT}"
+log "Mainsail sidebar link: ${CONFIGURE_MAINSAIL_LINK}"
 if [[ -n "${PUBLIC_HOST}" ]]; then
   log "Public host: ${PUBLIC_HOST}"
 fi
@@ -268,6 +292,10 @@ if [[ "${CONFIGURE_UPDATE_MANAGER}" == "true" ]]; then
   else
     log "Could not detect moonraker.conf. Add the update_manager entry manually or run with MOONRAKER_CONFIG=/path/to/moonraker.conf"
   fi
+fi
+
+if [[ "${CONFIGURE_MAINSAIL_LINK}" == "true" ]]; then
+  configure_mainsail_link
 fi
 
 if [[ -n "${PUBLIC_HOST}" ]]; then

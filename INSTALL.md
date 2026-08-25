@@ -53,6 +53,7 @@ The installer creates:
 - `/etc/nginx/snippets/klipper-editor.conf`
 - a Nginx include inside the detected Mainsail/default server block
 - a `[update_manager klipper-editor]` entry in `moonraker.conf`
+- `printer_data/config/.theme/navi.json` with a `code editor` link for the Mainsail sidebar
 
 The repository includes a versioned `.env` with printer-host defaults:
 
@@ -131,6 +132,22 @@ To skip Update Manager registration on precompiled installs:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/iscorporacion/klipper_editor/main/install-release.sh | KLIPPER_EDITOR_CONFIGURE_UPDATE_MANAGER=false bash
+```
+
+To skip the Mainsail sidebar link:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/iscorporacion/klipper_editor/main/install-release.sh | KLIPPER_EDITOR_CONFIGURE_MAINSAIL_LINK=false bash
+```
+
+The sidebar link uses Mainsail's `.theme/navi.json` integration and points to `/editor/` by default:
+
+```json
+{
+  "title": "code editor",
+  "href": "/editor/",
+  "target": "_self"
+}
 ```
 
 The Update Manager block added to `moonraker.conf` is:

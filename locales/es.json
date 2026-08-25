@@ -17,6 +17,7 @@
     "actions.macros": "Macros",
     "actions.executeMacro": "Ejecutar macro",
     "actions.hot": "Hot",
+    "actions.backToMainsail": "Regresar a Mainsail",
     "actions.help": "Ayuda",
     "actions.coolHeater": "Enfriar {heater}",
     "actions.refreshHeaters": "Actualizar calentadores",

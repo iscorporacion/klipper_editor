@@ -46,11 +46,24 @@ a {
 }
 
 .eyebrow {
-  margin: 0 0 10px;
+  margin: 0;
   color: var(--accent);
   font-size: 12px;
   font-weight: 800;
   text-transform: uppercase;
+}
+
+.brand-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.logo-mark {
+  width: 34px;
+  height: 34px;
+  object-fit: contain;
 }
 
 h1 {

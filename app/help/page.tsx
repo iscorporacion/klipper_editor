@@ -154,7 +154,10 @@ export default function HelpPage() {
     <main className="help-page">
       <header className="help-hero">
         <div>
-          <p className="help-eyebrow">Klipper Editor</p>
+          <div className="help-brand-row">
+            <img className="help-logo-mark" src={`${appBasePath}/favicon.png`} alt="" aria-hidden="true" />
+            <p className="help-eyebrow">Klipper Editor</p>
+          </div>
           <h1>Ayuda y caracteristicas</h1>
           <p>
             Klipper Editor es una interfaz web local para editar configuraciones de Klipper/RatOS junto a

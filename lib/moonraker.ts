@@ -20,7 +20,17 @@ export type MoonrakerStatus = {
     y: number;
     z: number;
   };
+  positionLimits: {
+    x: AxisLimit;
+    y: AxisLimit;
+    z: AxisLimit;
+  };
   zOffset: number;
+};
+
+export type AxisLimit = {
+  min: number;
+  max: number;
 };
 
 export type HeaterStatus = {
@@ -73,6 +83,11 @@ export async function getMoonrakerStatus(): Promise<MoonrakerStatus> {
   const homingOrigin = Array.isArray(gcodeMove.homing_origin) ? gcodeMove.homing_origin : [];
   const printState = String(printStats.state ?? "unknown");
   const homedAxes = String(toolhead.homed_axes ?? "").toLowerCase();
+  const positionLimits = {
+    x: readAxisLimit(configSettings.stepper_x),
+    y: readAxisLimit(configSettings.stepper_y),
+    z: readAxisLimit(configSettings.stepper_z)
+  };
 
   return {
     webhooksState: String(webhooks.state ?? "unknown"),
@@ -88,6 +103,7 @@ export async function getMoonrakerStatus(): Promise<MoonrakerStatus> {
       y: toNumber(position[1]),
       z: toNumber(position[2])
     },
+    positionLimits,
     zOffset: toNumber(homingOrigin[2])
   };
 }
@@ -124,6 +140,14 @@ function heaterLabel(name: string) {
 function toNumber(value: unknown) {
   const number = Number(value);
   return Number.isFinite(number) ? number : 0;
+}
+
+function readAxisLimit(stepperConfig: unknown): AxisLimit {
+  const config = stepperConfig && typeof stepperConfig === "object" ? stepperConfig as Record<string, unknown> : {};
+  return {
+    min: toNumber(config.position_min),
+    max: toNumber(config.position_max)
+  };
 }
 
 function toCssColor(value: unknown) {

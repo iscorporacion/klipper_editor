@@ -8,6 +8,11 @@ type MoveBody =
       distance?: number;
     }
   | {
+      action?: "absolute";
+      axis?: "x" | "y" | "z";
+      position?: number;
+    }
+  | {
       action?: "z-offset";
       adjust?: number;
     };
@@ -20,6 +25,24 @@ const axisFeedrates = {
 
 function formatGcodeNumber(value: number) {
   return value.toFixed(3).replace(/\.?0+$/, "");
+}
+
+function isMoveAxis(axis: unknown): axis is keyof typeof axisFeedrates {
+  return typeof axis === "string" && axis in axisFeedrates;
+}
+
+function axisRangeError(axis: keyof typeof axisFeedrates, target: number, status: Awaited<ReturnType<typeof getMoonrakerStatus>>) {
+  const limits = status.positionLimits[axis];
+
+  if (!Number.isFinite(target)) {
+    return `Invalid ${axis.toUpperCase()} position`;
+  }
+
+  if (target < limits.min || target > limits.max) {
+    return `${axis.toUpperCase()} position ${formatGcodeNumber(target)} is outside ${formatGcodeNumber(limits.min)}-${formatGcodeNumber(limits.max)}`;
+  }
+
+  return "";
 }
 
 export async function POST(request: NextRequest) {
@@ -39,8 +62,13 @@ export async function POST(request: NextRequest) {
       const axis = body.axis;
       const distance = Number(body.distance);
 
-      if (!axis || !(axis in axisFeedrates) || !Number.isFinite(distance) || distance === 0) {
+      if (!isMoveAxis(axis) || !Number.isFinite(distance) || distance === 0) {
         return NextResponse.json({ error: "Invalid jog request" }, { status: 400 });
+      }
+
+      const rangeError = axisRangeError(axis, status.position[axis] + distance, status);
+      if (rangeError) {
+        return NextResponse.json({ error: rangeError, status }, { status: 400 });
       }
 
       const script = [
@@ -49,6 +77,25 @@ export async function POST(request: NextRequest) {
         "G90"
       ].join("\n");
       const result = await runGcodeScript(script);
+      return NextResponse.json({ result, status: await getMoonrakerStatus() });
+    }
+
+    if (body.action === "absolute") {
+      const axis = body.axis;
+      const position = Number(body.position);
+
+      if (!isMoveAxis(axis)) {
+        return NextResponse.json({ error: "Invalid absolute move request" }, { status: 400 });
+      }
+
+      const rangeError = axisRangeError(axis, position, status);
+      if (rangeError) {
+        return NextResponse.json({ error: rangeError, status }, { status: 400 });
+      }
+
+      const result = await runGcodeScript(
+        ["G90", `G1 ${axis.toUpperCase()}${formatGcodeNumber(position)} F${axisFeedrates[axis]}`].join("\n")
+      );
       return NextResponse.json({ result, status: await getMoonrakerStatus() });
     }
 

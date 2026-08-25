@@ -91,12 +91,21 @@ type PrinterStatus = {
     y: number;
     z: number;
   };
+  positionLimits: {
+    x: AxisLimit;
+    y: AxisLimit;
+    z: AxisLimit;
+  };
   zOffset: number;
   error?: string;
 };
 
 type QuickCommand = "home-all" | "home-x" | "home-y" | "home-z" | "z-tilt";
 type JogAxis = "x" | "y" | "z";
+type AxisLimit = {
+  min: number;
+  max: number;
+};
 
 type HeaterStatus = {
   name: string;
@@ -210,6 +219,8 @@ const defaultMessages: Messages = {
   "errors.setHeaters": "No se pudieron aplicar las temperaturas",
   "errors.movePrinter": "No se pudo mover la impresora",
   "errors.moveHoming": "Haz home de X/Y/Z antes de mover la impresora",
+  "errors.movePosition": "Ingresa una posicion valida para {axis}",
+  "errors.moveRange": "{axis} debe estar entre {min} y {max}",
   "errors.emergencyStop": "No se pudo ejecutar la parada de emergencia",
   "errors.quickCommand": "No se pudo ejecutar el comando",
   "errors.saveFile": "No se pudo guardar",
@@ -265,9 +276,13 @@ const defaultMessages: Messages = {
   "movement.absolutePosition": "Posicion: absoluta",
   "movement.zOffset": "Z-Offset: {offset}",
   "movement.distance": "Distancia {distance}",
+  "movement.axisRange": "{min} - {max}",
   "movement.homeAll": "TODO",
   "movement.zTilt": "Z Tilt"
 };
+
+const defaultLocaleCode = "en";
+const defaultLocaleMessages = bundledLocales[defaultLocaleCode]?.messages ?? defaultMessages;
 
 const moveSteps = [0.1, 1, 10, 25, 50, 100];
 const zOffsetSteps = [0.005, 0.01, 0.025, 0.05];
@@ -294,7 +309,7 @@ function clamp(value: number, min: number, max: number) {
 }
 
 function translate(messages: Messages, key: string, values: Record<string, string | number> = {}) {
-  const template = messages[key] ?? defaultMessages[key] ?? key;
+  const template = messages[key] ?? defaultLocaleMessages[key] ?? defaultMessages[key] ?? key;
   return Object.entries(values).reduce(
     (result, [name, value]) => result.replaceAll(`{${name}}`, String(value)),
     template
@@ -328,12 +343,26 @@ function formatPosition(value: number, digits = 2) {
   return value.toFixed(digits).replace(".", ",");
 }
 
+function formatPositionInput(value: number, digits = 2) {
+  return value.toFixed(digits).replace(".", ",");
+}
+
+function parsePositionInput(value: string) {
+  const number = Number(value.trim().replace(",", "."));
+  return Number.isFinite(number) ? number : undefined;
+}
+
 function formatSigned(value: number) {
   return `${value > 0 ? "+" : ""}${value.toFixed(3).replace(/0+$/, "").replace(/\.$/, "")}`;
 }
 
 function formatOffset(value: number) {
   return value.toFixed(3);
+}
+
+function formatAxisRange(limit: AxisLimit, axis: JogAxis) {
+  const digits = axis === "z" ? 3 : 2;
+  return `${formatPosition(limit.min, digits)} - ${formatPosition(limit.max, digits)}`;
 }
 
 function readHeaterColors() {
@@ -752,8 +781,8 @@ export default function Home() {
   const [tree, setTree] = useState<TreeNode[]>([]);
   const [openFiles, setOpenFiles] = useState<OpenFile[]>([]);
   const [activePath, setActivePath] = useState<string>();
-  const [messages, setMessages] = useState<Messages>(defaultMessages);
-  const [localeCode, setLocaleCode] = useState("es");
+  const [messages, setMessages] = useState<Messages>(defaultLocaleMessages);
+  const [localeCode, setLocaleCode] = useState(defaultLocaleCode);
   const [locales, setLocales] = useState<LocaleOption[]>([]);
   const [localesLoading, setLocalesLoading] = useState(true);
   const [optionsOpen, setOptionsOpen] = useState(false);
@@ -761,6 +790,8 @@ export default function Home() {
   const [movementOpen, setMovementOpen] = useState(false);
   const [moveStep, setMoveStep] = useState(50);
   const [movingAction, setMovingAction] = useState<string | null>(null);
+  const [positionInputs, setPositionInputs] = useState<Record<JogAxis, string>>({ x: "", y: "", z: "" });
+  const [editingPositionAxis, setEditingPositionAxis] = useState<JogAxis | null>(null);
   const [createBackupOnSave, setCreateBackupOnSave] = useState(true);
   const [heatersOpen, setHeatersOpen] = useState(false);
   const [heaters, setHeaters] = useState<HeaterStatus[]>([]);
@@ -774,7 +805,7 @@ export default function Home() {
   const [executingMacro, setExecutingMacro] = useState<string | null>(null);
   const [dialog, setDialog] = useState<AppDialog | null>(null);
   const [dialogInputValue, setDialogInputValue] = useState("");
-  const [message, setMessage] = useState(defaultMessages["status.ready"]);
+  const [message, setMessage] = useState(defaultLocaleMessages["status.ready"] ?? "Ready");
   const [printerStatus, setPrinterStatus] = useState<PrinterStatus | null>(null);
   const [restartingFirmware, setRestartingFirmware] = useState(false);
   const [emergencyStopping, setEmergencyStopping] = useState(false);
@@ -945,6 +976,11 @@ export default function Home() {
           y: 0,
           z: 0
         },
+        positionLimits: {
+          x: { min: 0, max: 0 },
+          y: { min: 0, max: 0 },
+          z: { min: 0, max: 0 }
+        },
         zOffset: 0,
         error: error instanceof Error ? error.message : t("errors.printerStatus")
       });
@@ -1086,7 +1122,13 @@ export default function Home() {
   );
 
   const runMove = useCallback(
-    async (payload: { action: "jog"; axis: JogAxis; distance: number } | { action: "z-offset"; adjust: number }, label: string) => {
+    async (
+      payload:
+        | { action: "jog"; axis: JogAxis; distance: number }
+        | { action: "absolute"; axis: JogAxis; position: number }
+        | { action: "z-offset"; adjust: number },
+      label: string
+    ) => {
       if (movingAction) return;
       if (!printerStatus || printerStatus.error) {
         setMessage(printerStatus?.error ?? t("errors.printerStatus"));
@@ -1128,6 +1170,35 @@ export default function Home() {
       }
     },
     [loadPrinterStatus, movingAction, printerStatus, t]
+  );
+
+  const runAbsoluteMove = useCallback(
+    async (axis: JogAxis) => {
+      if (!printerStatus) return;
+
+      const position = parsePositionInput(positionInputs[axis]);
+      const limit = printerStatus.positionLimits[axis];
+      const axisLabel = axis.toUpperCase();
+
+      if (position === undefined) {
+        setMessage(t("errors.movePosition", { axis: axisLabel }));
+        return;
+      }
+
+      if (position < limit.min || position > limit.max) {
+        setMessage(
+          t("errors.moveRange", {
+            axis: axisLabel,
+            min: formatPosition(limit.min, axis === "z" ? 3 : 2),
+            max: formatPosition(limit.max, axis === "z" ? 3 : 2)
+          })
+        );
+        return;
+      }
+
+      await runMove({ action: "absolute", axis, position }, `${axisLabel} ${formatPosition(position, axis === "z" ? 3 : 2)}`);
+    },
+    [positionInputs, printerStatus, runMove, t]
   );
 
   const coolHeater = useCallback(
@@ -1618,7 +1689,7 @@ export default function Home() {
         const savedLocale = window.localStorage.getItem("ratos-viewer-locale");
         const nextLocale =
           (savedLocale && nextLocales.some((locale) => locale.code === savedLocale) ? savedLocale : undefined) ??
-          (nextLocales.some((locale) => locale.code === "es") ? "es" : nextLocales[0]?.code);
+          (nextLocales.some((locale) => locale.code === defaultLocaleCode) ? defaultLocaleCode : nextLocales[0]?.code);
 
         if (nextLocale) {
           await loadLocale(nextLocale);
@@ -1630,7 +1701,7 @@ export default function Home() {
           const savedLocale = window.localStorage.getItem("ratos-viewer-locale");
           const nextLocale =
             (savedLocale && nextLocales.some((locale) => locale.code === savedLocale) ? savedLocale : undefined) ??
-            (nextLocales.some((locale) => locale.code === "es") ? "es" : nextLocales[0]?.code);
+            (nextLocales.some((locale) => locale.code === defaultLocaleCode) ? defaultLocaleCode : nextLocales[0]?.code);
 
           if (nextLocale) {
             await loadLocale(nextLocale);
@@ -1659,6 +1730,27 @@ export default function Home() {
     const interval = window.setInterval(() => void loadPrinterStatus(), 5000);
     return () => window.clearInterval(interval);
   }, [loadPrinterStatus]);
+
+  useEffect(() => {
+    if (!printerStatus) return;
+
+    setPositionInputs((current) => {
+      const next = { ...current };
+      let changed = false;
+
+      for (const axis of ["x", "y", "z"] as const) {
+        if (editingPositionAxis === axis) continue;
+
+        const value = formatPositionInput(printerStatus.position[axis], axis === "z" ? 3 : 2);
+        if (next[axis] !== value) {
+          next[axis] = value;
+          changed = true;
+        }
+      }
+
+      return changed ? next : current;
+    });
+  }, [editingPositionAxis, printerStatus]);
 
   useEffect(() => {
     void loadHeaters();
@@ -2207,12 +2299,41 @@ export default function Home() {
                   <span>{t("movement.absolutePosition")}</span>
                 </div>
                 <div className="movement-position-grid">
-                  {(["x", "y", "z"] as const).map((axis) => (
-                    <div key={axis} className="movement-axis-readout">
-                      <span>{axis.toUpperCase()}</span>
-                      <strong>{formatPosition(printerStatus.position[axis], axis === "z" ? 3 : 2)}</strong>
-                    </div>
-                  ))}
+                  {(["x", "y", "z"] as const).map((axis) => {
+                    const axisLabel = axis.toUpperCase();
+                    const range = formatAxisRange(printerStatus.positionLimits[axis], axis);
+
+                    return (
+                      <label key={axis} className="movement-axis-readout">
+                        <span className="movement-axis-header">
+                          <span>{axisLabel}</span>
+                          <small>[{range}]</small>
+                        </span>
+                        <input
+                          value={positionInputs[axis]}
+                          inputMode="decimal"
+                          disabled={movementDisabled}
+                          aria-label={axisLabel}
+                          title={t("movement.axisRange", {
+                            min: formatPosition(printerStatus.positionLimits[axis].min, axis === "z" ? 3 : 2),
+                            max: formatPosition(printerStatus.positionLimits[axis].max, axis === "z" ? 3 : 2)
+                          })}
+                          onFocus={() => setEditingPositionAxis(axis)}
+                          onBlur={() => setEditingPositionAxis(null)}
+                          onChange={(event) => {
+                            const nextValue = event.target.value;
+                            setPositionInputs((current) => ({ ...current, [axis]: nextValue }));
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key !== "Enter") return;
+                            event.preventDefault();
+                            event.currentTarget.blur();
+                            void runAbsoluteMove(axis);
+                          }}
+                        />
+                      </label>
+                    );
+                  })}
                 </div>
                 <div className="movement-controls">
                   <div className="jog-pad xy-pad">

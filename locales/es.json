@@ -81,6 +81,8 @@
     "errors.setHeaters": "No se pudieron aplicar las temperaturas",
     "errors.movePrinter": "No se pudo mover la impresora",
     "errors.moveHoming": "Haz home de X/Y/Z antes de mover la impresora",
+    "errors.movePosition": "Ingresa una posicion valida para {axis}",
+    "errors.moveRange": "{axis} debe estar entre {min} y {max}",
     "errors.emergencyStop": "No se pudo ejecutar la parada de emergencia",
     "errors.quickCommand": "No se pudo ejecutar el comando",
     "errors.saveFile": "No se pudo guardar",
@@ -136,6 +138,7 @@
     "movement.absolutePosition": "Posicion: absoluta",
     "movement.zOffset": "Z-Offset: {offset}",
     "movement.distance": "Distancia {distance}",
+    "movement.axisRange": "{min} - {max}",
     "movement.homeAll": "TODO",
     "movement.zTilt": "Z Tilt"
   }

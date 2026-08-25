@@ -1124,28 +1124,59 @@ body.is-resizing {
 
 .movement-axis-readout {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: end;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px;
   min-height: 43px;
   border: 1px solid var(--border);
   background: var(--panel-soft);
   color: var(--muted);
-  padding: 7px 10px;
+  padding: 4px 8px 6px;
 }
 
-.movement-axis-readout span {
+.movement-axis-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+  gap: 6px;
+}
+
+.movement-axis-header span {
   font-size: 15px;
   font-weight: 800;
 }
 
-.movement-axis-readout strong {
+.movement-axis-header small {
   overflow: hidden;
+  color: var(--muted);
+  font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+  font-size: 11px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.movement-axis-readout input {
+  min-width: 0;
+  width: 100%;
+  border: 0;
+  background: transparent;
   color: var(--text);
   font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
   font-size: 16px;
+  font-weight: 800;
+  outline: 0;
+  padding: 0;
   text-align: right;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+}
+
+.movement-axis-readout:focus-within {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.movement-axis-readout input:disabled {
+  cursor: default;
 }
 
 .movement-controls {

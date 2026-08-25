@@ -81,6 +81,8 @@
     "errors.setHeaters": "Unable to apply temperatures",
     "errors.movePrinter": "Unable to move printer",
     "errors.moveHoming": "Home X/Y/Z before moving the printer",
+    "errors.movePosition": "Enter a valid {axis} position",
+    "errors.moveRange": "{axis} must be between {min} and {max}",
     "errors.emergencyStop": "Unable to run emergency stop",
     "errors.quickCommand": "Unable to run command",
     "errors.saveFile": "Unable to save",
@@ -136,6 +138,7 @@
     "movement.absolutePosition": "Position: absolute",
     "movement.zOffset": "Z-Offset: {offset}",
     "movement.distance": "Distance {distance}",
+    "movement.axisRange": "{min} - {max}",
     "movement.homeAll": "ALL",
     "movement.zTilt": "Z Tilt"
   }

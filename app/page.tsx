@@ -40,6 +40,8 @@ type OpenFile = {
   path: string;
   content: string;
   savedContent: string;
+  kind?: "text" | "image";
+  imageUrl?: string;
   modifiedAt?: string;
   loading?: boolean;
   saving?: boolean;
@@ -517,6 +519,10 @@ function isDownloadOnlyPath(path: string) {
   return path.toLowerCase().endsWith(".zip");
 }
 
+function isImagePath(path: string) {
+  return /\.(avif|bmp|gif|ico|jpe?g|png|svg|webp)$/i.test(path);
+}
+
 function FileTree({
   nodes,
   activePath,
@@ -687,8 +693,14 @@ export default function Home() {
   const activeFile = openFiles.find((file) => file.path === activePath);
   const openPathSet = useMemo(() => new Set(openFiles.map((file) => file.path)), [openFiles]);
   const iconByPath = useMemo(() => collectIconMap(tree), [tree]);
-  const activeIncludes = useMemo(() => (activeFile ? getIncludes(activeFile.content) : []), [activeFile]);
-  const activeSections = useMemo(() => (activeFile ? getConfigSections(activeFile.content) : []), [activeFile]);
+  const activeIncludes = useMemo(
+    () => (activeFile && activeFile.kind !== "image" ? getIncludes(activeFile.content) : []),
+    [activeFile]
+  );
+  const activeSections = useMemo(
+    () => (activeFile && activeFile.kind !== "image" ? getConfigSections(activeFile.content) : []),
+    [activeFile]
+  );
   const filteredSections = useMemo(() => {
     const query = sectionSearch.trim().toLowerCase();
     if (!query) return activeSections;
@@ -1066,7 +1078,22 @@ export default function Home() {
       setActivePath(path);
       if (openFiles.some((file) => file.path === path)) return;
 
-      setOpenFiles((files) => [...files, { path, content: "", savedContent: "", loading: true }]);
+      if (isImagePath(path)) {
+        setOpenFiles((files) => [
+          ...files,
+          {
+            path,
+            content: "",
+            savedContent: "",
+            kind: "image",
+            imageUrl: apiPath(`/api/download?path=${encodeURIComponent(path)}&inline=1`)
+          }
+        ]);
+        setMessage(t("status.opened", { path }));
+        return;
+      }
+
+      setOpenFiles((files) => [...files, { path, content: "", savedContent: "", kind: "text", loading: true }]);
       setMessage(t("status.opening", { path }));
 
       try {
@@ -1081,6 +1108,7 @@ export default function Home() {
                   path,
                   content: payload.content,
                   savedContent: payload.content,
+                  kind: "text",
                   modifiedAt: payload.modifiedAt
                 }
               : file
@@ -1151,6 +1179,7 @@ export default function Home() {
       const file = openFiles.find((item) => item.path === path);
       if (
         file &&
+        file.kind !== "image" &&
         file.content !== file.savedContent &&
         !(await confirmDialog(t("actions.close"), t("confirm.closeUnsaved", { path })))
       ) {
@@ -1583,7 +1612,7 @@ export default function Home() {
               >
                 <FileIcon path={file.path} icon={iconByPath.get(file.path)} />
                 <span>{basename(file.path)}</span>
-                {file.content !== file.savedContent && <Icon className="open-dot">*</Icon>}
+                {file.kind !== "image" && file.content !== file.savedContent && <Icon className="open-dot">*</Icon>}
               </button>
             ))
           )}
@@ -1708,7 +1737,12 @@ export default function Home() {
               className="save-button"
               type="button"
               onClick={() => void saveActiveFile()}
-              disabled={!activeFile || activeFile.content === activeFile.savedContent || activeFile.saving}
+              disabled={
+                !activeFile ||
+                activeFile.kind === "image" ||
+                activeFile.content === activeFile.savedContent ||
+                activeFile.saving
+              }
             >
               <FcUpload className="action-icon" />
               {activeFile?.saving ? t("actions.saving") : t("actions.save")}
@@ -1727,7 +1761,7 @@ export default function Home() {
             >
               <FileIcon path={file.path} icon={iconByPath.get(file.path)} />
               <span>{basename(file.path)}</span>
-              {file.content !== file.savedContent && <Icon className="open-dot">*</Icon>}
+              {file.kind !== "image" && file.content !== file.savedContent && <Icon className="open-dot">*</Icon>}
               <span
                 className="tab-close"
                 role="button"
@@ -1767,6 +1801,30 @@ export default function Home() {
             <div className="welcome error">
               <h2>{t("error.title")}</h2>
               <p>{activeFile.error}</p>
+            </div>
+          ) : activeFile.kind === "image" && activeFile.imageUrl ? (
+            <div className="image-preview-host">
+              <div className="image-preview-frame">
+                <img
+                  className="image-preview"
+                  src={activeFile.imageUrl}
+                  alt={basename(activeFile.path)}
+                  onError={() => {
+                    setOpenFiles((files) =>
+                      files.map((file) =>
+                        file.path === activeFile.path ? { ...file, error: t("errors.openFile") } : file
+                      )
+                    );
+                  }}
+                />
+              </div>
+              <div className="image-preview-meta">
+                <span>{activeFile.path}</span>
+                <button className="dialog-button" type="button" onClick={() => downloadFile(activeFile.path)}>
+                  <FcDownload className="action-icon" />
+                  {t("actions.downloadFile")}
+                </button>
+              </div>
             </div>
           ) : (
             <div className="editor-grid" style={{ "--outline-width": `${outlineWidth}px` } as CSSProperties}>
@@ -2219,7 +2277,9 @@ export default function Home() {
           {activeFile && (
             <span>
               {activeFile.path}
-              {activeFile.content !== activeFile.savedContent ? ` - ${t("status.modified")}` : ""}
+              {activeFile.kind !== "image" && activeFile.content !== activeFile.savedContent
+                ? ` - ${t("status.modified")}`
+                : ""}
             </span>
           )}
         </footer>

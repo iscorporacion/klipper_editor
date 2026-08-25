@@ -11,9 +11,19 @@ import { json } from "@codemirror/lang-json";
 import { javascript } from "@codemirror/lang-javascript";
 import { tags } from "@lezer/highlight";
 import { vscodeDark } from "@uiw/codemirror-theme-vscode";
+import { BsArrowsMove } from "react-icons/bs";
 import { FaHotjar } from "react-icons/fa";
 import { FcDownload, FcExpand, FcNext, FcRefresh, FcSearch, FcSettings, FcStart, FcUpload } from "react-icons/fc";
-import { MdDelete, MdEmergency, MdFunctions, MdHome } from "react-icons/md";
+import {
+  MdDelete,
+  MdEmergency,
+  MdFunctions,
+  MdHome,
+  MdKeyboardArrowDown,
+  MdKeyboardArrowLeft,
+  MdKeyboardArrowRight,
+  MdKeyboardArrowUp
+} from "react-icons/md";
 import { TbActivityHeartbeat } from "react-icons/tb";
 import { IoClose, IoDocumentTextOutline, IoPower } from "react-icons/io5";
 import logoWhite from "@/components/logoWhite.png";
@@ -74,10 +84,19 @@ type PrinterStatus = {
   filename: string;
   printing: boolean;
   zTiltAvailable: boolean;
+  homedAxes: string;
+  allAxesHomed: boolean;
+  position: {
+    x: number;
+    y: number;
+    z: number;
+  };
+  zOffset: number;
   error?: string;
 };
 
 type QuickCommand = "home-all" | "home-x" | "home-y" | "home-z" | "z-tilt";
+type JogAxis = "x" | "y" | "z";
 
 type HeaterStatus = {
   name: string;
@@ -130,6 +149,7 @@ const defaultMessages: Messages = {
   "actions.hot": "Hot",
   "actions.coolHeater": "Enfriar {heater}",
   "actions.refreshHeaters": "Actualizar calentadores",
+  "actions.move": "Mover",
   "actions.clearSearch": "Limpiar busqueda",
   "actions.setHeaters": "Aplicar temperaturas",
   "actions.settingHeaters": "Aplicando",
@@ -160,6 +180,8 @@ const defaultMessages: Messages = {
   "status.heatersRefreshed": "Calentadores actualizados",
   "status.coolingHeater": "Enfriando {heater}",
   "status.heaterCooling": "{heater} enfriando",
+  "status.moving": "Moviendo {move}",
+  "status.moveDone": "Movimiento ejecutado",
   "status.settingHeaters": "Aplicando temperaturas",
   "status.heatersSet": "Temperaturas aplicadas",
   "status.emergencyStopping": "Ejecutando parada de emergencia",
@@ -186,6 +208,8 @@ const defaultMessages: Messages = {
   "errors.loadHeaters": "No se pudieron cargar los calentadores",
   "errors.coolHeater": "No se pudo enfriar el calentador",
   "errors.setHeaters": "No se pudieron aplicar las temperaturas",
+  "errors.movePrinter": "No se pudo mover la impresora",
+  "errors.moveHoming": "Haz home de X/Y/Z antes de mover la impresora",
   "errors.emergencyStop": "No se pudo ejecutar la parada de emergencia",
   "errors.quickCommand": "No se pudo ejecutar el comando",
   "errors.saveFile": "No se pudo guardar",
@@ -236,8 +260,17 @@ const defaultMessages: Messages = {
   "heaters.empty": "Sin calentadores detectados.",
   "heaters.cacheHelp": "Si modificaste tus calentadores recientemente, pulsa actualizar para recargarlos y guardarlos nuevamente.",
   "heaters.current": "Actual",
-  "heaters.target": "Objetivo"
+  "heaters.target": "Objetivo",
+  "movement.title": "Movimiento",
+  "movement.absolutePosition": "Posicion: absoluta",
+  "movement.zOffset": "Z-Offset: {offset}",
+  "movement.distance": "Distancia {distance}",
+  "movement.homeAll": "TODO",
+  "movement.zTilt": "Z Tilt"
 };
+
+const moveSteps = [0.1, 1, 10, 25, 50, 100];
+const zOffsetSteps = [0.005, 0.01, 0.025, 0.05];
 
 const cfgLanguage = StreamLanguage.define(klipperConfigParser);
 const klipperHighlightStyle = HighlightStyle.define([
@@ -289,6 +322,18 @@ function dirname(path: string) {
 
 function formatTemperature(value: number) {
   return `${Math.round(value)} °C`;
+}
+
+function formatPosition(value: number, digits = 2) {
+  return value.toFixed(digits).replace(".", ",");
+}
+
+function formatSigned(value: number) {
+  return `${value > 0 ? "+" : ""}${value.toFixed(3).replace(/0+$/, "").replace(/\.$/, "")}`;
+}
+
+function formatOffset(value: number) {
+  return value.toFixed(3);
 }
 
 function readHeaterColors() {
@@ -713,6 +758,9 @@ export default function Home() {
   const [localesLoading, setLocalesLoading] = useState(true);
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [macrosOpen, setMacrosOpen] = useState(false);
+  const [movementOpen, setMovementOpen] = useState(false);
+  const [moveStep, setMoveStep] = useState(50);
+  const [movingAction, setMovingAction] = useState<string | null>(null);
   const [createBackupOnSave, setCreateBackupOnSave] = useState(true);
   const [heatersOpen, setHeatersOpen] = useState(false);
   const [heaters, setHeaters] = useState<HeaterStatus[]>([]);
@@ -890,6 +938,14 @@ export default function Home() {
         filename: "",
         printing: false,
         zTiltAvailable: false,
+        homedAxes: "",
+        allAxesHomed: false,
+        position: {
+          x: 0,
+          y: 0,
+          z: 0
+        },
+        zOffset: 0,
         error: error instanceof Error ? error.message : t("errors.printerStatus")
       });
     }
@@ -1027,6 +1083,51 @@ export default function Home() {
       }
     },
     [loadPrinterStatus, printerStatus, runningQuickCommand, t]
+  );
+
+  const runMove = useCallback(
+    async (payload: { action: "jog"; axis: JogAxis; distance: number } | { action: "z-offset"; adjust: number }, label: string) => {
+      if (movingAction) return;
+      if (!printerStatus || printerStatus.error) {
+        setMessage(printerStatus?.error ?? t("errors.printerStatus"));
+        return;
+      }
+
+      if (printerStatus.printing) {
+        setMessage(t("errors.restartPrinting"));
+        return;
+      }
+
+      if (!printerStatus.allAxesHomed) {
+        setMessage(t("errors.moveHoming"));
+        return;
+      }
+
+      setMovingAction(label);
+      setMessage(t("status.moving", { move: label }));
+
+      try {
+        const response = await fetch(apiPath("/api/printer/move"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        const body = await response.json();
+        if (!response.ok) throw new Error(body.error ?? t("errors.movePrinter"));
+
+        if (body.status) {
+          setPrinterStatus(body.status);
+        } else {
+          await loadPrinterStatus();
+        }
+        setMessage(t("status.moveDone"));
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : t("errors.movePrinter"));
+      } finally {
+        setMovingAction(null);
+      }
+    },
+    [loadPrinterStatus, movingAction, printerStatus, t]
   );
 
   const coolHeater = useCallback(
@@ -1605,6 +1706,12 @@ export default function Home() {
 
   const quickCommandDisabled =
     runningQuickCommand !== null || !printerStatus || Boolean(printerStatus.error) || printerStatus.printing;
+  const movementDisabled =
+    movingAction !== null ||
+    !printerStatus ||
+    Boolean(printerStatus.error) ||
+    printerStatus.printing ||
+    !printerStatus.allAxesHomed;
 
   return (
     <main className="workspace-shell">
@@ -1727,6 +1834,21 @@ export default function Home() {
                   Z Tilt
                 </button>
               )}
+              <button
+                className="home-button move-open-button"
+                type="button"
+                disabled={movementDisabled}
+                title={
+                  !printerStatus?.allAxesHomed
+                    ? t("errors.moveHoming")
+                    : printerStatus?.printing
+                      ? t("errors.restartPrinting")
+                      : t("actions.move")
+                }
+                onClick={() => setMovementOpen(true)}
+              >
+                <BsArrowsMove className="home-button-icon" />
+              </button>
             </div>
             <div className="heater-toolbar">
               <button
@@ -2054,6 +2176,201 @@ export default function Home() {
                   </div>
                 </form>
               )}
+            </section>
+          </div>
+        )}
+
+        {movementOpen && printerStatus && (
+          <div className="modal-backdrop" role="presentation" onMouseDown={() => setMovementOpen(false)}>
+            <section
+              className="options-modal movement-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="movement-title"
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <div className="modal-header">
+                <h2 id="movement-title">{t("movement.title")}</h2>
+                <button
+                  className="modal-close"
+                  type="button"
+                  title={t("options.close")}
+                  aria-label={t("options.close")}
+                  onClick={() => setMovementOpen(false)}
+                >
+                  x
+                </button>
+              </div>
+              <div className="movement-modal-body">
+                <div className="movement-state">
+                  <BsArrowsMove className="movement-state-icon" />
+                  <span>{t("movement.absolutePosition")}</span>
+                </div>
+                <div className="movement-position-grid">
+                  {(["x", "y", "z"] as const).map((axis) => (
+                    <div key={axis} className="movement-axis-readout">
+                      <span>{axis.toUpperCase()}</span>
+                      <strong>{formatPosition(printerStatus.position[axis], axis === "z" ? 3 : 2)}</strong>
+                    </div>
+                  ))}
+                </div>
+                <div className="movement-controls">
+                  <div className="jog-pad xy-pad">
+                    <button
+                      className="jog-button jog-left"
+                      type="button"
+                      disabled={movementDisabled}
+                      title={`X ${formatSigned(-moveStep)}`}
+                      onClick={() => void runMove({ action: "jog", axis: "x", distance: -moveStep }, `X ${formatSigned(-moveStep)}`)}
+                    >
+                      <MdKeyboardArrowLeft className="jog-icon" />
+                    </button>
+                    <button
+                      className="jog-button jog-up"
+                      type="button"
+                      disabled={movementDisabled}
+                      title={`Y ${formatSigned(moveStep)}`}
+                      onClick={() => void runMove({ action: "jog", axis: "y", distance: moveStep }, `Y ${formatSigned(moveStep)}`)}
+                    >
+                      <MdKeyboardArrowUp className="jog-icon" />
+                    </button>
+                    <button
+                      className="jog-button jog-right"
+                      type="button"
+                      disabled={movementDisabled}
+                      title={`X ${formatSigned(moveStep)}`}
+                      onClick={() => void runMove({ action: "jog", axis: "x", distance: moveStep }, `X ${formatSigned(moveStep)}`)}
+                    >
+                      <MdKeyboardArrowRight className="jog-icon" />
+                    </button>
+                    <button
+                      className="jog-button jog-down"
+                      type="button"
+                      disabled={movementDisabled}
+                      title={`Y ${formatSigned(-moveStep)}`}
+                      onClick={() => void runMove({ action: "jog", axis: "y", distance: -moveStep }, `Y ${formatSigned(-moveStep)}`)}
+                    >
+                      <MdKeyboardArrowDown className="jog-icon" />
+                    </button>
+                  </div>
+                  <div className="jog-pad z-pad">
+                    <button
+                      className="jog-button"
+                      type="button"
+                      disabled={movementDisabled}
+                      title={`Z ${formatSigned(moveStep)}`}
+                      onClick={() => void runMove({ action: "jog", axis: "z", distance: moveStep }, `Z ${formatSigned(moveStep)}`)}
+                    >
+                      <MdKeyboardArrowUp className="jog-icon" />
+                    </button>
+                    <button
+                      className="jog-button"
+                      type="button"
+                      disabled={movementDisabled}
+                      title={`Z ${formatSigned(-moveStep)}`}
+                      onClick={() => void runMove({ action: "jog", axis: "z", distance: -moveStep }, `Z ${formatSigned(-moveStep)}`)}
+                    >
+                      <MdKeyboardArrowDown className="jog-icon" />
+                    </button>
+                  </div>
+                  <div className="movement-home-grid">
+                    <div className="movement-home-row">
+                      <button
+                        className="movement-action-button"
+                        type="button"
+                        disabled={quickCommandDisabled}
+                        onClick={() => void runQuickCommand("home-all", t("actions.homeAll"))}
+                      >
+                        <MdHome className="movement-action-icon" />
+                        {t("movement.homeAll")}
+                      </button>
+                      {printerStatus.zTiltAvailable && (
+                        <button
+                          className="movement-action-button"
+                          type="button"
+                          disabled={quickCommandDisabled}
+                          onClick={() => void runQuickCommand("z-tilt", t("actions.zTilt"))}
+                        >
+                          {t("movement.zTilt").toUpperCase()}
+                        </button>
+                      )}
+                    </div>
+                    <div className="movement-home-row axis-row">
+                    <button
+                      className="movement-action-button"
+                      type="button"
+                      disabled={quickCommandDisabled}
+                      onClick={() => void runQuickCommand("home-x", t("actions.homeX"))}
+                    >
+                      X
+                    </button>
+                    <button
+                      className="movement-action-button"
+                      type="button"
+                      disabled={quickCommandDisabled}
+                      onClick={() => void runQuickCommand("home-y", t("actions.homeY"))}
+                    >
+                      Y
+                    </button>
+                    <button
+                      className="movement-action-button"
+                      type="button"
+                      disabled={quickCommandDisabled}
+                      onClick={() => void runQuickCommand("home-z", t("actions.homeZ"))}
+                    >
+                      Z
+                    </button>
+                    </div>
+                  </div>
+                </div>
+                <div className="movement-step-grid" role="group" aria-label={t("movement.distance", { distance: moveStep })}>
+                  {moveSteps.map((step) => (
+                    <button
+                      key={step}
+                      className={step === moveStep ? "movement-step active" : "movement-step"}
+                      type="button"
+                      onClick={() => setMoveStep(step)}
+                    >
+                      {step}
+                    </button>
+                  ))}
+                </div>
+                <div className="movement-offset">
+                  <div className="movement-offset-title">
+                    {t("movement.zOffset", { offset: formatOffset(printerStatus.zOffset) })}
+                  </div>
+                  <div className="offset-grid">
+                    {zOffsetSteps.map((step) => (
+                      <button
+                        key={`up-${step}`}
+                        className="offset-button"
+                        type="button"
+                        disabled={movementDisabled}
+                        onClick={() =>
+                          void runMove({ action: "z-offset", adjust: step }, `Z-offset ${formatSigned(step)}`)
+                        }
+                      >
+                        <MdKeyboardArrowUp className="offset-icon" />
+                        {formatSigned(step)}
+                      </button>
+                    ))}
+                    {zOffsetSteps.map((step) => (
+                      <button
+                        key={`down-${step}`}
+                        className="offset-button"
+                        type="button"
+                        disabled={movementDisabled}
+                        onClick={() =>
+                          void runMove({ action: "z-offset", adjust: -step }, `Z-offset ${formatSigned(-step)}`)
+                        }
+                      >
+                        <MdKeyboardArrowDown className="offset-icon" />
+                        {formatSigned(-step)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
             </section>
           </div>
         )}

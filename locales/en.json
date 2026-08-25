@@ -17,6 +17,7 @@
     "actions.hot": "Hot",
     "actions.coolHeater": "Cool down {heater}",
     "actions.refreshHeaters": "Refresh heaters",
+    "actions.move": "Move",
     "actions.clearSearch": "Clear search",
     "actions.setHeaters": "Apply temperatures",
     "actions.settingHeaters": "Applying",
@@ -50,6 +51,8 @@
     "status.heatersRefreshed": "Heaters refreshed",
     "status.coolingHeater": "Cooling down {heater}",
     "status.heaterCooling": "{heater} cooling down",
+    "status.moving": "Moving {move}",
+    "status.moveDone": "Move complete",
     "status.settingHeaters": "Applying temperatures",
     "status.heatersSet": "Temperatures applied",
     "status.emergencyStopping": "Running emergency stop",
@@ -76,6 +79,8 @@
     "errors.loadHeaters": "Unable to load heaters",
     "errors.coolHeater": "Unable to cool down heater",
     "errors.setHeaters": "Unable to apply temperatures",
+    "errors.movePrinter": "Unable to move printer",
+    "errors.moveHoming": "Home X/Y/Z before moving the printer",
     "errors.emergencyStop": "Unable to run emergency stop",
     "errors.quickCommand": "Unable to run command",
     "errors.saveFile": "Unable to save",
@@ -126,6 +131,12 @@
     "heaters.empty": "No heaters detected.",
     "heaters.cacheHelp": "If you changed your heaters recently, press refresh to reload them and store them again.",
     "heaters.current": "Current",
-    "heaters.target": "Target"
+    "heaters.target": "Target",
+    "movement.title": "Movement",
+    "movement.absolutePosition": "Position: absolute",
+    "movement.zOffset": "Z-Offset: {offset}",
+    "movement.distance": "Distance {distance}",
+    "movement.homeAll": "ALL",
+    "movement.zTilt": "Z Tilt"
   }
 }

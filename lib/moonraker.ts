@@ -13,6 +13,14 @@ export type MoonrakerStatus = {
   filename: string;
   printing: boolean;
   zTiltAvailable: boolean;
+  homedAxes: string;
+  allAxesHomed: boolean;
+  position: {
+    x: number;
+    y: number;
+    z: number;
+  };
+  zOffset: number;
 };
 
 export type HeaterStatus = {
@@ -49,13 +57,22 @@ async function moonrakerFetch(path: string, init?: RequestInit) {
 
 export async function getMoonrakerStatus(): Promise<MoonrakerStatus> {
   const payload = await moonrakerFetch(
-    "/printer/objects/query?webhooks=state,state_message&print_stats=state,filename&configfile=settings"
+    "/printer/objects/query?webhooks=state,state_message&print_stats=state,filename&configfile=settings&toolhead=homed_axes,position&gcode_move=gcode_position,homing_origin"
   );
   const status = payload?.result?.status ?? payload?.status ?? {};
   const webhooks = status.webhooks ?? {};
   const printStats = status.print_stats ?? {};
   const configSettings = status.configfile?.settings ?? {};
+  const toolhead = status.toolhead ?? {};
+  const gcodeMove = status.gcode_move ?? {};
+  const position = Array.isArray(gcodeMove.gcode_position)
+    ? gcodeMove.gcode_position
+    : Array.isArray(toolhead.position)
+      ? toolhead.position
+      : [];
+  const homingOrigin = Array.isArray(gcodeMove.homing_origin) ? gcodeMove.homing_origin : [];
   const printState = String(printStats.state ?? "unknown");
+  const homedAxes = String(toolhead.homed_axes ?? "").toLowerCase();
 
   return {
     webhooksState: String(webhooks.state ?? "unknown"),
@@ -63,7 +80,15 @@ export async function getMoonrakerStatus(): Promise<MoonrakerStatus> {
     printState,
     filename: String(printStats.filename ?? ""),
     printing: printState === "printing" || printState === "paused",
-    zTiltAvailable: Boolean(configSettings.z_tilt)
+    zTiltAvailable: Boolean(configSettings.z_tilt),
+    homedAxes,
+    allAxesHomed: homedAxes.includes("x") && homedAxes.includes("y") && homedAxes.includes("z"),
+    position: {
+      x: toNumber(position[0]),
+      y: toNumber(position[1]),
+      z: toNumber(position[2])
+    },
+    zOffset: toNumber(homingOrigin[2])
   };
 }
 

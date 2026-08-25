@@ -1087,6 +1087,241 @@ body.is-resizing {
   width: min(560px, 100%);
 }
 
+.movement-modal {
+  width: min(380px, 100%);
+}
+
+.movement-modal-body {
+  display: grid;
+  gap: 12px;
+  max-height: min(720px, calc(100vh - 120px));
+  min-height: 0;
+  overflow: auto;
+  padding: 12px 7px 14px;
+}
+
+.movement-state,
+.movement-offset-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.movement-state-icon {
+  width: 16px;
+  height: 16px;
+  color: var(--text);
+}
+
+.movement-position-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.movement-axis-readout {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: end;
+  min-height: 43px;
+  border: 1px solid var(--border);
+  background: var(--panel-soft);
+  color: var(--muted);
+  padding: 7px 10px;
+}
+
+.movement-axis-readout span {
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.movement-axis-readout strong {
+  overflow: hidden;
+  color: var(--text);
+  font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+  font-size: 16px;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.movement-controls {
+  display: grid;
+  grid-template-columns: 124px 46px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+}
+
+.jog-pad {
+  display: grid;
+  gap: 8px;
+}
+
+.xy-pad {
+  grid-template-columns: repeat(3, 38px);
+  grid-template-rows: repeat(3, 32px);
+}
+
+.z-pad {
+  grid-template-rows: repeat(2, 32px);
+}
+
+.jog-button,
+.movement-action-button,
+.movement-step,
+.offset-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  background: var(--panel-strong);
+  color: var(--text);
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.jog-button {
+  min-width: 38px;
+  min-height: 32px;
+}
+
+.jog-left {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+.jog-up {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.jog-right {
+  grid-column: 3;
+  grid-row: 2;
+}
+
+.jog-down {
+  grid-column: 2;
+  grid-row: 3;
+}
+
+.jog-icon {
+  width: 22px;
+  height: 22px;
+}
+
+.movement-home-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.movement-home-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.movement-home-row.axis-row {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.movement-action-button {
+  min-height: 30px;
+  background: #ff8700;
+  border-color: #ff8700;
+  color: #ffffff;
+  font-size: 12px;
+}
+
+.movement-action-icon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+}
+
+.movement-step-grid,
+.offset-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  border: 1px solid var(--border);
+}
+
+.movement-step {
+  min-height: 28px;
+  border-width: 0 1px 0 0;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 13px;
+}
+
+.movement-step:last-child,
+.offset-button:nth-child(4),
+.offset-button:nth-child(8) {
+  border-right: 0;
+}
+
+.movement-step.active {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.movement-offset {
+  display: grid;
+  gap: 8px;
+  border-top: 1px solid var(--border-soft);
+  padding-top: 12px;
+}
+
+.offset-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.offset-button {
+  min-height: 28px;
+  gap: 4px;
+  border-width: 0 1px 1px 0;
+  background: var(--panel-soft);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.offset-button:nth-child(n + 5) {
+  border-bottom: 0;
+}
+
+.offset-icon {
+  width: 15px;
+  height: 15px;
+  color: var(--muted);
+}
+
+.jog-button:hover,
+.jog-button:focus-visible,
+.movement-action-button:hover,
+.movement-action-button:focus-visible,
+.movement-step:hover,
+.movement-step:focus-visible,
+.offset-button:hover,
+.offset-button:focus-visible {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  outline: 0;
+}
+
+.movement-action-button:hover,
+.movement-action-button:focus-visible {
+  background: #f29a24;
+}
+
+.jog-button:disabled,
+.movement-action-button:disabled,
+.offset-button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
 .heater-modal-body {
   display: grid;
   gap: 14px;

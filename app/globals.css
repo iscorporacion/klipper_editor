@@ -89,6 +89,7 @@ h1 {
 }
 
 .icon-button,
+.macro-button,
 .save-button,
 .format-button,
 .restart-button {
@@ -105,6 +106,27 @@ h1 {
 .icon-button {
   width: 32px;
   height: 32px;
+}
+
+.macro-button {
+  min-width: 112px;
+  height: 34px;
+  padding: 0 12px;
+  justify-content: flex-start;
+}
+
+.macro-button:hover,
+.macro-button:focus-visible {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  outline: 0;
+}
+
+.macro-button-icon {
+  width: 19px;
+  height: 19px;
+  flex: 0 0 auto;
+  color: #4ec9b0;
 }
 
 .save-button {
@@ -237,6 +259,7 @@ h1 {
 .include-link:focus-visible,
 .outline-link:focus-visible,
 .icon-button:focus-visible,
+.macro-button:focus-visible,
 .save-button:focus-visible,
 .format-button:focus-visible,
 .restart-button:focus-visible {
@@ -717,11 +740,18 @@ body.is-resizing {
   border-bottom: 1px solid var(--border-soft);
 }
 
+.modal-header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .modal-header h2 {
   color: var(--text);
   font-size: 14px;
 }
 
+.modal-icon-button,
 .modal-close {
   display: inline-flex;
   align-items: center;
@@ -734,11 +764,117 @@ body.is-resizing {
   cursor: pointer;
 }
 
+.modal-icon-button:hover,
+.modal-icon-button:focus-visible,
 .modal-close:hover,
 .modal-close:focus-visible {
   border-color: var(--accent);
   background: var(--accent-soft);
   outline: 0;
+}
+
+.macros-modal {
+  width: min(680px, 100%);
+}
+
+.macro-modal-body {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 10px;
+  height: min(620px, calc(100vh - 140px));
+  min-height: 0;
+  padding: 14px 12px 16px;
+}
+
+.macro-search-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  border: 1px solid var(--border);
+  background: var(--panel-soft);
+  padding: 0 10px;
+}
+
+.macro-search-field:focus-within {
+  border-color: var(--accent);
+}
+
+.macro-search-field input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+}
+
+.macro-count {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.macro-list {
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid var(--border-soft);
+  background: var(--panel-soft);
+}
+
+.macro-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  border: 0;
+  border-bottom: 1px solid var(--border-soft);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  padding: 7px 10px;
+  text-align: left;
+}
+
+.macro-row:hover,
+.macro-row:focus-visible {
+  background: var(--accent-soft);
+  outline: 0;
+}
+
+.macro-row-icon {
+  width: 21px;
+  height: 21px;
+  flex: 0 0 auto;
+  color: #4ec9b0;
+}
+
+.macro-row-main {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.macro-row-name {
+  overflow: hidden;
+  color: #7fd4ff;
+  font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+  font-size: 13px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.macro-row-path {
+  overflow: hidden;
+  color: var(--muted);
+  font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .modal-body {

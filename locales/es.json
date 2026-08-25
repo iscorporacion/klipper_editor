@@ -11,6 +11,7 @@
     "actions.uploadFiles": "Subir archivos",
     "actions.downloadFile": "Descargar archivo",
     "actions.deleteFile": "Borrar archivo",
+    "actions.macros": "Macros",
     "actions.save": "Guardar",
     "actions.saving": "Guardando",
     "actions.close": "Cerrar",
@@ -27,6 +28,7 @@
     "status.uploading": "Subiendo {path}",
     "status.uploaded": "Subido {path}",
     "status.deleted": "Borrado {path}",
+    "status.openingMacro": "Abriendo macro {name}",
     "status.saving": "Guardando {path}",
     "status.saved": "Guardado {path}",
     "status.firmwareRestarting": "Reiniciando firmware",
@@ -41,6 +43,7 @@
     "errors.createFile": "No se pudo crear el archivo",
     "errors.uploadFile": "No se pudo subir el archivo",
     "errors.deleteFile": "No se pudo borrar el archivo",
+    "errors.loadMacros": "No se pudieron cargar las macros",
     "errors.saveFile": "No se pudo guardar",
     "errors.saveGeneric": "Error al guardar",
     "errors.restartFirmware": "No se pudo reiniciar el firmware",
@@ -74,6 +77,11 @@
     "options.languageHelp": "Los idiomas disponibles salen de los archivos JSON en la carpeta `locales`.",
     "options.close": "Cerrar opciones",
     "options.loadingLocales": "Cargando idiomas.",
-    "options.noLocales": "No hay archivos de idioma disponibles."
+    "options.noLocales": "No hay archivos de idioma disponibles.",
+    "macros.title": "Macros",
+    "macros.search": "Buscar macro",
+    "macros.loading": "Cargando macros.",
+    "macros.empty": "Sin macros detectadas.",
+    "macros.count": "{count} macros"
   }
 }

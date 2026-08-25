@@ -12,7 +12,7 @@ import { javascript } from "@codemirror/lang-javascript";
 import { tags } from "@lezer/highlight";
 import { vscodeDark } from "@uiw/codemirror-theme-vscode";
 import { FcDownload, FcExpand, FcNext, FcRefresh, FcSearch, FcSettings, FcUpload } from "react-icons/fc";
-import { MdDelete } from "react-icons/md";
+import { MdDelete, MdFunctions } from "react-icons/md";
 import { IoDocumentTextOutline, IoPower } from "react-icons/io5";
 import logoWhite from "@/components/logoWhite.png";
 import { klipperConfigParser } from "@/lib/codemirror/klipper-config";
@@ -69,6 +69,18 @@ type PrinterStatus = {
   error?: string;
 };
 
+type MacroEntry = {
+  name: string;
+  title: string;
+  path: string;
+  line: number;
+};
+
+type PendingJump = {
+  path: string;
+  line: number;
+};
+
 type Messages = Record<string, string>;
 
 const defaultMessages: Messages = {
@@ -79,6 +91,7 @@ const defaultMessages: Messages = {
   "actions.uploadFiles": "Subir archivos",
   "actions.downloadFile": "Descargar archivo",
   "actions.deleteFile": "Borrar archivo",
+  "actions.macros": "Macros",
   "actions.save": "Guardar",
   "actions.saving": "Guardando",
   "actions.options": "Opciones",
@@ -92,6 +105,7 @@ const defaultMessages: Messages = {
   "status.uploading": "Subiendo {path}",
   "status.uploaded": "Subido {path}",
   "status.deleted": "Borrado {path}",
+  "status.openingMacro": "Abriendo macro {name}",
   "status.saving": "Guardando {path}",
   "status.saved": "Guardado {path}",
   "status.firmwareRestarting": "Reiniciando firmware",
@@ -106,6 +120,7 @@ const defaultMessages: Messages = {
   "errors.createFile": "No se pudo crear el archivo",
   "errors.uploadFile": "No se pudo subir el archivo",
   "errors.deleteFile": "No se pudo borrar el archivo",
+  "errors.loadMacros": "No se pudieron cargar las macros",
   "errors.saveFile": "No se pudo guardar",
   "errors.saveGeneric": "Error al guardar",
   "errors.restartFirmware": "No se pudo reiniciar el firmware",
@@ -139,7 +154,12 @@ const defaultMessages: Messages = {
   "options.languageHelp": "Los idiomas disponibles salen de los archivos JSON en la carpeta `locales`.",
   "options.close": "Cerrar opciones",
   "options.loadingLocales": "Cargando idiomas.",
-  "options.noLocales": "No hay archivos de idioma disponibles."
+  "options.noLocales": "No hay archivos de idioma disponibles.",
+  "macros.title": "Macros",
+  "macros.search": "Buscar macro",
+  "macros.loading": "Cargando macros.",
+  "macros.empty": "Sin macros detectadas.",
+  "macros.count": "{count} macros"
 };
 
 const cfgLanguage = StreamLanguage.define(klipperConfigParser);
@@ -496,7 +516,6 @@ function TreeItem({
 
 export default function Home() {
   const [tree, setTree] = useState<TreeNode[]>([]);
-  const [root, setRoot] = useState("");
   const [openFiles, setOpenFiles] = useState<OpenFile[]>([]);
   const [activePath, setActivePath] = useState<string>();
   const [messages, setMessages] = useState<Messages>(defaultMessages);
@@ -504,12 +523,17 @@ export default function Home() {
   const [locales, setLocales] = useState<LocaleOption[]>([]);
   const [localesLoading, setLocalesLoading] = useState(true);
   const [optionsOpen, setOptionsOpen] = useState(false);
+  const [macrosOpen, setMacrosOpen] = useState(false);
+  const [macros, setMacros] = useState<MacroEntry[]>([]);
+  const [macroSearch, setMacroSearch] = useState("");
+  const [macrosLoading, setMacrosLoading] = useState(false);
   const [message, setMessage] = useState(defaultMessages["status.ready"]);
   const [printerStatus, setPrinterStatus] = useState<PrinterStatus | null>(null);
   const [restartingFirmware, setRestartingFirmware] = useState(false);
   const [outlineWidth, setOutlineWidth] = useState(320);
   const [includePanelHeight, setIncludePanelHeight] = useState(240);
   const [sectionPreview, setSectionPreview] = useState<SectionPreview | null>(null);
+  const [pendingJump, setPendingJump] = useState<PendingJump | null>(null);
   const editorViewRef = useRef<EditorView | null>(null);
   const includePanelRef = useRef<HTMLElement | null>(null);
   const previewCloseTimerRef = useRef<number | null>(null);
@@ -521,6 +545,14 @@ export default function Home() {
   const activeIncludes = useMemo(() => (activeFile ? getIncludes(activeFile.content) : []), [activeFile]);
   const activeSections = useMemo(() => (activeFile ? getConfigSections(activeFile.content) : []), [activeFile]);
   const activeDirectory = activePath ? dirname(activePath) : "";
+  const filteredMacros = useMemo(() => {
+    const query = macroSearch.trim().toLowerCase();
+    if (!query) return macros;
+
+    return macros.filter((macro) =>
+      `${macro.name} ${macro.path} ${macro.title}`.toLowerCase().includes(query)
+    );
+  }, [macroSearch, macros]);
   const t = useCallback(
     (key: string, values?: Record<string, string | number>) => translate(messages, key, values),
     [messages]
@@ -543,8 +575,28 @@ export default function Home() {
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error ?? t("errors.loadTree"));
     setTree(payload.children);
-    setRoot(payload.root);
   }, [t]);
+
+  const loadMacros = useCallback(async () => {
+    setMacrosLoading(true);
+
+    try {
+      const response = await fetch(apiPath("/api/macros"), { cache: "no-store" });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? t("errors.loadMacros"));
+      setMacros(payload.macros ?? []);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : t("errors.loadMacros"));
+    } finally {
+      setMacrosLoading(false);
+    }
+  }, [t]);
+
+  const openMacrosModal = useCallback(() => {
+    setMacrosOpen(true);
+    setMacroSearch("");
+    void loadMacros();
+  }, [loadMacros]);
 
   const loadPrinterStatus = useCallback(async () => {
     try {
@@ -784,6 +836,16 @@ export default function Home() {
     [activeDirectory, loadTree, openFile, t]
   );
 
+  const openMacro = useCallback(
+    async (macro: MacroEntry) => {
+      setMacrosOpen(false);
+      setMessage(t("status.openingMacro", { name: macro.name }));
+      setPendingJump({ path: macro.path, line: macro.line });
+      await openFile(macro.path);
+    },
+    [openFile, t]
+  );
+
   const resolveAndOpenInclude = useCallback(
     async (includePath: string, fromPath: string) => {
       setMessage(t("status.resolvingInclude", { include: includePath }));
@@ -808,14 +870,16 @@ export default function Home() {
 
   const jumpToLine = useCallback((lineNumber: number) => {
     const view = editorViewRef.current;
-    if (!view) return;
+    if (!view) return false;
 
-    const line = view.state.doc.line(lineNumber);
+    const targetLine = clamp(lineNumber, 1, view.state.doc.lines);
+    const line = view.state.doc.line(targetLine);
     view.dispatch({
       selection: { anchor: line.from },
       effects: EditorView.scrollIntoView(line.from, { y: "center" })
     });
     view.focus();
+    return true;
   }, []);
 
   const clearPreviewCloseTimer = useCallback(() => {
@@ -952,6 +1016,18 @@ export default function Home() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [saveActiveFile]);
 
+  useEffect(() => {
+    if (!pendingJump || activePath !== pendingJump.path || !activeFile || activeFile.loading || activeFile.error) return;
+
+    const timer = window.setTimeout(() => {
+      if (jumpToLine(pendingJump.line)) {
+        setPendingJump(null);
+      }
+    }, 80);
+
+    return () => window.clearTimeout(timer);
+  }, [activeFile, activePath, jumpToLine, pendingJump]);
+
   const editorExtensions = useMemo(() => {
     if (!activeFile) return [];
     const extensions = [fileLanguage(activeFile.path), ...editorLinkExtension(activeFile.path, resolveAndOpenInclude)];
@@ -1029,9 +1105,10 @@ export default function Home() {
 
       <section className="editor-area">
         <div className="topbar">
-          <div className="project-root" title={root}>
-            {root}
-          </div>
+          <button className="macro-button" type="button" onClick={openMacrosModal} title={t("actions.macros")}>
+            <MdFunctions className="macro-button-icon" />
+            {t("actions.macros")}
+          </button>
           <div className="toolbar-actions">
             <button className="icon-button" type="button" onClick={() => setOptionsOpen(true)} title={t("actions.options")}>
               <FcSettings className="action-icon" />
@@ -1215,6 +1292,79 @@ export default function Home() {
             </div>
           )}
         </div>
+
+        {macrosOpen && (
+          <div className="modal-backdrop" role="presentation" onMouseDown={() => setMacrosOpen(false)}>
+            <section
+              className="options-modal macros-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="macros-title"
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <div className="modal-header">
+                <h2 id="macros-title">{t("macros.title")}</h2>
+                <div className="modal-header-actions">
+                  <button
+                    className="modal-icon-button"
+                    type="button"
+                    title={t("actions.refreshTree")}
+                    aria-label={t("actions.refreshTree")}
+                    onClick={() => void loadMacros()}
+                  >
+                    <FcRefresh className="action-icon" />
+                  </button>
+                  <button
+                    className="modal-close"
+                    type="button"
+                    title={t("options.close")}
+                    aria-label={t("options.close")}
+                    onClick={() => setMacrosOpen(false)}
+                  >
+                    x
+                  </button>
+                </div>
+              </div>
+              <div className="macro-modal-body">
+                <label className="macro-search-field">
+                  <FcSearch className="action-icon" />
+                  <input
+                    autoFocus
+                    value={macroSearch}
+                    placeholder={t("macros.search")}
+                    onChange={(event) => setMacroSearch(event.target.value)}
+                  />
+                </label>
+                <div className="macro-count">{t("macros.count", { count: filteredMacros.length })}</div>
+                <div className="macro-list">
+                  {macrosLoading ? (
+                    <p className="empty-note">{t("macros.loading")}</p>
+                  ) : filteredMacros.length === 0 ? (
+                    <p className="empty-note">{t("macros.empty")}</p>
+                  ) : (
+                    filteredMacros.map((macro) => (
+                      <button
+                        key={`${macro.path}-${macro.line}-${macro.name}`}
+                        className="macro-row"
+                        type="button"
+                        title={`${macro.title} - ${macro.path}:${macro.line}`}
+                        onClick={() => void openMacro(macro)}
+                      >
+                        <MdFunctions className="macro-row-icon" />
+                        <span className="macro-row-main">
+                          <span className="macro-row-name">{macro.name}</span>
+                          <span className="macro-row-path">
+                            {macro.path}:{macro.line}
+                          </span>
+                        </span>
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
+            </section>
+          </div>
+        )}
 
         {optionsOpen && (
           <div className="modal-backdrop" role="presentation" onMouseDown={() => setOptionsOpen(false)}>

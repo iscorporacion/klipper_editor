@@ -117,6 +117,7 @@ const defaultMessages: Messages = {
   "actions.uploadFiles": "Subir archivos",
   "actions.downloadFile": "Descargar archivo",
   "actions.deleteFile": "Borrar archivo",
+  "actions.downloadOnlyFile": "Descargar archivo",
   "actions.macros": "Macros",
   "actions.executeMacro": "Ejecutar macro",
   "actions.hot": "Hot",
@@ -158,6 +159,7 @@ const defaultMessages: Messages = {
   "status.commandDone": "{command} ejecutado",
   "status.saving": "Guardando {path}",
   "status.saved": "Guardado {path}",
+  "status.savedWithBackup": "Guardado {path}; copia creada en {backupPath}",
   "status.firmwareRestarting": "Reiniciando firmware",
   "status.firmwareRestarted": "Reinicio de firmware solicitado",
   "status.printerState": "Impresora: {state}",
@@ -210,6 +212,8 @@ const defaultMessages: Messages = {
   "options.title": "Opciones",
   "options.language": "Idioma",
   "options.languageHelp": "Los idiomas disponibles salen de los archivos JSON en la carpeta `locales`.",
+  "options.createBackupOnSave": "Crear copia de seguridad al guardar",
+  "options.createBackupOnSaveHelp": "Antes de sobrescribir un archivo, crea una copia con fecha junto al original.",
   "options.close": "Cerrar opciones",
   "options.loadingLocales": "Cargando idiomas.",
   "options.noLocales": "No hay archivos de idioma disponibles.",
@@ -458,6 +462,10 @@ function isCfgPath(path: string) {
   return lower.endsWith(".cfg") || lower.endsWith(".conf") || lower.endsWith(".ini");
 }
 
+function isDownloadOnlyPath(path: string) {
+  return path.toLowerCase().endsWith(".zip");
+}
+
 function FileTree({
   nodes,
   activePath,
@@ -519,6 +527,7 @@ function TreeItem({
   const [expanded, setExpanded] = useState(defaultOpen);
   const isDirectory = node.type === "directory";
   const isOpenFile = openPaths.has(node.path);
+  const downloadOnly = isDownloadOnlyPath(node.path);
 
   if (isDirectory) {
     return (
@@ -551,7 +560,12 @@ function TreeItem({
 
   return (
     <div className={`tree-row file-row ${activePath === node.path ? "active" : ""}`} title={node.path}>
-      <button className="tree-open-button" type="button" onClick={() => onOpen(node.path)}>
+      <button
+        className="tree-open-button"
+        type="button"
+        title={downloadOnly ? downloadLabel : node.path}
+        onClick={() => (downloadOnly ? onDownload(node.path) : onOpen(node.path))}
+      >
         <span className="tree-spacer" />
         <FileIcon path={node.path} icon={node.icon} />
         <span>{node.name}</span>
@@ -591,6 +605,7 @@ export default function Home() {
   const [localesLoading, setLocalesLoading] = useState(true);
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [macrosOpen, setMacrosOpen] = useState(false);
+  const [createBackupOnSave, setCreateBackupOnSave] = useState(true);
   const [heatersOpen, setHeatersOpen] = useState(false);
   const [heaters, setHeaters] = useState<HeaterStatus[]>([]);
   const [heaterTargets, setHeaterTargets] = useState<Record<string, string>>({});
@@ -946,6 +961,11 @@ export default function Home() {
 
   const openFile = useCallback(
     async (path: string) => {
+      if (isDownloadOnlyPath(path)) {
+        window.open(apiPath(`/api/download?path=${encodeURIComponent(path)}`), "_blank", "noopener,noreferrer");
+        return;
+      }
+
       setActivePath(path);
       if (openFiles.some((file) => file.path === path)) return;
 
@@ -994,7 +1014,7 @@ export default function Home() {
       const response = await fetch(apiPath("/api/file"), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path: activeFile.path, content: activeFile.content })
+        body: JSON.stringify({ path: activeFile.path, content: activeFile.content, createBackup: createBackupOnSave })
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? t("errors.saveFile"));
@@ -1012,7 +1032,11 @@ export default function Home() {
             : file
         )
       );
-      setMessage(t("status.saved", { path: activeFile.path }));
+      setMessage(
+        payload.backupPath
+          ? t("status.savedWithBackup", { path: activeFile.path, backupPath: payload.backupPath })
+          : t("status.saved", { path: activeFile.path })
+      );
     } catch (error) {
       setOpenFiles((files) =>
         files.map((file) =>
@@ -1023,7 +1047,7 @@ export default function Home() {
       );
       setMessage(error instanceof Error ? error.message : t("errors.saveGeneric"));
     }
-  }, [activeFile, t]);
+  }, [activeFile, createBackupOnSave, t]);
 
   const closeFile = useCallback(
     async (path: string) => {
@@ -1287,6 +1311,11 @@ export default function Home() {
 
   useEffect(() => {
     let cancelled = false;
+
+    const savedBackupPreference = window.localStorage.getItem("klipper-editor-create-backup-on-save");
+    if (savedBackupPreference !== null) {
+      setCreateBackupOnSave(savedBackupPreference === "true");
+    }
 
     async function loadLocales() {
       try {
@@ -2021,6 +2050,19 @@ export default function Home() {
                       ? t("options.noLocales")
                       : t("options.languageHelp")}
                 </p>
+                <label className="setting-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={createBackupOnSave}
+                    onChange={(event) => {
+                      const checked = event.target.checked;
+                      setCreateBackupOnSave(checked);
+                      window.localStorage.setItem("klipper-editor-create-backup-on-save", String(checked));
+                    }}
+                  />
+                  <span>{t("options.createBackupOnSave")}</span>
+                </label>
+                <p className="setting-help">{t("options.createBackupOnSaveHelp")}</p>
               </div>
             </section>
           </div>

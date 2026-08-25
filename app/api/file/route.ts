@@ -3,6 +3,37 @@ import path from "node:path";
 import { NextRequest, NextResponse } from "next/server";
 import { isBlockedPath, resolveWorkspacePath, toRelativePath } from "@/lib/workspace";
 
+function timestampForBackup(date = new Date()) {
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return [
+    date.getFullYear(),
+    pad(date.getMonth() + 1),
+    pad(date.getDate()),
+    "_",
+    pad(date.getHours()),
+    pad(date.getMinutes()),
+    pad(date.getSeconds())
+  ].join("");
+}
+
+async function backupPathForFile(absolutePath: string) {
+  const parsed = path.parse(absolutePath);
+  const timestamp = timestampForBackup();
+  let candidate = path.join(parsed.dir, `${parsed.name}-${timestamp}${parsed.ext}`);
+  let suffix = 1;
+
+  while (true) {
+    try {
+      await fs.stat(candidate);
+      candidate = path.join(parsed.dir, `${parsed.name}-${timestamp}-${suffix}${parsed.ext}`);
+      suffix += 1;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return candidate;
+      throw error;
+    }
+  }
+}
+
 export async function GET(request: NextRequest) {
   const relativePath = toRelativePath(request.nextUrl.searchParams.get("path") ?? "");
 
@@ -34,7 +65,7 @@ export async function GET(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
-    const body = (await request.json()) as { path?: string; content?: string };
+    const body = (await request.json()) as { path?: string; content?: string; createBackup?: boolean };
     const relativePath = toRelativePath(body.path ?? "");
 
     if (!relativePath || isBlockedPath(relativePath) || typeof body.content !== "string") {
@@ -47,11 +78,18 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: "Path is not a file" }, { status: 400 });
     }
 
+    let backupPath: string | undefined;
+    if (body.createBackup) {
+      backupPath = await backupPathForFile(absolutePath);
+      await fs.copyFile(absolutePath, backupPath);
+    }
+
     await fs.writeFile(absolutePath, body.content, "utf8");
     const updatedStat = await fs.stat(absolutePath);
 
     return NextResponse.json({
       path: relativePath,
+      backupPath: backupPath ? toRelativePath(path.relative(resolveWorkspacePath(), backupPath)) : undefined,
       modifiedAt: updatedStat.mtime.toISOString()
     });
   } catch (error) {

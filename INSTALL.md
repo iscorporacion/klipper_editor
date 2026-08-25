@@ -1,6 +1,42 @@
 # Klipper Editor install
 
-After cloning the repository on the printer host:
+## Recommended: precompiled release
+
+Use this on RatOS or any low-memory printer host:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/iscorporacion/klipper_editor/main/install-release.sh | bash
+```
+
+The release installer downloads `klipper-editor-standalone.tar.gz` from GitHub Releases, extracts it under:
+
+```text
+~/klipper_editor/releases/
+```
+
+Then it points:
+
+```text
+~/klipper_editor/current
+```
+
+to the downloaded version and configures systemd plus Nginx. It does not run `npm ci` or `npm run build` on the printer.
+
+The precompiled release is built for:
+
+```env
+NEXT_PUBLIC_BASE_PATH=/editor
+```
+
+That is the intended production path:
+
+```text
+http://<printer-ip>/editor
+```
+
+## Source install
+
+Use this only on hosts with enough memory to compile Next.js:
 
 ```bash
 cd klipper_editor
@@ -81,8 +117,26 @@ If Nginx auto-detection fails:
 NGINX_SITE_CONFIG=/etc/nginx/sites-available/mainsail bash install.sh
 ```
 
+## Build and publish a precompiled release
+
+GitHub Actions builds the app when you push a tag that starts with `v`:
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+The workflow:
+
+- installs dependencies on GitHub's runner
+- runs `npm run build` with `NEXT_PUBLIC_BASE_PATH=/editor`
+- packages the standalone Next.js server
+- uploads `klipper-editor-standalone.tar.gz` to the GitHub Release
+
+After the release exists, printer hosts can install it with `install-release.sh`.
+
 Uninstall:
 
 ```bash
-bash ratos-file-viewer/scripts/uninstall.sh
+bash ~/klipper_editor/current/scripts/uninstall.sh
 ```

@@ -1,0 +1,50 @@
+name: Build precompiled release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      NEXT_PUBLIC_BASE_PATH: /editor
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build standalone app
+        run: npm run build
+
+      - name: Package standalone release
+        run: |
+          set -eux
+          bash scripts/package-standalone.sh release/klipper-editor
+          tar -C release -czf klipper-editor-standalone.tar.gz klipper-editor
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: klipper-editor-standalone
+          path: klipper-editor-standalone.tar.gz
+
+      - name: Publish GitHub release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: klipper-editor-standalone.tar.gz

@@ -30,6 +30,16 @@ RATOS_MOONRAKER_URL=http://192.168.58.225:7125
 
 ## Install on printer host
 
+Recommended for RatOS printers:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/iscorporacion/klipper_editor/main/install-release.sh | bash
+```
+
+This downloads the precompiled GitHub Release and avoids building Next.js on the printer.
+
+Source install, useful for development hosts:
+
 ```bash
 git clone https://github.com/iscorporacion/klipper_editor.git
 cd klipper_editor

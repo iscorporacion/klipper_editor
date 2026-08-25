@@ -74,7 +74,7 @@ See [INSTALL.md](INSTALL.md) for overrides and details.
 Precompiled install:
 
 ```bash
-bash ~/klipper_editor/current/scripts/uninstall.sh
+bash ~/klipper_editor_app/current/scripts/uninstall.sh
 ```
 
 Source install from a cloned repository:

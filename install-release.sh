@@ -10,8 +10,9 @@ APP_PORT="${PORT:-3007}"
 SERVICE_NAME="${KLIPPER_EDITOR_SERVICE_NAME:-klipper-editor}"
 SERVICE_USER="${SUDO_USER:-$USER}"
 SERVICE_GROUP="$(id -gn "${SERVICE_USER}")"
-INSTALL_ROOT="${KLIPPER_EDITOR_INSTALL_ROOT:-/home/${SERVICE_USER}/klipper_editor}"
+INSTALL_ROOT="${KLIPPER_EDITOR_INSTALL_ROOT:-/home/${SERVICE_USER}/klipper_editor_app}"
 CURRENT_DIR="${INSTALL_ROOT}/current"
+LEGACY_CURRENT_DIR="/home/${SERVICE_USER}/klipper_editor/current"
 
 log() {
   printf '%s\n' "$*"
@@ -34,7 +35,22 @@ require_command() {
 
 safe_app_path() {
   local target="$1"
-  [[ -n "${target}" && "${target}" != "/" && "${target}" == */klipper_editor/current ]]
+  [[ -n "${target}" && "${target}" != "/" && "${target}" == */current ]]
+}
+
+path_within_git_repo() {
+  local target="$1"
+  local dir
+  dir="$(cd "$(dirname "${target}")" 2>/dev/null && pwd -P || true)"
+
+  while [[ -n "${dir}" && "${dir}" != "/" ]]; do
+    if [[ -d "${dir}/.git" ]]; then
+      return 0
+    fi
+    dir="$(dirname "${dir}")"
+  done
+
+  return 1
 }
 
 if [[ "${BASE_PATH}" != "/editor" ]]; then
@@ -80,10 +96,20 @@ if ! safe_app_path "${CURRENT_DIR}"; then
   exit 1
 fi
 
+if path_within_git_repo "${CURRENT_DIR}"; then
+  log "Refusing to install inside a git repo: ${CURRENT_DIR}"
+  log "Moonraker Update Manager requires zip applications to be outside git repositories."
+  log "Use a path like /home/${SERVICE_USER}/klipper_editor_app/current"
+  exit 1
+fi
+
 ENV_BACKUP=""
 if [[ -f "${CURRENT_DIR}/.env.production.local" ]]; then
   ENV_BACKUP="${TMP_DIR}/.env.production.local"
   cp "${CURRENT_DIR}/.env.production.local" "${ENV_BACKUP}"
+elif [[ -f "${LEGACY_CURRENT_DIR}/.env.production.local" ]]; then
+  ENV_BACKUP="${TMP_DIR}/.env.production.local"
+  cp "${LEGACY_CURRENT_DIR}/.env.production.local" "${ENV_BACKUP}"
 fi
 
 if systemctl list-unit-files "${SERVICE_NAME}.service" >/dev/null 2>&1; then

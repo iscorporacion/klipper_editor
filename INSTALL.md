@@ -11,16 +11,18 @@ curl -fsSL https://raw.githubusercontent.com/iscorporacion/klipper_editor/main/i
 The release installer downloads `klipper-editor.zip` from GitHub Releases and extracts it under:
 
 ```text
-~/klipper_editor/current
+~/klipper_editor_app/current
 ```
 
 It also writes:
 
 ```text
-~/klipper_editor/current/release_info.json
+~/klipper_editor_app/current/release_info.json
 ```
 
 and configures systemd, Nginx, and Moonraker Update Manager. It does not run `npm ci` or `npm run build` on the printer.
+
+If an older precompiled install used `~/klipper_editor/current`, run the installer again. It will move the managed installation to `~/klipper_editor_app/current` and rewrite the Moonraker Update Manager entry. Moonraker rejects updater paths located inside git repositories.
 
 The precompiled release is built for:
 
@@ -138,7 +140,7 @@ The Update Manager block added to `moonraker.conf` is:
 type: zip
 channel: stable
 repo: iscorporacion/klipper_editor
-path: /home/pi/klipper_editor/current
+path: /home/pi/klipper_editor_app/current
 enable_node_updates: False
 is_system_service: True
 managed_services:
@@ -179,5 +181,5 @@ The full editor cannot run on GitHub Pages because it needs server-side API rout
 Uninstall:
 
 ```bash
-bash ~/klipper_editor/current/scripts/uninstall.sh
+bash ~/klipper_editor_app/current/scripts/uninstall.sh
 ```

@@ -29,6 +29,14 @@ Default URL:
 http://<printer-ip>/editor/
 ```
 
+Default Moonraker connection:
+
+```text
+http://127.0.0.1:7125
+```
+
+That is the correct value when Klipper Editor runs on the same printer host as Moonraker.
+
 Useful overrides:
 
 ```bash
@@ -56,10 +64,10 @@ location /editor/ {
 }
 ```
 
-The host part, for example `http://192.168.58.225`, comes from the server block where the snippet is included. To print a specific public URL at the end of the installer:
+The host part comes from the server block where the snippet is included. You normally do not need to configure it. To print a specific public URL at the end of the installer, for example when using a custom hostname:
 
 ```bash
-KLIPPER_EDITOR_PUBLIC_HOST=http://192.168.58.225 bash install.sh
+KLIPPER_EDITOR_PUBLIC_HOST=http://my-printer.local bash install.sh
 ```
 
 If Nginx auto-detection fails:

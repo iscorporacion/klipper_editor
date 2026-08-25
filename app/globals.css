@@ -545,8 +545,9 @@ h1 {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 4px;
   height: 24px;
-  max-width: 92px;
+  max-width: 118px;
   overflow: hidden;
   border: 1px solid var(--border-soft);
   background: var(--panel-soft);
@@ -557,6 +558,18 @@ h1 {
   text-overflow: ellipsis;
   white-space: nowrap;
   padding: 0 6px;
+}
+
+.heater-indicator-icon {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+}
+
+.heater-indicator span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .heater-indicator:hover,

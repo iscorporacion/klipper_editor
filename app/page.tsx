@@ -14,6 +14,7 @@ import { vscodeDark } from "@uiw/codemirror-theme-vscode";
 import { FaHotjar } from "react-icons/fa";
 import { FcDownload, FcExpand, FcNext, FcRefresh, FcSearch, FcSettings, FcStart, FcUpload } from "react-icons/fc";
 import { MdDelete, MdEmergency, MdFunctions, MdHome } from "react-icons/md";
+import { TbActivityHeartbeat } from "react-icons/tb";
 import { IoClose, IoDocumentTextOutline, IoPower } from "react-icons/io5";
 import logoWhite from "@/components/logoWhite.png";
 import { klipperConfigParser } from "@/lib/codemirror/klipper-config";
@@ -22,6 +23,7 @@ import { bundledLocaleOptions, bundledLocales } from "@/lib/locales";
 const CodeMirror = dynamic(() => import("@uiw/react-codemirror"), { ssr: false });
 const appBasePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 const heaterCacheKey = "klipper-editor-heater-cache";
+const heaterColorCacheKey = "klipper-editor-heater-colors";
 
 function apiPath(path: string) {
   return `${appBasePath}${path}`;
@@ -83,6 +85,7 @@ type HeaterStatus = {
   temperature: number;
   target: number;
   power?: number;
+  color?: string;
 };
 
 type MacroEntry = {
@@ -288,6 +291,53 @@ function formatTemperature(value: number) {
   return `${Math.round(value)} °C`;
 }
 
+function readHeaterColors() {
+  if (typeof window === "undefined") return {};
+
+  try {
+    const cached = JSON.parse(window.localStorage.getItem(heaterColorCacheKey) ?? "{}") as unknown;
+    if (!cached || typeof cached !== "object" || Array.isArray(cached)) return {};
+
+    return Object.fromEntries(
+      Object.entries(cached as Record<string, unknown>).filter(
+        (entry): entry is [string, string] => typeof entry[0] === "string" && typeof entry[1] === "string"
+      )
+    );
+  } catch {
+    return {};
+  }
+}
+
+function writeHeaterColors(colors: Record<string, string>) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(heaterColorCacheKey, JSON.stringify(colors));
+}
+
+function randomHeaterColor() {
+  return `hsl(${Math.floor(Math.random() * 360)} 85% 62%)`;
+}
+
+function assignHeaterColors(heaters: HeaterStatus[]) {
+  const colors = readHeaterColors();
+  let changed = false;
+
+  const nextHeaters = heaters.map((heater) => {
+    const color = heater.color ?? colors[heater.name] ?? randomHeaterColor();
+    if (colors[heater.name] !== color) {
+      colors[heater.name] = color;
+      changed = true;
+    }
+
+    return { ...heater, color };
+  });
+
+  if (changed) {
+    writeHeaterColors(colors);
+  }
+
+  return nextHeaters;
+}
+
 function cachedHeater(value: unknown): HeaterStatus | undefined {
   if (!value || typeof value !== "object") return undefined;
   const heater = value as Partial<HeaterStatus>;
@@ -298,7 +348,8 @@ function cachedHeater(value: unknown): HeaterStatus | undefined {
     label: heater.label,
     temperature: Number.isFinite(Number(heater.temperature)) ? Number(heater.temperature) : 0,
     target: Number.isFinite(Number(heater.target)) ? Number(heater.target) : 0,
-    power: heater.power === undefined || !Number.isFinite(Number(heater.power)) ? undefined : Number(heater.power)
+    power: heater.power === undefined || !Number.isFinite(Number(heater.power)) ? undefined : Number(heater.power),
+    color: typeof heater.color === "string" && heater.color.trim() ? heater.color.trim() : undefined
   };
 }
 
@@ -725,9 +776,10 @@ export default function Home() {
   );
 
   const cacheAndSetHeaters = useCallback((nextHeaters: HeaterStatus[]) => {
-    heatersRef.current = nextHeaters;
-    setHeaters(nextHeaters);
-    writeCachedHeaters(nextHeaters);
+    const heatersWithColors = assignHeaterColors(nextHeaters);
+    heatersRef.current = heatersWithColors;
+    setHeaters(heatersWithColors);
+    writeCachedHeaters(heatersWithColors);
   }, []);
 
   const confirmDialog = useCallback((title: string, message: string) => {
@@ -1697,7 +1749,10 @@ export default function Home() {
                     disabled={settingHeaters}
                     onClick={() => void coolHeater(heater)}
                   >
-                    {heater.label} {formatTemperature(heater.temperature)}
+                    <TbActivityHeartbeat className="heater-indicator-icon" style={{ color: heater.color ?? "#7fd4ff" }} />
+                    <span>
+                      {heater.label} {formatTemperature(heater.temperature)}
+                    </span>
                   </button>
                 ))}
               </div>

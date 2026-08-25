@@ -21,6 +21,7 @@ export type HeaterStatus = {
   temperature: number;
   target: number;
   power?: number;
+  color?: string;
 };
 
 function moonrakerPath(path: string) {
@@ -100,6 +101,22 @@ function toNumber(value: unknown) {
   return Number.isFinite(number) ? number : 0;
 }
 
+function toCssColor(value: unknown) {
+  if (typeof value === "string" && value.trim()) return value.trim();
+
+  if (Array.isArray(value) && value.length >= 3) {
+    const channels = value.slice(0, 3).map((channel) => {
+      const number = Number(channel);
+      if (!Number.isFinite(number)) return 0;
+      return Math.round(number <= 1 ? number * 255 : number);
+    });
+
+    return `rgb(${channels.map((channel) => Math.min(Math.max(channel, 0), 255)).join(", ")})`;
+  }
+
+  return undefined;
+}
+
 export async function getHeaters(names?: string[]): Promise<HeaterStatus[]> {
   let availableHeaters = names?.filter((heater) => typeof heater === "string" && heater.trim()).map((heater) => heater.trim());
 
@@ -117,7 +134,7 @@ export async function getHeaters(names?: string[]): Promise<HeaterStatus[]> {
 
   const params = new URLSearchParams();
   for (const heater of availableHeaters) {
-    params.append(heater, "temperature,target,power");
+    params.append(heater, "temperature,target,power,color");
   }
 
   const temperaturesPayload = await moonrakerFetch(`/printer/objects/query?${params.toString()}`);
@@ -131,7 +148,8 @@ export async function getHeaters(names?: string[]): Promise<HeaterStatus[]> {
         label: heaterLabel(heater),
         temperature: toNumber(status.temperature),
         target: toNumber(status.target),
-        power: status.power === undefined ? undefined : toNumber(status.power)
+        power: status.power === undefined ? undefined : toNumber(status.power),
+        color: toCssColor(status.color)
       };
     });
 }

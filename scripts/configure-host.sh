@@ -218,6 +218,11 @@ CONFIG_ROOT="$(detect_config_root)" || {
   exit 1
 }
 
+MAINSAIL_LINK_EXEC_START_PRE=""
+if [[ "${CONFIGURE_MAINSAIL_LINK}" == "true" ]]; then
+  MAINSAIL_LINK_EXEC_START_PRE="ExecStartPre=-/usr/bin/env node ${APP_DIR}/scripts/configure-mainsail-link.mjs"
+fi
+
 NGINX_SITE_CONFIG="$(find_nginx_site_config)" || {
   log "Could not detect Nginx site config."
   log "Run again with NGINX_SITE_CONFIG=/etc/nginx/sites-available/mainsail bash install.sh"
@@ -242,6 +247,7 @@ RATOS_MOONRAKER_URL=${MOONRAKER_URL}
 NEXT_PUBLIC_BASE_PATH=${BASE_PATH}
 PORT=${APP_PORT}
 NODE_ENV=production
+KLIPPER_EDITOR_CONFIGURE_MAINSAIL_LINK=${CONFIGURE_MAINSAIL_LINK}
 ENV
 
 run_sudo tee "${SYSTEMD_UNIT}" >/dev/null <<UNIT
@@ -255,6 +261,7 @@ Type=simple
 User=${SERVICE_USER}
 WorkingDirectory=${APP_DIR}
 EnvironmentFile=${APP_DIR}/.env.production.local
+${MAINSAIL_LINK_EXEC_START_PRE}
 ExecStart=${START_COMMAND}
 Restart=always
 RestartSec=5

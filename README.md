@@ -29,6 +29,7 @@ Features:
 - Moonraker firmware restart button blocked during active prints
 - help page at `/editor/help`
 - optional Mainsail sidebar link through `.theme/navi.json`
+- systemd startup hook that refreshes the Mainsail sidebar link after updates
 
 ## Local development
 

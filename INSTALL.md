@@ -54,6 +54,7 @@ The installer creates:
 - a Nginx include inside the detected Mainsail/default server block
 - a `[update_manager klipper-editor]` entry in `moonraker.conf`
 - `printer_data/config/.theme/navi.json` with a `code editor` link for the Mainsail sidebar
+- a non-blocking systemd `ExecStartPre` hook that refreshes the Mainsail sidebar link before Klipper Editor starts
 
 The repository includes a versioned `.env` with printer-host defaults:
 
@@ -149,6 +150,14 @@ The sidebar link uses Mainsail's `.theme/navi.json` integration and points to `/
   "target": "_self"
 }
 ```
+
+When the sidebar link is enabled, the systemd service also runs this before each Klipper Editor start:
+
+```ini
+ExecStartPre=-/usr/bin/env node /home/<user>/klipper_editor_app/current/scripts/configure-mainsail-link.mjs
+```
+
+The leading `-` makes the hook non-blocking: if Mainsail or Moonraker is not ready yet, Klipper Editor still starts.
 
 The Update Manager block added to `moonraker.conf` is:
 

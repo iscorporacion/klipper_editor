@@ -92,6 +92,7 @@ h1 {
 .macro-button,
 .save-button,
 .format-button,
+.emergency-button,
 .restart-button {
   display: inline-flex;
   align-items: center;
@@ -141,6 +142,36 @@ h1 {
   padding: 0 12px;
 }
 
+.emergency-button {
+  min-width: 172px;
+  height: 34px;
+  padding: 0 12px;
+  border-color: rgba(255, 61, 61, 0.78);
+  background: rgba(255, 61, 61, 0.18);
+  color: #ffd6d6;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.emergency-button:hover,
+.emergency-button:focus-visible {
+  border-color: #ff3d3d;
+  background: rgba(255, 61, 61, 0.3);
+  outline: 0;
+}
+
+.emergency-button:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.emergency-button-icon {
+  width: 19px;
+  height: 19px;
+  flex: 0 0 auto;
+  color: #ff3d3d;
+}
+
 .restart-button {
   min-width: 162px;
   height: 34px;
@@ -151,6 +182,7 @@ h1 {
 
 .save-button:disabled,
 .format-button:disabled,
+.emergency-button:disabled,
 .restart-button:disabled {
   cursor: default;
   opacity: 0.45;
@@ -262,6 +294,7 @@ h1 {
 .macro-button:focus-visible,
 .save-button:focus-visible,
 .format-button:focus-visible,
+.emergency-button:focus-visible,
 .restart-button:focus-visible {
   outline: 1px solid var(--accent);
   outline-offset: -1px;
@@ -503,17 +536,31 @@ h1 {
 .heater-indicator {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   height: 24px;
   max-width: 92px;
   overflow: hidden;
   border: 1px solid var(--border-soft);
   background: var(--panel-soft);
   color: var(--muted);
+  cursor: pointer;
   font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
   font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
   padding: 0 6px;
+}
+
+.heater-indicator:hover,
+.heater-indicator:focus-visible {
+  border-color: var(--accent);
+  color: var(--text);
+  outline: 0;
+}
+
+.heater-indicator:disabled {
+  cursor: default;
+  opacity: 0.6;
 }
 
 .heater-indicator.active {

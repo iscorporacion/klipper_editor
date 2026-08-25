@@ -71,6 +71,11 @@ export async function firmwareRestart() {
   return payload?.result ?? payload;
 }
 
+export async function emergencyStop() {
+  const payload = await moonrakerFetch("/printer/emergency_stop", { method: "POST" });
+  return payload?.result ?? payload;
+}
+
 export async function runGcodeScript(script: string) {
   const payload = await moonrakerFetch("/printer/gcode/script", {
     method: "POST",

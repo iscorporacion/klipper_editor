@@ -13,7 +13,7 @@ import { tags } from "@lezer/highlight";
 import { vscodeDark } from "@uiw/codemirror-theme-vscode";
 import { FaHotjar } from "react-icons/fa";
 import { FcDownload, FcExpand, FcNext, FcRefresh, FcSearch, FcSettings, FcStart, FcUpload } from "react-icons/fc";
-import { MdDelete, MdFunctions, MdHome } from "react-icons/md";
+import { MdDelete, MdEmergency, MdFunctions, MdHome } from "react-icons/md";
 import { IoClose, IoDocumentTextOutline, IoPower } from "react-icons/io5";
 import logoWhite from "@/components/logoWhite.png";
 import { klipperConfigParser } from "@/lib/codemirror/klipper-config";
@@ -120,9 +120,12 @@ const defaultMessages: Messages = {
   "actions.macros": "Macros",
   "actions.executeMacro": "Ejecutar macro",
   "actions.hot": "Hot",
+  "actions.coolHeater": "Enfriar {heater}",
   "actions.clearSearch": "Limpiar busqueda",
   "actions.setHeaters": "Aplicar temperaturas",
   "actions.settingHeaters": "Aplicando",
+  "actions.emergencyStop": "Parada de emergencia",
+  "actions.emergencyStopping": "Deteniendo",
   "actions.homeAll": "Home All",
   "actions.homeX": "Home X",
   "actions.homeY": "Home Y",
@@ -145,8 +148,12 @@ const defaultMessages: Messages = {
   "status.executingMacro": "Ejecutando macro {name}",
   "status.executedMacro": "Macro ejecutada {name}",
   "status.loadingHeaters": "Cargando temperaturas",
+  "status.coolingHeater": "Enfriando {heater}",
+  "status.heaterCooling": "{heater} enfriando",
   "status.settingHeaters": "Aplicando temperaturas",
   "status.heatersSet": "Temperaturas aplicadas",
+  "status.emergencyStopping": "Ejecutando parada de emergencia",
+  "status.emergencyStopped": "Parada de emergencia enviada",
   "status.runningCommand": "Ejecutando {command}",
   "status.commandDone": "{command} ejecutado",
   "status.saving": "Guardando {path}",
@@ -166,7 +173,9 @@ const defaultMessages: Messages = {
   "errors.loadMacros": "No se pudieron cargar las macros",
   "errors.executeMacro": "No se pudo ejecutar la macro",
   "errors.loadHeaters": "No se pudieron cargar los calentadores",
+  "errors.coolHeater": "No se pudo enfriar el calentador",
   "errors.setHeaters": "No se pudieron aplicar las temperaturas",
+  "errors.emergencyStop": "No se pudo ejecutar la parada de emergencia",
   "errors.quickCommand": "No se pudo ejecutar el comando",
   "errors.saveFile": "No se pudo guardar",
   "errors.saveGeneric": "Error al guardar",
@@ -265,7 +274,7 @@ function dirname(path: string) {
 }
 
 function formatTemperature(value: number) {
-  return `${Math.round(value)}C`;
+  return `${Math.round(value)} °C`;
 }
 
 function Icon({ children, className = "" }: { children: ReactNode; className?: string }) {
@@ -597,6 +606,7 @@ export default function Home() {
   const [message, setMessage] = useState(defaultMessages["status.ready"]);
   const [printerStatus, setPrinterStatus] = useState<PrinterStatus | null>(null);
   const [restartingFirmware, setRestartingFirmware] = useState(false);
+  const [emergencyStopping, setEmergencyStopping] = useState(false);
   const [runningQuickCommand, setRunningQuickCommand] = useState<QuickCommand | null>(null);
   const [outlineWidth, setOutlineWidth] = useState(320);
   const [includePanelHeight, setIncludePanelHeight] = useState(240);
@@ -838,6 +848,57 @@ export default function Home() {
     },
     [loadPrinterStatus, printerStatus, runningQuickCommand, t]
   );
+
+  const coolHeater = useCallback(
+    async (heater: HeaterStatus) => {
+      if (settingHeaters) return;
+
+      setSettingHeaters(true);
+      setMessage(t("status.coolingHeater", { heater: heater.label }));
+
+      try {
+        const response = await fetch(apiPath("/api/printer/heaters"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ targets: { [heater.name]: 0 } })
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error ?? t("errors.coolHeater"));
+
+        const nextHeaters = (payload.heaters ?? []) as HeaterStatus[];
+        setHeaters(nextHeaters);
+        setHeaterTargets(
+          Object.fromEntries(nextHeaters.map((nextHeater) => [nextHeater.name, String(Math.round(nextHeater.target))]))
+        );
+        setMessage(t("status.heaterCooling", { heater: heater.label }));
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : t("errors.coolHeater"));
+      } finally {
+        setSettingHeaters(false);
+      }
+    },
+    [settingHeaters, t]
+  );
+
+  const triggerEmergencyStop = useCallback(async () => {
+    if (emergencyStopping) return;
+
+    setEmergencyStopping(true);
+    setMessage(t("status.emergencyStopping"));
+
+    try {
+      const response = await fetch(apiPath("/api/printer/emergency-stop"), { method: "POST" });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? t("errors.emergencyStop"));
+
+      setMessage(t("status.emergencyStopped"));
+      await Promise.all([loadPrinterStatus(), loadHeaters()]);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : t("errors.emergencyStop"));
+    } finally {
+      setEmergencyStopping(false);
+    }
+  }, [emergencyStopping, loadHeaters, loadPrinterStatus, t]);
 
   const setHeaterTargetValue = useCallback((heaterName: string, value: string) => {
     setHeaterTargets((targets) => ({ ...targets, [heaterName]: value }));
@@ -1454,12 +1515,30 @@ export default function Home() {
               </button>
               <div className="heater-indicators" aria-label={t("heaters.title")}>
                 {heaters.slice(0, 4).map((heater) => (
-                  <span key={heater.name} className={heater.target > 0 ? "heater-indicator active" : "heater-indicator"}>
+                  <button
+                    key={heater.name}
+                    className={heater.target > 0 ? "heater-indicator active" : "heater-indicator"}
+                    type="button"
+                    title={t("actions.coolHeater", { heater: heater.label })}
+                    aria-label={t("actions.coolHeater", { heater: heater.label })}
+                    disabled={settingHeaters}
+                    onClick={() => void coolHeater(heater)}
+                  >
                     {heater.label} {formatTemperature(heater.temperature)}
-                  </span>
+                  </button>
                 ))}
               </div>
             </div>
+            <button
+              className="emergency-button"
+              type="button"
+              title={t("actions.emergencyStop")}
+              disabled={emergencyStopping}
+              onClick={() => void triggerEmergencyStop()}
+            >
+              <MdEmergency className="emergency-button-icon" />
+              {emergencyStopping ? t("actions.emergencyStopping") : t("actions.emergencyStop")}
+            </button>
           </div>
           <div className="toolbar-actions">
             <button className="icon-button" type="button" onClick={() => setOptionsOpen(true)} title={t("actions.options")}>

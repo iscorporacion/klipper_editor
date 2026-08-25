@@ -523,8 +523,9 @@ function collectIconMap(nodes: TreeNode[], icons = new Map<string, string>()) {
 function isBackupFilePath(path: string) {
   const name = basename(path).toLowerCase();
   return (
-    /-\d{8}_\d{6}(?:-\d+)?(?:\.[^.]+){1,2}$/.test(name) ||
-    /\.(bak|backup|old|orig)$/.test(name) ||
+    /-\d{8}[-_]\d{6}(?:-\d+)?(?:\.[^.]+){1,2}$/.test(name) ||
+    /\.(bak|backup|bkp|old|orig)$/.test(name) ||
+    /\.(bak|backup|bkp)\.?\d{8}/.test(name) ||
     /~$/.test(name)
   );
 }

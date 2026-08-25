@@ -16,6 +16,7 @@
     "actions.executeMacro": "Ejecutar macro",
     "actions.hot": "Hot",
     "actions.coolHeater": "Enfriar {heater}",
+    "actions.refreshHeaters": "Actualizar calentadores",
     "actions.clearSearch": "Limpiar busqueda",
     "actions.setHeaters": "Aplicar temperaturas",
     "actions.settingHeaters": "Aplicando",
@@ -46,6 +47,7 @@
     "status.executingMacro": "Ejecutando macro {name}",
     "status.executedMacro": "Macro ejecutada {name}",
     "status.loadingHeaters": "Cargando temperaturas",
+    "status.heatersRefreshed": "Calentadores actualizados",
     "status.coolingHeater": "Enfriando {heater}",
     "status.heaterCooling": "{heater} enfriando",
     "status.settingHeaters": "Aplicando temperaturas",
@@ -122,6 +124,7 @@
     "sections.search": "Buscar sesion",
     "heaters.title": "Calentadores",
     "heaters.empty": "Sin calentadores detectados.",
+    "heaters.cacheHelp": "Si modificaste tus calentadores recientemente, pulsa actualizar para recargarlos y guardarlos nuevamente.",
     "heaters.current": "Actual",
     "heaters.target": "Objetivo"
   }

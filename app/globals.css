@@ -1027,6 +1027,16 @@ body.is-resizing {
   padding: 14px 12px 16px;
 }
 
+.heater-cache-note {
+  margin: 0;
+  border: 1px solid rgba(33, 150, 243, 0.28);
+  background: rgba(33, 150, 243, 0.1);
+  color: #b9ddff;
+  font-size: 12px;
+  line-height: 1.45;
+  padding: 9px 10px;
+}
+
 .heater-list {
   display: grid;
   gap: 8px;

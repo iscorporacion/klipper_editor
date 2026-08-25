@@ -20,6 +20,7 @@ import { klipperConfigParser } from "@/lib/codemirror/klipper-config";
 
 const CodeMirror = dynamic(() => import("@uiw/react-codemirror"), { ssr: false });
 const appBasePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+const heaterCacheKey = "klipper-editor-heater-cache";
 
 function apiPath(path: string) {
   return `${appBasePath}${path}`;
@@ -122,6 +123,7 @@ const defaultMessages: Messages = {
   "actions.executeMacro": "Ejecutar macro",
   "actions.hot": "Hot",
   "actions.coolHeater": "Enfriar {heater}",
+  "actions.refreshHeaters": "Actualizar calentadores",
   "actions.clearSearch": "Limpiar busqueda",
   "actions.setHeaters": "Aplicar temperaturas",
   "actions.settingHeaters": "Aplicando",
@@ -149,6 +151,7 @@ const defaultMessages: Messages = {
   "status.executingMacro": "Ejecutando macro {name}",
   "status.executedMacro": "Macro ejecutada {name}",
   "status.loadingHeaters": "Cargando temperaturas",
+  "status.heatersRefreshed": "Calentadores actualizados",
   "status.coolingHeater": "Enfriando {heater}",
   "status.heaterCooling": "{heater} enfriando",
   "status.settingHeaters": "Aplicando temperaturas",
@@ -225,6 +228,7 @@ const defaultMessages: Messages = {
   "sections.search": "Buscar sesion",
   "heaters.title": "Calentadores",
   "heaters.empty": "Sin calentadores detectados.",
+  "heaters.cacheHelp": "Si modificaste tus calentadores recientemente, pulsa actualizar para recargarlos y guardarlos nuevamente.",
   "heaters.current": "Actual",
   "heaters.target": "Objetivo"
 };
@@ -279,6 +283,52 @@ function dirname(path: string) {
 
 function formatTemperature(value: number) {
   return `${Math.round(value)} °C`;
+}
+
+function cachedHeater(value: unknown): HeaterStatus | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const heater = value as Partial<HeaterStatus>;
+  if (typeof heater.name !== "string" || typeof heater.label !== "string") return undefined;
+
+  return {
+    name: heater.name,
+    label: heater.label,
+    temperature: Number.isFinite(Number(heater.temperature)) ? Number(heater.temperature) : 0,
+    target: Number.isFinite(Number(heater.target)) ? Number(heater.target) : 0,
+    power: heater.power === undefined || !Number.isFinite(Number(heater.power)) ? undefined : Number(heater.power)
+  };
+}
+
+function readCachedHeaters() {
+  if (typeof window === "undefined") return [];
+
+  try {
+    const cached = JSON.parse(window.localStorage.getItem(heaterCacheKey) ?? "[]") as unknown;
+    return Array.isArray(cached) ? cached.map(cachedHeater).filter((heater): heater is HeaterStatus => Boolean(heater)) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeCachedHeaters(heaters: HeaterStatus[]) {
+  if (typeof window === "undefined") return;
+  if (heaters.length === 0) {
+    window.localStorage.removeItem(heaterCacheKey);
+    return;
+  }
+  window.localStorage.setItem(heaterCacheKey, JSON.stringify(heaters));
+}
+
+function heaterQueryPath(heaters: HeaterStatus[], refreshCatalog = false) {
+  const params = new URLSearchParams();
+  if (!refreshCatalog) {
+    for (const heater of heaters) {
+      params.append("heater", heater.name);
+    }
+  }
+
+  const query = params.toString();
+  return query ? `/api/printer/heaters?${query}` : "/api/printer/heaters";
 }
 
 function Icon({ children, className = "" }: { children: ReactNode; className?: string }) {
@@ -631,6 +681,7 @@ export default function Home() {
   const includePanelRef = useRef<HTMLElement | null>(null);
   const previewCloseTimerRef = useRef<number | null>(null);
   const uploadInputRef = useRef<HTMLInputElement | null>(null);
+  const heatersRef = useRef<HeaterStatus[]>([]);
 
   const activeFile = openFiles.find((file) => file.path === activePath);
   const openPathSet = useMemo(() => new Set(openFiles.map((file) => file.path)), [openFiles]);
@@ -659,6 +710,12 @@ export default function Home() {
     (key: string, values?: Record<string, string | number>) => translate(messages, key, values),
     [messages]
   );
+
+  const cacheAndSetHeaters = useCallback((nextHeaters: HeaterStatus[]) => {
+    heatersRef.current = nextHeaters;
+    setHeaters(nextHeaters);
+    writeCachedHeaters(nextHeaters);
+  }, []);
 
   const confirmDialog = useCallback((title: string, message: string) => {
     return new Promise<boolean>((resolve) => {
@@ -762,41 +819,73 @@ export default function Home() {
     }
   }, [t]);
 
-  const loadHeaters = useCallback(async (showError = false) => {
-    try {
-      const response = await fetch(apiPath("/api/printer/heaters"), { cache: "no-store" });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error ?? t("errors.loadHeaters"));
-      setHeaters(payload.heaters ?? []);
-    } catch (error) {
-      setHeaters([]);
-      if (showError) {
-        setMessage(error instanceof Error ? error.message : t("errors.loadHeaters"));
-      }
-    }
-  }, [t]);
+  const loadHeaters = useCallback(
+    async (showError = false, refreshCatalog = false) => {
+      const cachedHeaters = refreshCatalog
+        ? []
+        : heatersRef.current.length > 0
+          ? heatersRef.current
+          : readCachedHeaters();
 
-  const openHeatersModal = useCallback(async () => {
-    setHeatersOpen(true);
+      if (!refreshCatalog && heatersRef.current.length === 0 && cachedHeaters.length > 0) {
+        cacheAndSetHeaters(cachedHeaters);
+      }
+
+      try {
+        const response = await fetch(apiPath(heaterQueryPath(cachedHeaters, refreshCatalog)), { cache: "no-store" });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error ?? t("errors.loadHeaters"));
+
+        const nextHeaters = (payload.heaters ?? []) as HeaterStatus[];
+        cacheAndSetHeaters(nextHeaters);
+        return nextHeaters;
+      } catch (error) {
+        if (cachedHeaters.length === 0) {
+          cacheAndSetHeaters([]);
+        }
+        if (showError) {
+          setMessage(error instanceof Error ? error.message : t("errors.loadHeaters"));
+        }
+        return undefined;
+      }
+    },
+    [cacheAndSetHeaters, t]
+  );
+
+  const setHeaterTargetInputs = useCallback((nextHeaters: HeaterStatus[]) => {
+    setHeaterTargets(
+      Object.fromEntries(nextHeaters.map((heater) => [heater.name, String(Math.round(heater.target))]))
+    );
+  }, []);
+
+  const refreshHeaterCatalog = useCallback(async () => {
     setHeatersLoading(true);
     setMessage(t("status.loadingHeaters"));
 
     try {
-      const response = await fetch(apiPath("/api/printer/heaters"), { cache: "no-store" });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error ?? t("errors.loadHeaters"));
-
-      const nextHeaters = (payload.heaters ?? []) as HeaterStatus[];
-      setHeaters(nextHeaters);
-      setHeaterTargets(
-        Object.fromEntries(nextHeaters.map((heater) => [heater.name, String(Math.round(heater.target))]))
-      );
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : t("errors.loadHeaters"));
+      const nextHeaters = await loadHeaters(true, true);
+      if (nextHeaters) {
+        setHeaterTargetInputs(nextHeaters);
+        setMessage(t("status.heatersRefreshed"));
+      }
     } finally {
       setHeatersLoading(false);
     }
-  }, [t]);
+  }, [loadHeaters, setHeaterTargetInputs, t]);
+
+  const openHeatersModal = useCallback(async () => {
+    setHeatersOpen(true);
+
+    const cachedHeaters = heatersRef.current.length > 0 ? heatersRef.current : readCachedHeaters();
+    if (cachedHeaters.length > 0) {
+      cacheAndSetHeaters(cachedHeaters);
+      setHeaterTargetInputs(cachedHeaters);
+      setHeatersLoading(false);
+      return;
+    }
+
+    await refreshHeaterCatalog();
+  }, [cacheAndSetHeaters, refreshHeaterCatalog, setHeaterTargetInputs]);
 
   const restartFirmware = useCallback(async () => {
     if (restartingFirmware) return;
@@ -875,16 +964,14 @@ export default function Home() {
         const response = await fetch(apiPath("/api/printer/heaters"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ targets: { [heater.name]: 0 } })
+          body: JSON.stringify({ targets: { [heater.name]: 0 }, heaters: heatersRef.current.map((item) => item.name) })
         });
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error ?? t("errors.coolHeater"));
 
         const nextHeaters = (payload.heaters ?? []) as HeaterStatus[];
-        setHeaters(nextHeaters);
-        setHeaterTargets(
-          Object.fromEntries(nextHeaters.map((nextHeater) => [nextHeater.name, String(Math.round(nextHeater.target))]))
-        );
+        cacheAndSetHeaters(nextHeaters);
+        setHeaterTargetInputs(nextHeaters);
         setMessage(t("status.heaterCooling", { heater: heater.label }));
       } catch (error) {
         setMessage(error instanceof Error ? error.message : t("errors.coolHeater"));
@@ -892,7 +979,7 @@ export default function Home() {
         setSettingHeaters(false);
       }
     },
-    [settingHeaters, t]
+    [cacheAndSetHeaters, setHeaterTargetInputs, settingHeaters, t]
   );
 
   const triggerEmergencyStop = useCallback(async () => {
@@ -938,16 +1025,14 @@ export default function Home() {
         const response = await fetch(apiPath("/api/printer/heaters"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ targets })
+          body: JSON.stringify({ targets, heaters: heaters.map((heater) => heater.name) })
         });
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error ?? t("errors.setHeaters"));
 
         const nextHeaters = (payload.heaters ?? []) as HeaterStatus[];
-        setHeaters(nextHeaters);
-        setHeaterTargets(
-          Object.fromEntries(nextHeaters.map((heater) => [heater.name, String(Math.round(heater.target))]))
-        );
+        cacheAndSetHeaters(nextHeaters);
+        setHeaterTargetInputs(nextHeaters);
         setHeatersOpen(false);
         setMessage(t("status.heatersSet"));
       } catch (error) {
@@ -956,7 +1041,7 @@ export default function Home() {
         setSettingHeaters(false);
       }
     },
-    [heaterTargets, heaters, settingHeaters, t]
+    [cacheAndSetHeaters, heaterTargets, heaters, setHeaterTargetInputs, settingHeaters, t]
   );
 
   const openFile = useCallback(
@@ -1308,6 +1393,14 @@ export default function Home() {
     },
     [includePanelHeight]
   );
+
+  useEffect(() => {
+    const cachedHeaters = readCachedHeaters();
+    if (cachedHeaters.length > 0) {
+      cacheAndSetHeaters(cachedHeaters);
+      setHeaterTargetInputs(cachedHeaters);
+    }
+  }, [cacheAndSetHeaters, setHeaterTargetInputs]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1845,9 +1938,9 @@ export default function Home() {
                   <button
                     className="modal-icon-button"
                     type="button"
-                    title={t("actions.refreshTree")}
-                    aria-label={t("actions.refreshTree")}
-                    onClick={() => void openHeatersModal()}
+                    title={t("actions.refreshHeaters")}
+                    aria-label={t("actions.refreshHeaters")}
+                    onClick={() => void refreshHeaterCatalog()}
                   >
                     <FcRefresh className="action-icon" />
                   </button>
@@ -1863,6 +1956,7 @@ export default function Home() {
                 </div>
               </div>
               <form className="heater-modal-body" onSubmit={submitHeaters}>
+                <p className="heater-cache-note">{t("heaters.cacheHelp")}</p>
                 {heatersLoading ? (
                   <p className="empty-note">{t("status.loadingHeaters")}</p>
                 ) : heaters.length === 0 ? (

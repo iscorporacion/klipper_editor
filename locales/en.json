@@ -16,6 +16,7 @@
     "actions.executeMacro": "Execute macro",
     "actions.hot": "Hot",
     "actions.coolHeater": "Cool down {heater}",
+    "actions.refreshHeaters": "Refresh heaters",
     "actions.clearSearch": "Clear search",
     "actions.setHeaters": "Apply temperatures",
     "actions.settingHeaters": "Applying",
@@ -46,6 +47,7 @@
     "status.executingMacro": "Executing macro {name}",
     "status.executedMacro": "Executed macro {name}",
     "status.loadingHeaters": "Loading temperatures",
+    "status.heatersRefreshed": "Heaters refreshed",
     "status.coolingHeater": "Cooling down {heater}",
     "status.heaterCooling": "{heater} cooling down",
     "status.settingHeaters": "Applying temperatures",
@@ -122,6 +124,7 @@
     "sections.search": "Search section",
     "heaters.title": "Heaters",
     "heaters.empty": "No heaters detected.",
+    "heaters.cacheHelp": "If you changed your heaters recently, press refresh to reload them and store them again.",
     "heaters.current": "Current",
     "heaters.target": "Target"
   }

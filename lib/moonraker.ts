@@ -100,27 +100,30 @@ function toNumber(value: unknown) {
   return Number.isFinite(number) ? number : 0;
 }
 
-export async function getHeaters(): Promise<HeaterStatus[]> {
-  const heatersPayload = await moonrakerFetch("/printer/objects/query?heaters=available_heaters");
-  const heatersStatus = heatersPayload?.result?.status ?? heatersPayload?.status ?? {};
-  const availableHeaters = heatersStatus.heaters?.available_heaters;
+export async function getHeaters(names?: string[]): Promise<HeaterStatus[]> {
+  let availableHeaters = names?.filter((heater) => typeof heater === "string" && heater.trim()).map((heater) => heater.trim());
+
+  if (!availableHeaters || availableHeaters.length === 0) {
+    const heatersPayload = await moonrakerFetch("/printer/objects/query?heaters=available_heaters");
+    const heatersStatus = heatersPayload?.result?.status ?? heatersPayload?.status ?? {};
+    availableHeaters = heatersStatus.heaters?.available_heaters;
+  }
 
   if (!Array.isArray(availableHeaters) || availableHeaters.length === 0) {
     return [];
   }
 
+  availableHeaters = Array.from(new Set(availableHeaters.filter((heater): heater is string => typeof heater === "string")));
+
   const params = new URLSearchParams();
   for (const heater of availableHeaters) {
-    if (typeof heater === "string") {
-      params.append(heater, "temperature,target,power");
-    }
+    params.append(heater, "temperature,target,power");
   }
 
   const temperaturesPayload = await moonrakerFetch(`/printer/objects/query?${params.toString()}`);
   const temperaturesStatus = temperaturesPayload?.result?.status ?? temperaturesPayload?.status ?? {};
 
   return availableHeaters
-    .filter((heater): heater is string => typeof heater === "string")
     .map((heater) => {
       const status = temperaturesStatus[heater] ?? {};
       return {

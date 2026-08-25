@@ -17,6 +17,7 @@ import { MdDelete, MdEmergency, MdFunctions, MdHome } from "react-icons/md";
 import { IoClose, IoDocumentTextOutline, IoPower } from "react-icons/io5";
 import logoWhite from "@/components/logoWhite.png";
 import { klipperConfigParser } from "@/lib/codemirror/klipper-config";
+import { bundledLocaleOptions, bundledLocales } from "@/lib/locales";
 
 const CodeMirror = dynamic(() => import("@uiw/react-codemirror"), { ssr: false });
 const appBasePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
@@ -761,9 +762,20 @@ export default function Home() {
   }, [dialog, dialogInputValue]);
 
   const loadLocale = useCallback(async (code: string) => {
-    const response = await fetch(apiPath(`/api/locales?locale=${encodeURIComponent(code)}`), { cache: "no-store" });
-    const payload = await response.json();
-    if (!response.ok) throw new Error(payload.error ?? "Unable to load locale");
+    let payload: { code?: string; messages?: Record<string, string>; error?: string };
+
+    try {
+      const response = await fetch(apiPath(`/api/locales?locale=${encodeURIComponent(code)}`), { cache: "no-store" });
+      payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? "Unable to load locale");
+    } catch (error) {
+      const bundledLocale = bundledLocales[code];
+      if (!bundledLocale) throw error;
+      payload = {
+        code,
+        messages: bundledLocale.messages ?? {}
+      };
+    }
 
     const nextMessages = { ...defaultMessages, ...(payload.messages ?? {}) };
     setMessages(nextMessages);
@@ -1416,7 +1428,8 @@ export default function Home() {
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error ?? "Unable to load locales");
 
-        const nextLocales = (payload.locales ?? []) as LocaleOption[];
+        const apiLocales = (payload.locales ?? []) as LocaleOption[];
+        const nextLocales = apiLocales.length > 0 ? apiLocales : bundledLocaleOptions();
         if (cancelled) return;
 
         setLocales(nextLocales);
@@ -1430,7 +1443,16 @@ export default function Home() {
         }
       } catch (error) {
         if (!cancelled) {
-          setMessage(error instanceof Error ? error.message : defaultMessages["errors.loadTree"]);
+          const nextLocales = bundledLocaleOptions();
+          setLocales(nextLocales);
+          const savedLocale = window.localStorage.getItem("ratos-viewer-locale");
+          const nextLocale =
+            (savedLocale && nextLocales.some((locale) => locale.code === savedLocale) ? savedLocale : undefined) ??
+            (nextLocales.some((locale) => locale.code === "es") ? "es" : nextLocales[0]?.code);
+
+          if (nextLocale) {
+            await loadLocale(nextLocale);
+          }
         }
       } finally {
         if (!cancelled) {

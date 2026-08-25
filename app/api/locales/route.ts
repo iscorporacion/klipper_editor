@@ -1,14 +1,8 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { NextRequest, NextResponse } from "next/server";
-
-type LocaleFile = {
-  meta?: {
-    code?: string;
-    name?: string;
-  };
-  messages?: Record<string, string>;
-};
+import { bundledLocaleOptions, bundledLocales } from "@/lib/locales";
+import type { LocaleFile } from "@/lib/locales";
 
 const localesDirectory = path.join(process.cwd(), "locales");
 
@@ -22,12 +16,22 @@ async function readLocaleFile(fileName: string) {
   return JSON.parse(content) as LocaleFile;
 }
 
+async function readLocaleOrBundled(code: string) {
+  try {
+    return await readLocaleFile(`${code}.json`);
+  } catch (error) {
+    const locale = bundledLocales[code];
+    if (locale) return locale;
+    throw error;
+  }
+}
+
 export async function GET(request: NextRequest) {
   try {
     const requestedLocale = safeLocaleCode(request.nextUrl.searchParams.get("locale") ?? "");
 
     if (requestedLocale) {
-      const locale = await readLocaleFile(`${requestedLocale}.json`);
+      const locale = await readLocaleOrBundled(requestedLocale);
       return NextResponse.json({
         code: requestedLocale,
         name: locale.meta?.name ?? requestedLocale,
@@ -54,9 +58,20 @@ export async function GET(request: NextRequest) {
       locales: locales.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }))
     });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Unable to read locales" },
-      { status: 500 }
-    );
+    const requestedLocale = safeLocaleCode(request.nextUrl.searchParams.get("locale") ?? "");
+    const bundledLocale = requestedLocale ? bundledLocales[requestedLocale] : undefined;
+
+    if (bundledLocale) {
+      return NextResponse.json({
+        code: requestedLocale,
+        name: bundledLocale.meta?.name ?? requestedLocale,
+        messages: bundledLocale.messages ?? {}
+      });
+    }
+
+    return NextResponse.json({
+      locales: bundledLocaleOptions(),
+      warning: error instanceof Error ? error.message : "Unable to read locales"
+    });
   }
 }

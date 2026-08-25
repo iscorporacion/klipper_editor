@@ -12,6 +12,7 @@ export type MoonrakerStatus = {
   printState: string;
   filename: string;
   printing: boolean;
+  zTiltAvailable: boolean;
 };
 
 function moonrakerPath(path: string) {
@@ -38,10 +39,13 @@ async function moonrakerFetch(path: string, init?: RequestInit) {
 }
 
 export async function getMoonrakerStatus(): Promise<MoonrakerStatus> {
-  const payload = await moonrakerFetch("/printer/objects/query?webhooks=state,state_message&print_stats=state,filename");
+  const payload = await moonrakerFetch(
+    "/printer/objects/query?webhooks=state,state_message&print_stats=state,filename&configfile=settings"
+  );
   const status = payload?.result?.status ?? payload?.status ?? {};
   const webhooks = status.webhooks ?? {};
   const printStats = status.print_stats ?? {};
+  const configSettings = status.configfile?.settings ?? {};
   const printState = String(printStats.state ?? "unknown");
 
   return {
@@ -49,7 +53,8 @@ export async function getMoonrakerStatus(): Promise<MoonrakerStatus> {
     webhooksMessage: String(webhooks.message ?? ""),
     printState,
     filename: String(printStats.filename ?? ""),
-    printing: printState === "printing" || printState === "paused"
+    printing: printState === "printing" || printState === "paused",
+    zTiltAvailable: Boolean(configSettings.z_tilt)
   };
 }
 

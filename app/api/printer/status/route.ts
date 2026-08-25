@@ -12,6 +12,7 @@ export async function GET() {
       printState: "unknown",
       filename: "",
       printing: false,
+      zTiltAvailable: false,
       error: error instanceof Error ? error.message : "Unable to query Moonraker"
     });
   }

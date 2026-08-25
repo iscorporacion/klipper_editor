@@ -386,6 +386,59 @@ h1 {
   background: var(--panel);
 }
 
+.quick-toolbar {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.home-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.home-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 34px;
+  height: 34px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  background: var(--panel-strong);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.home-button:hover,
+.home-button:focus-visible {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  outline: 0;
+}
+
+.home-button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.home-button-icon {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  color: #7fd4ff;
+}
+
+.z-tilt-button {
+  min-width: 58px;
+}
+
 .toolbar-actions {
   display: inline-flex;
   align-items: center;
@@ -1031,5 +1084,19 @@ body.is-resizing {
   .include-panel,
   .panel-resizer-width {
     display: none;
+  }
+
+  .topbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .quick-toolbar,
+  .toolbar-actions {
+    width: 100%;
+  }
+
+  .toolbar-actions {
+    justify-content: flex-end;
   }
 }

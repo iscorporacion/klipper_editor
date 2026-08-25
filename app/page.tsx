@@ -12,7 +12,7 @@ import { javascript } from "@codemirror/lang-javascript";
 import { tags } from "@lezer/highlight";
 import { vscodeDark } from "@uiw/codemirror-theme-vscode";
 import { FcDownload, FcExpand, FcNext, FcRefresh, FcSearch, FcSettings, FcStart, FcUpload } from "react-icons/fc";
-import { MdDelete, MdFunctions } from "react-icons/md";
+import { MdDelete, MdFunctions, MdHome } from "react-icons/md";
 import { IoDocumentTextOutline, IoPower } from "react-icons/io5";
 import logoWhite from "@/components/logoWhite.png";
 import { klipperConfigParser } from "@/lib/codemirror/klipper-config";
@@ -66,8 +66,11 @@ type PrinterStatus = {
   printState: string;
   filename: string;
   printing: boolean;
+  zTiltAvailable: boolean;
   error?: string;
 };
+
+type QuickCommand = "home-all" | "home-x" | "home-y" | "home-z" | "z-tilt";
 
 type MacroEntry = {
   name: string;
@@ -93,6 +96,11 @@ const defaultMessages: Messages = {
   "actions.deleteFile": "Borrar archivo",
   "actions.macros": "Macros",
   "actions.executeMacro": "Ejecutar macro",
+  "actions.homeAll": "Home All",
+  "actions.homeX": "Home X",
+  "actions.homeY": "Home Y",
+  "actions.homeZ": "Home Z",
+  "actions.zTilt": "Z Tilt",
   "actions.save": "Guardar",
   "actions.saving": "Guardando",
   "actions.options": "Opciones",
@@ -109,6 +117,8 @@ const defaultMessages: Messages = {
   "status.openingMacro": "Abriendo macro {name}",
   "status.executingMacro": "Ejecutando macro {name}",
   "status.executedMacro": "Macro ejecutada {name}",
+  "status.runningCommand": "Ejecutando {command}",
+  "status.commandDone": "{command} ejecutado",
   "status.saving": "Guardando {path}",
   "status.saved": "Guardado {path}",
   "status.firmwareRestarting": "Reiniciando firmware",
@@ -125,6 +135,7 @@ const defaultMessages: Messages = {
   "errors.deleteFile": "No se pudo borrar el archivo",
   "errors.loadMacros": "No se pudieron cargar las macros",
   "errors.executeMacro": "No se pudo ejecutar la macro",
+  "errors.quickCommand": "No se pudo ejecutar el comando",
   "errors.saveFile": "No se pudo guardar",
   "errors.saveGeneric": "Error al guardar",
   "errors.restartFirmware": "No se pudo reiniciar el firmware",
@@ -136,6 +147,7 @@ const defaultMessages: Messages = {
   "confirm.deleteFile": "Borrar {path}? Esta accion no se puede deshacer.",
   "confirm.restartFirmware": "Reiniciar firmware ahora?",
   "confirm.executeMacro": "Ejecutar macro {name} en la impresora?",
+  "confirm.quickCommand": "Ejecutar {command} en la impresora?",
   "prompt.newFilePath": "Ruta del nuevo archivo",
   "panels.openEditors": "Editores abiertos",
   "panels.includes": "Includes",
@@ -536,6 +548,7 @@ export default function Home() {
   const [message, setMessage] = useState(defaultMessages["status.ready"]);
   const [printerStatus, setPrinterStatus] = useState<PrinterStatus | null>(null);
   const [restartingFirmware, setRestartingFirmware] = useState(false);
+  const [runningQuickCommand, setRunningQuickCommand] = useState<QuickCommand | null>(null);
   const [outlineWidth, setOutlineWidth] = useState(320);
   const [includePanelHeight, setIncludePanelHeight] = useState(240);
   const [sectionPreview, setSectionPreview] = useState<SectionPreview | null>(null);
@@ -617,6 +630,7 @@ export default function Home() {
         printState: "unknown",
         filename: "",
         printing: false,
+        zTiltAvailable: false,
         error: error instanceof Error ? error.message : t("errors.printerStatus")
       });
     }
@@ -651,6 +665,44 @@ export default function Home() {
       setRestartingFirmware(false);
     }
   }, [loadPrinterStatus, printerStatus?.printing, restartingFirmware, t]);
+
+  const runQuickCommand = useCallback(
+    async (command: QuickCommand, label: string) => {
+      if (runningQuickCommand) return;
+      if (!printerStatus || printerStatus.error) {
+        setMessage(printerStatus?.error ?? t("errors.printerStatus"));
+        return;
+      }
+
+      if (printerStatus.printing) {
+        setMessage(t("errors.restartPrinting"));
+        return;
+      }
+
+      if (!window.confirm(t("confirm.quickCommand", { command: label }))) return;
+
+      setRunningQuickCommand(command);
+      setMessage(t("status.runningCommand", { command: label }));
+
+      try {
+        const response = await fetch(apiPath("/api/printer/quick-command"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ command })
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error ?? t("errors.quickCommand"));
+
+        setMessage(t("status.commandDone", { command: label }));
+        await loadPrinterStatus();
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : t("errors.quickCommand"));
+      } finally {
+        setRunningQuickCommand(null);
+      }
+    },
+    [loadPrinterStatus, printerStatus, runningQuickCommand, t]
+  );
 
   const openFile = useCallback(
     async (path: string) => {
@@ -1072,6 +1124,9 @@ export default function Home() {
     return extensions;
   }, [activeFile, resolveAndOpenInclude]);
 
+  const quickCommandDisabled =
+    runningQuickCommand !== null || !printerStatus || Boolean(printerStatus.error) || printerStatus.printing;
+
   return (
     <main className="workspace-shell">
       <aside className="sidebar">
@@ -1139,10 +1194,62 @@ export default function Home() {
 
       <section className="editor-area">
         <div className="topbar">
-          <button className="macro-button" type="button" onClick={openMacrosModal} title={t("actions.macros")}>
-            <MdFunctions className="macro-button-icon" />
-            {t("actions.macros")}
-          </button>
+          <div className="quick-toolbar">
+            <button className="macro-button" type="button" onClick={openMacrosModal} title={t("actions.macros")}>
+              <MdFunctions className="macro-button-icon" />
+              {t("actions.macros")}
+            </button>
+            <div className="home-actions">
+              <button
+                className="home-button"
+                type="button"
+                disabled={quickCommandDisabled}
+                title={t("actions.homeAll")}
+                onClick={() => void runQuickCommand("home-all", t("actions.homeAll"))}
+              >
+                <MdHome className="home-button-icon" />
+                All
+              </button>
+              <button
+                className="home-button"
+                type="button"
+                disabled={quickCommandDisabled}
+                title={t("actions.homeX")}
+                onClick={() => void runQuickCommand("home-x", t("actions.homeX"))}
+              >
+                X
+              </button>
+              <button
+                className="home-button"
+                type="button"
+                disabled={quickCommandDisabled}
+                title={t("actions.homeY")}
+                onClick={() => void runQuickCommand("home-y", t("actions.homeY"))}
+              >
+                Y
+              </button>
+              <button
+                className="home-button"
+                type="button"
+                disabled={quickCommandDisabled}
+                title={t("actions.homeZ")}
+                onClick={() => void runQuickCommand("home-z", t("actions.homeZ"))}
+              >
+                Z
+              </button>
+              {printerStatus?.zTiltAvailable && (
+                <button
+                  className="home-button z-tilt-button"
+                  type="button"
+                  disabled={quickCommandDisabled}
+                  title={t("actions.zTilt")}
+                  onClick={() => void runQuickCommand("z-tilt", t("actions.zTilt"))}
+                >
+                  Z Tilt
+                </button>
+              )}
+            </div>
+          </div>
           <div className="toolbar-actions">
             <button className="icon-button" type="button" onClick={() => setOptionsOpen(true)} title={t("actions.options")}>
               <FcSettings className="action-icon" />

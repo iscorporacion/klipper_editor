@@ -5,6 +5,7 @@ APP_NAME="klipper-editor"
 BASE_PATH="${NEXT_PUBLIC_BASE_PATH:-/editor}"
 APP_PORT="${PORT:-3007}"
 MOONRAKER_URL="${RATOS_MOONRAKER_URL:-http://127.0.0.1:7125}"
+PUBLIC_HOST="${KLIPPER_EDITOR_PUBLIC_HOST:-}"
 SERVICE_NAME="${KLIPPER_EDITOR_SERVICE_NAME:-klipper-editor}"
 NGINX_SNIPPET="/etc/nginx/snippets/${APP_NAME}.conf"
 SYSTEMD_UNIT="/etc/systemd/system/${SERVICE_NAME}.service"
@@ -146,6 +147,9 @@ log "Config root: ${CONFIG_ROOT}"
 log "Moonraker URL: ${MOONRAKER_URL}"
 log "Base path: ${BASE_PATH}"
 log "Port: ${APP_PORT}"
+if [[ -n "${PUBLIC_HOST}" ]]; then
+  log "Public host: ${PUBLIC_HOST}"
+fi
 log "Nginx config: ${NGINX_SITE_CONFIG}"
 
 cat > "${APP_DIR}/.env.production.local" <<ENV
@@ -197,10 +201,20 @@ NGINX
 
 inject_nginx_include "${NGINX_SITE_CONFIG}"
 
+if [[ -n "${PUBLIC_HOST}" ]]; then
+  log "Nginx note: the app URL is ${PUBLIC_HOST%/}${BASE_PATH}/"
+else
+  log "Nginx note: the installer adds only the ${BASE_PATH}/ location. The host/IP comes from your existing Nginx server block."
+fi
+
 run_sudo systemctl daemon-reload
 run_sudo systemctl enable "${SERVICE_NAME}"
 run_sudo systemctl restart "${SERVICE_NAME}"
 run_sudo systemctl reload nginx
 
 log "Installed."
-log "Open: http://$(hostname -I | awk '{print $1}')${BASE_PATH}/"
+if [[ -n "${PUBLIC_HOST}" ]]; then
+  log "Open: ${PUBLIC_HOST%/}${BASE_PATH}/"
+else
+  log "Open: http://$(hostname -I | awk '{print $1}')${BASE_PATH}/"
+fi

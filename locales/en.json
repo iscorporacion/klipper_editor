@@ -67,7 +67,6 @@
     "confirm.deleteFile": "Delete {path}? This cannot be undone.",
     "confirm.restartFirmware": "Restart firmware now?",
     "confirm.executeMacro": "Execute macro {name} on the printer?",
-    "confirm.quickCommand": "Run {command} on the printer?",
     "prompt.newFilePath": "New file path",
     "panels.openEditors": "Open editors",
     "panels.includes": "Includes",

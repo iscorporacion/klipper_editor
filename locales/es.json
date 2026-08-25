@@ -67,7 +67,6 @@
     "confirm.deleteFile": "Borrar {path}? Esta accion no se puede deshacer.",
     "confirm.restartFirmware": "Reiniciar firmware ahora?",
     "confirm.executeMacro": "Ejecutar macro {name} en la impresora?",
-    "confirm.quickCommand": "Ejecutar {command} en la impresora?",
     "prompt.newFilePath": "Ruta del nuevo archivo",
     "panels.openEditors": "Editores abiertos",
     "panels.includes": "Includes",

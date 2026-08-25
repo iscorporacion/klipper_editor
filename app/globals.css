@@ -830,6 +830,77 @@ body.is-resizing {
   width: min(680px, 100%);
 }
 
+.app-dialog {
+  width: min(460px, 100%);
+}
+
+.dialog-body {
+  display: grid;
+  gap: 16px;
+  padding: 16px 14px 14px;
+}
+
+.dialog-body p {
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.dialog-field {
+  display: grid;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.dialog-field input {
+  width: 100%;
+  height: 36px;
+  border: 1px solid var(--border);
+  background: var(--panel-soft);
+  color: var(--text);
+  font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+  font-size: 13px;
+  padding: 0 10px;
+}
+
+.dialog-field input:focus-visible {
+  border-color: var(--accent);
+  outline: 0;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.dialog-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 86px;
+  height: 34px;
+  border: 1px solid var(--border);
+  background: var(--panel-strong);
+  color: var(--text);
+  cursor: pointer;
+  padding: 0 12px;
+}
+
+.dialog-button:hover,
+.dialog-button:focus-visible {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  outline: 0;
+}
+
+.dialog-button.primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #ffffff;
+}
+
 .macro-modal-body {
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr);

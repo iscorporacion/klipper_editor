@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import Image from "next/image";
-import type { ChangeEvent, CSSProperties, MouseEvent as ReactMouseEvent, ReactNode } from "react";
+import type { ChangeEvent, CSSProperties, FormEvent, MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Decoration, DecorationSet, EditorView, ViewPlugin, ViewUpdate } from "@codemirror/view";
 import { HighlightStyle, StreamLanguage, syntaxHighlighting } from "@codemirror/language";
@@ -84,6 +84,20 @@ type PendingJump = {
   line: number;
 };
 
+type AppDialog =
+  | {
+      type: "confirm";
+      title: string;
+      message: string;
+      resolve: (value: boolean) => void;
+    }
+  | {
+      type: "input";
+      title: string;
+      defaultValue: string;
+      resolve: (value: string | undefined) => void;
+    };
+
 type Messages = Record<string, string>;
 
 const defaultMessages: Messages = {
@@ -147,7 +161,6 @@ const defaultMessages: Messages = {
   "confirm.deleteFile": "Borrar {path}? Esta accion no se puede deshacer.",
   "confirm.restartFirmware": "Reiniciar firmware ahora?",
   "confirm.executeMacro": "Ejecutar macro {name} en la impresora?",
-  "confirm.quickCommand": "Ejecutar {command} en la impresora?",
   "prompt.newFilePath": "Ruta del nuevo archivo",
   "panels.openEditors": "Editores abiertos",
   "panels.includes": "Includes",
@@ -545,6 +558,8 @@ export default function Home() {
   const [macroSearch, setMacroSearch] = useState("");
   const [macrosLoading, setMacrosLoading] = useState(false);
   const [executingMacro, setExecutingMacro] = useState<string | null>(null);
+  const [dialog, setDialog] = useState<AppDialog | null>(null);
+  const [dialogInputValue, setDialogInputValue] = useState("");
   const [message, setMessage] = useState(defaultMessages["status.ready"]);
   const [printerStatus, setPrinterStatus] = useState<PrinterStatus | null>(null);
   const [restartingFirmware, setRestartingFirmware] = useState(false);
@@ -576,6 +591,49 @@ export default function Home() {
     (key: string, values?: Record<string, string | number>) => translate(messages, key, values),
     [messages]
   );
+
+  const confirmDialog = useCallback((title: string, message: string) => {
+    return new Promise<boolean>((resolve) => {
+      setDialog({ type: "confirm", title, message, resolve });
+    });
+  }, []);
+
+  const promptDialog = useCallback((title: string, defaultValue: string) => {
+    return new Promise<string | undefined>((resolve) => {
+      setDialogInputValue(defaultValue);
+      setDialog({ type: "input", title, defaultValue, resolve });
+    });
+  }, []);
+
+  const closeDialog = useCallback(() => {
+    if (!dialog) return;
+    if (dialog.type === "confirm") {
+      dialog.resolve(false);
+    } else {
+      dialog.resolve(undefined);
+    }
+    setDialog(null);
+  }, [dialog]);
+
+  const submitDialogInput = useCallback(
+    (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      if (!dialog || dialog.type !== "input") return;
+      dialog.resolve(dialogInputValue);
+      setDialog(null);
+    },
+    [dialog, dialogInputValue]
+  );
+
+  const acceptDialog = useCallback(() => {
+    if (!dialog) return;
+    if (dialog.type === "confirm") {
+      dialog.resolve(true);
+    } else {
+      dialog.resolve(dialogInputValue);
+    }
+    setDialog(null);
+  }, [dialog, dialogInputValue]);
 
   const loadLocale = useCallback(async (code: string) => {
     const response = await fetch(apiPath(`/api/locales?locale=${encodeURIComponent(code)}`), { cache: "no-store" });
@@ -648,7 +706,7 @@ export default function Home() {
       return;
     }
 
-    if (!window.confirm(t("confirm.restartFirmware"))) return;
+    if (!(await confirmDialog(t("actions.restartFirmware"), t("confirm.restartFirmware")))) return;
 
     setRestartingFirmware(true);
     setMessage(t("status.firmwareRestarting"));
@@ -664,7 +722,7 @@ export default function Home() {
     } finally {
       setRestartingFirmware(false);
     }
-  }, [loadPrinterStatus, printerStatus?.printing, restartingFirmware, t]);
+  }, [confirmDialog, loadPrinterStatus, printerStatus, restartingFirmware, t]);
 
   const runQuickCommand = useCallback(
     async (command: QuickCommand, label: string) => {
@@ -678,8 +736,6 @@ export default function Home() {
         setMessage(t("errors.restartPrinting"));
         return;
       }
-
-      if (!window.confirm(t("confirm.quickCommand", { command: label }))) return;
 
       setRunningQuickCommand(command);
       setMessage(t("status.runningCommand", { command: label }));
@@ -786,9 +842,13 @@ export default function Home() {
   }, [activeFile, t]);
 
   const closeFile = useCallback(
-    (path: string) => {
+    async (path: string) => {
       const file = openFiles.find((item) => item.path === path);
-      if (file && file.content !== file.savedContent && !window.confirm(t("confirm.closeUnsaved", { path }))) {
+      if (
+        file &&
+        file.content !== file.savedContent &&
+        !(await confirmDialog(t("actions.close"), t("confirm.closeUnsaved", { path })))
+      ) {
         return;
       }
 
@@ -798,12 +858,12 @@ export default function Home() {
         setActivePath(nextFiles.at(-1)?.path);
       }
     },
-    [activePath, openFiles, t]
+    [activePath, confirmDialog, openFiles, t]
   );
 
   const createBlankFile = useCallback(async () => {
     const defaultPath = activeDirectory ? `${activeDirectory}/new.cfg` : "new.cfg";
-    const requestedPath = window.prompt(t("prompt.newFilePath"), defaultPath);
+    const requestedPath = await promptDialog(t("actions.createFile"), defaultPath);
     if (!requestedPath) return;
 
     const nextPath = requestedPath.trim().replaceAll("\\", "/").replace(/^\/+/, "");
@@ -826,7 +886,7 @@ export default function Home() {
     } catch (error) {
       setMessage(error instanceof Error ? error.message : t("errors.createFile"));
     }
-  }, [activeDirectory, loadTree, openFile, t]);
+  }, [activeDirectory, loadTree, openFile, promptDialog, t]);
 
   const downloadFile = useCallback((path: string) => {
     window.open(apiPath(`/api/download?path=${encodeURIComponent(path)}`), "_blank", "noopener,noreferrer");
@@ -834,7 +894,7 @@ export default function Home() {
 
   const deleteFile = useCallback(
     async (path: string) => {
-      if (!window.confirm(t("confirm.deleteFile", { path }))) return;
+      if (!(await confirmDialog(t("actions.deleteFile"), t("confirm.deleteFile", { path })))) return;
 
       try {
         const response = await fetch(apiPath(`/api/file?path=${encodeURIComponent(path)}`), { method: "DELETE" });
@@ -852,7 +912,7 @@ export default function Home() {
         setMessage(error instanceof Error ? error.message : t("errors.deleteFile"));
       }
     },
-    [activePath, loadTree, openFiles, t]
+    [activePath, confirmDialog, loadTree, openFiles, t]
   );
 
   const uploadFiles = useCallback(
@@ -907,7 +967,7 @@ export default function Home() {
   const executeMacro = useCallback(
     async (macro: MacroEntry) => {
       if (executingMacro) return;
-      if (!window.confirm(t("confirm.executeMacro", { name: macro.name }))) return;
+      if (!(await confirmDialog(t("actions.executeMacro"), t("confirm.executeMacro", { name: macro.name })))) return;
 
       setExecutingMacro(macro.name);
       setMessage(t("status.executingMacro", { name: macro.name }));
@@ -929,7 +989,7 @@ export default function Home() {
         setExecutingMacro(null);
       }
     },
-    [executingMacro, loadPrinterStatus, t]
+    [confirmDialog, executingMacro, loadPrinterStatus, t]
   );
 
   const resolveAndOpenInclude = useCallback(
@@ -1300,13 +1360,13 @@ export default function Home() {
                 tabIndex={0}
                 onClick={(event) => {
                   event.stopPropagation();
-                  closeFile(file.path);
+                  void closeFile(file.path);
                 }}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" || event.key === " ") {
                     event.preventDefault();
                     event.stopPropagation();
-                    closeFile(file.path);
+                    void closeFile(file.path);
                   }
                 }}
                 aria-label={t("tabs.closeLabel", { path: file.path })}
@@ -1433,6 +1493,57 @@ export default function Home() {
             </div>
           )}
         </div>
+
+        {dialog && (
+          <div className="modal-backdrop" role="presentation" onMouseDown={closeDialog}>
+            <section
+              className="options-modal app-dialog"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="app-dialog-title"
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <div className="modal-header">
+                <h2 id="app-dialog-title">{dialog.title}</h2>
+                <button className="modal-close" type="button" title={t("actions.cancel")} onClick={closeDialog}>
+                  x
+                </button>
+              </div>
+              {dialog.type === "confirm" ? (
+                <div className="dialog-body">
+                  <p>{dialog.message}</p>
+                  <div className="dialog-actions">
+                    <button className="dialog-button" type="button" onClick={closeDialog}>
+                      {t("actions.cancel")}
+                    </button>
+                    <button className="dialog-button primary" type="button" onClick={acceptDialog}>
+                      {t("actions.apply")}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <form className="dialog-body" onSubmit={submitDialogInput}>
+                  <label className="dialog-field">
+                    <span>{dialog.title}</span>
+                    <input
+                      autoFocus
+                      value={dialogInputValue}
+                      onChange={(event) => setDialogInputValue(event.target.value)}
+                    />
+                  </label>
+                  <div className="dialog-actions">
+                    <button className="dialog-button" type="button" onClick={closeDialog}>
+                      {t("actions.cancel")}
+                    </button>
+                    <button className="dialog-button primary" type="submit">
+                      {t("actions.apply")}
+                    </button>
+                  </div>
+                </form>
+              )}
+            </section>
+          </div>
+        )}
 
         {macrosOpen && (
           <div className="modal-backdrop" role="presentation" onMouseDown={() => setMacrosOpen(false)}>

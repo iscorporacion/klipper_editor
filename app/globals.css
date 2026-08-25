@@ -221,9 +221,13 @@ h1 {
   color: var(--danger);
 }
 
+.tree-action-button.danger .tree-action-icon {
+  color: var(--danger);
+}
+
 .tree-action-icon {
-  width: 15px;
-  height: 15px;
+  width: 17px;
+  height: 17px;
 }
 
 .tree-row:focus-visible,

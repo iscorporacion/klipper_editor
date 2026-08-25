@@ -11,8 +11,9 @@ import { json } from "@codemirror/lang-json";
 import { javascript } from "@codemirror/lang-javascript";
 import { tags } from "@lezer/highlight";
 import { vscodeDark } from "@uiw/codemirror-theme-vscode";
-import { FcExpand, FcNext, FcRefresh, FcSearch, FcSettings, FcUpload } from "react-icons/fc";
-import { IoDocumentTextOutline, IoDownloadOutline, IoPower, IoTrashOutline } from "react-icons/io5";
+import { FcDownload, FcExpand, FcNext, FcRefresh, FcSearch, FcSettings, FcUpload } from "react-icons/fc";
+import { MdDelete } from "react-icons/md";
+import { IoDocumentTextOutline, IoPower } from "react-icons/io5";
 import logoWhite from "@/components/logoWhite.png";
 import { klipperConfigParser } from "@/lib/codemirror/klipper-config";
 
@@ -477,7 +478,7 @@ function TreeItem({
           aria-label={downloadLabel}
           onClick={() => onDownload(node.path)}
         >
-          <IoDownloadOutline className="tree-action-icon" />
+          <FcDownload className="tree-action-icon" />
         </button>
         <button
           className="tree-action-button danger"
@@ -486,7 +487,7 @@ function TreeItem({
           aria-label={deleteLabel}
           onClick={() => onDelete(node.path)}
         >
-          <IoTrashOutline className="tree-action-icon" />
+          <MdDelete className="tree-action-icon" />
         </button>
       </div>
     </div>

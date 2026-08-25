@@ -9,6 +9,10 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 DEST_DIR="$1"
+PROJECT_OWNER="${KLIPPER_EDITOR_PROJECT_OWNER:-iscorporacion}"
+PROJECT_NAME="${KLIPPER_EDITOR_PROJECT_NAME:-klipper_editor}"
+ASSET_NAME="${KLIPPER_EDITOR_ASSET_NAME:-klipper-editor.zip}"
+VERSION="${KLIPPER_EDITOR_RELEASE_VERSION:-}"
 
 if [[ ! -f "${APP_DIR}/.next/standalone/server.js" ]]; then
   printf 'Missing .next/standalone/server.js. Run npm run build first.\n'
@@ -39,3 +43,16 @@ fi
 mkdir -p "${DEST_DIR}/node_modules/material-icon-theme"
 cp -a "${APP_DIR}/node_modules/material-icon-theme/dist" "${DEST_DIR}/node_modules/material-icon-theme/dist"
 cp -a "${APP_DIR}/node_modules/material-icon-theme/icons" "${DEST_DIR}/node_modules/material-icon-theme/icons"
+
+if [[ -z "${VERSION}" ]]; then
+  VERSION="$(git -C "${APP_DIR}" describe --tags --exact-match 2>/dev/null || git -C "${APP_DIR}" describe --tags --always --dirty 2>/dev/null || node -p "require('${APP_DIR}/package.json').version")"
+fi
+
+cat > "${DEST_DIR}/release_info.json" <<JSON
+{
+  "project_name": "${PROJECT_NAME}",
+  "project_owner": "${PROJECT_OWNER}",
+  "version": "${VERSION}",
+  "asset_name": "${ASSET_NAME}"
+}
+JSON

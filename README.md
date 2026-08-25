@@ -2,6 +2,12 @@
 
 Web editor for Klipper/RatOS configuration files, designed to run beside Mainsail and Moonraker.
 
+Public help page:
+
+```text
+https://iscorporacion.github.io/klipper_editor/
+```
+
 Features:
 
 - hierarchical file browser
@@ -45,6 +51,7 @@ curl -fsSL https://raw.githubusercontent.com/iscorporacion/klipper_editor/main/i
 ```
 
 This downloads the precompiled GitHub Release and avoids building Next.js on the printer.
+The installer also registers Klipper Editor in Moonraker Update Manager so Mainsail can show future updates.
 
 Source install, useful for development hosts:
 
@@ -87,4 +94,8 @@ include /etc/nginx/snippets/klipper-editor.conf; # klipper-editor
 
 The editor itself cannot run fully on GitHub Pages because it needs server-side API routes, local filesystem access to `printer_data/config`, and Moonraker access from the printer host.
 
-GitHub Pages can be used for static documentation or screenshots, but production use should run on the printer host through systemd and Nginx.
+GitHub Pages is used for static documentation and screenshots:
+
+```text
+https://iscorporacion.github.io/klipper_editor/
+```

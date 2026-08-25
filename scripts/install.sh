@@ -31,4 +31,5 @@ npm prune --omit=dev
 
 KLIPPER_EDITOR_APP_DIR="${RUNTIME_DIR}" \
 KLIPPER_EDITOR_START_COMMAND="/usr/bin/env node server.js" \
+KLIPPER_EDITOR_CONFIGURE_UPDATE_MANAGER="${KLIPPER_EDITOR_CONFIGURE_UPDATE_MANAGER:-false}" \
 bash "${RUNTIME_DIR}/scripts/configure-host.sh"

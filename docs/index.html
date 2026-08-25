@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Klipper Editor - Help</title>
+    <meta
+      name="description"
+      content="Ayuda, caracteristicas e instalacion de Klipper Editor para Klipper, RatOS, Mainsail y Moonraker."
+    />
+    <meta name="theme-color" content="#2196f3" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">Klipper Editor</p>
+          <h1>Ayuda y caracteristicas</h1>
+          <p>
+            Interfaz web local para editar configuraciones de Klipper/RatOS junto a Mainsail y Moonraker.
+            Esta documentacion se puede consultar antes de instalar el editor en la impresora.
+          </p>
+        </div>
+        <div class="hero-actions">
+          <a class="action" href="https://github.com/iscorporacion/klipper_editor">Repositorio</a>
+          <a class="action secondary" href="#install">Instalar</a>
+        </div>
+      </header>
+
+      <section class="section">
+        <h2>Caracteristicas</h2>
+        <div class="feature-grid">
+          <article class="feature">
+            <h3>Explorador jerarquico</h3>
+            <p>Navega `printer_data/config` con carpetas, iconos por tipo de archivo y acciones por archivo.</p>
+          </article>
+          <article class="feature">
+            <h3>Editor con pestañas</h3>
+            <p>Abre varios archivos en pestañas internas, edita texto y guarda cambios desde la interfaz.</p>
+          </article>
+          <article class="feature">
+            <h3>Resaltado Klipper CFG</h3>
+            <p>Colorea secciones, parametros, comentarios, macros G-code y plantillas Jinja en archivos `.cfg`.</p>
+          </article>
+          <article class="feature">
+            <h3>Includes navegables</h3>
+            <p>Detecta includes reales, ignora includes comentados y abre archivos relacionados sin cerrar el archivo actual.</p>
+          </article>
+          <article class="feature">
+            <h3>Secciones y vista previa</h3>
+            <p>Lista secciones como `[gcode_macro ...]`, permite buscar, previsualizar y saltar a la linea exacta.</p>
+          </article>
+          <article class="feature">
+            <h3>Macros activas</h3>
+            <p>Busca macros de la configuracion activa iniciada en `printer.cfg`, abre su origen y puede ejecutarlas por Moonraker.</p>
+          </article>
+          <article class="feature">
+            <h3>Calentadores</h3>
+            <p>Muestra cama y extrusores, cachea el catalogo, permite definir objetivos y enfriar desde las etiquetas.</p>
+          </article>
+          <article class="feature">
+            <h3>Movimiento</h3>
+            <p>Incluye home, Z Tilt si esta disponible, jog por ejes, movimiento absoluto y ajuste de Z-Offset.</p>
+          </article>
+          <article class="feature">
+            <h3>Seguridad</h3>
+            <p>Bloquea acciones sensibles durante impresion activa y ofrece parada de emergencia desde la barra principal.</p>
+          </article>
+          <article class="feature">
+            <h3>Archivos</h3>
+            <p>Permite subir archivos, crear archivos en blanco, descargar, borrar con confirmacion y ver imagenes.</p>
+          </article>
+          <article class="feature">
+            <h3>Idiomas</h3>
+            <p>Carga traducciones desde JSON. Ingles es el idioma por defecto y se pueden agregar otros idiomas.</p>
+          </article>
+          <article class="feature">
+            <h3>Instalacion precompilada</h3>
+            <p>Usa GitHub Releases para evitar compilar Next.js en impresoras con poca memoria.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>Capturas</h2>
+        <p class="section-copy">
+          Las imagenes se publican desde `docs/help/`. Si aun no existen, se muestran los nombres esperados.
+        </p>
+        <div class="screenshot-grid" id="screenshots"></div>
+      </section>
+
+      <section class="section install" id="install">
+        <h2>Instalacion recomendada</h2>
+        <p>
+          Instala desde una version precompilada para evitar alto consumo de memoria en la impresora.
+        </p>
+        <pre><code>curl -fsSL https://raw.githubusercontent.com/iscorporacion/klipper_editor/main/install-release.sh | bash</code></pre>
+        <p>
+          El editor completo no puede ejecutarse en GitHub Pages porque necesita API server, filesystem local y
+          conexion directa con Moonraker. Esta pagina publica es solo documentacion.
+        </p>
+      </section>
+    </main>
+
+    <script>
+      const screenshots = [
+        ["01-main-editor.png", "Pantalla principal", "Editor con explorador, pestañas y panel de Includes/Secciones."],
+        ["02-include-navigation.png", "Includes navegables", "Archivo con un include resaltado o abierto desde el editor."],
+        ["03-section-preview.png", "Vista previa de secciones", "Popup de una seccion desde el panel lateral."],
+        ["04-macros-modal.png", "Modal de macros", "Buscador de macros con boton de ejecucion visible."],
+        ["05-heaters-modal.png", "Modal Hot", "Calentadores con temperatura actual y objetivo."],
+        ["06-movement-modal.png", "Modal de movimiento", "Posiciones, limites, jog y Z-Offset."],
+        ["07-file-actions.png", "Acciones del explorador", "Hover mostrando descargar y borrar."],
+        ["08-options-modal.png", "Opciones", "Idioma y copia de seguridad al guardar."]
+      ];
+
+      const container = document.getElementById("screenshots");
+      for (const [file, title, description] of screenshots) {
+        const figure = document.createElement("figure");
+        const frame = document.createElement("div");
+        frame.className = "screenshot-frame";
+
+        const image = document.createElement("img");
+        image.src = `./help/${file}`;
+        image.alt = title;
+        image.onerror = () => {
+          frame.innerHTML = `<div class="placeholder">${file}</div>`;
+        };
+        frame.appendChild(image);
+
+        const caption = document.createElement("figcaption");
+        caption.innerHTML = `<strong>${title}</strong><span>${description}</span><code>docs/help/${file}</code>`;
+
+        figure.appendChild(frame);
+        figure.appendChild(caption);
+        container.appendChild(figure);
+      }
+    </script>
+  </body>
+</html>

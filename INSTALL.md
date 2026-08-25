@@ -8,19 +8,19 @@ Use this on RatOS or any low-memory printer host:
 curl -fsSL https://raw.githubusercontent.com/iscorporacion/klipper_editor/main/install-release.sh | bash
 ```
 
-The release installer downloads `klipper-editor-standalone.tar.gz` from GitHub Releases, extracts it under:
-
-```text
-~/klipper_editor/releases/
-```
-
-Then it points:
+The release installer downloads `klipper-editor.zip` from GitHub Releases and extracts it under:
 
 ```text
 ~/klipper_editor/current
 ```
 
-to the downloaded version and configures systemd plus Nginx. It does not run `npm ci` or `npm run build` on the printer.
+It also writes:
+
+```text
+~/klipper_editor/current/release_info.json
+```
+
+and configures systemd, Nginx, and Moonraker Update Manager. It does not run `npm ci` or `npm run build` on the printer.
 
 The precompiled release is built for:
 
@@ -36,7 +36,7 @@ http://<printer-ip>/editor
 
 ## Source install
 
-Use this only on hosts with enough memory to compile Next.js:
+Use this only on hosts with enough memory to compile Next.js. Source installs do not register in Moonraker Update Manager by default:
 
 ```bash
 cd klipper_editor
@@ -46,9 +46,11 @@ bash install.sh
 The installer creates:
 
 - `.env.production.local`
+- `release_info.json` when installed from a precompiled release
 - `klipper-editor.service`
 - `/etc/nginx/snippets/klipper-editor.conf`
 - a Nginx include inside the detected Mainsail/default server block
+- a `[update_manager klipper-editor]` entry in `moonraker.conf`
 
 The repository includes a versioned `.env` with printer-host defaults:
 
@@ -117,6 +119,34 @@ If Nginx auto-detection fails:
 NGINX_SITE_CONFIG=/etc/nginx/sites-available/mainsail bash install.sh
 ```
 
+If Moonraker config auto-detection fails:
+
+```bash
+MOONRAKER_CONFIG=/home/pi/printer_data/config/moonraker.conf bash install.sh
+```
+
+To skip Update Manager registration on precompiled installs:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/iscorporacion/klipper_editor/main/install-release.sh | KLIPPER_EDITOR_CONFIGURE_UPDATE_MANAGER=false bash
+```
+
+The Update Manager block added to `moonraker.conf` is:
+
+```ini
+[update_manager klipper-editor]
+type: zip
+channel: stable
+repo: iscorporacion/klipper_editor
+path: /home/pi/klipper_editor/current
+enable_node_updates: False
+is_system_service: True
+managed_services:
+  klipper-editor
+persistent_files:
+  .env.production.local
+```
+
 ## Build and publish a precompiled release
 
 GitHub Actions builds the app when you push a tag that starts with `v`:
@@ -131,9 +161,20 @@ The workflow:
 - installs dependencies on GitHub's runner
 - runs `npm run build` with `NEXT_PUBLIC_BASE_PATH=/editor`
 - packages the standalone Next.js server
-- uploads `klipper-editor-standalone.tar.gz` to the GitHub Release
+- writes `release_info.json`
+- uploads `klipper-editor.zip` to the GitHub Release
 
 After the release exists, printer hosts can install it with `install-release.sh`.
+
+## Public documentation
+
+GitHub Pages publishes the static help page from the `docs/` directory:
+
+```text
+https://iscorporacion.github.io/klipper_editor/
+```
+
+The full editor cannot run on GitHub Pages because it needs server-side API routes, local filesystem access, systemd/Nginx integration, and Moonraker.
 
 Uninstall:
 

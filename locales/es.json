@@ -74,6 +74,7 @@
     "empty.openFile": "Abre un archivo del arbol.",
     "empty.includes": "Sin includes detectados.",
     "empty.sections": "Sin sesiones detectadas.",
+    "empty.sectionMatches": "Sin sesiones que coincidan.",
     "empty.sectionContent": "Sesion sin contenido.",
     "welcome.title": "Selecciona un archivo",
     "welcome.description": "Los includes en archivos `.cfg` se pueden abrir haciendo clic sobre la linea `[include ...]`.",
@@ -95,6 +96,7 @@
     "macros.search": "Buscar macro",
     "macros.loading": "Cargando macros.",
     "macros.empty": "Sin macros detectadas.",
-    "macros.count": "{count} macros"
+    "macros.count": "{count} macros",
+    "sections.search": "Buscar sesion"
   }
 }

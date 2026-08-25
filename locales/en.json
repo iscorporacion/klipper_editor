@@ -74,6 +74,7 @@
     "empty.openFile": "Open a file from the tree.",
     "empty.includes": "No includes detected.",
     "empty.sections": "No sections detected.",
+    "empty.sectionMatches": "No matching sections.",
     "empty.sectionContent": "Section has no content.",
     "welcome.title": "Select a file",
     "welcome.description": "Includes in `.cfg` files can be opened by clicking the `[include ...]` line.",
@@ -95,6 +96,7 @@
     "macros.search": "Search macro",
     "macros.loading": "Loading macros.",
     "macros.empty": "No macros detected.",
-    "macros.count": "{count} macros"
+    "macros.count": "{count} macros",
+    "sections.search": "Search section"
   }
 }

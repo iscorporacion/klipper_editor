@@ -168,6 +168,7 @@ const defaultMessages: Messages = {
   "empty.openFile": "Abre un archivo del arbol.",
   "empty.includes": "Sin includes detectados.",
   "empty.sections": "Sin sesiones detectadas.",
+  "empty.sectionMatches": "Sin sesiones que coincidan.",
   "empty.sectionContent": "Sesion sin contenido.",
   "welcome.title": "Selecciona un archivo",
   "welcome.description": "Los includes en archivos `.cfg` se pueden abrir haciendo clic sobre la linea `[include ...]`.",
@@ -189,7 +190,8 @@ const defaultMessages: Messages = {
   "macros.search": "Buscar macro",
   "macros.loading": "Cargando macros.",
   "macros.empty": "Sin macros detectadas.",
-  "macros.count": "{count} macros"
+  "macros.count": "{count} macros",
+  "sections.search": "Buscar sesion"
 };
 
 const cfgLanguage = StreamLanguage.define(klipperConfigParser);
@@ -556,6 +558,7 @@ export default function Home() {
   const [macrosOpen, setMacrosOpen] = useState(false);
   const [macros, setMacros] = useState<MacroEntry[]>([]);
   const [macroSearch, setMacroSearch] = useState("");
+  const [sectionSearch, setSectionSearch] = useState("");
   const [macrosLoading, setMacrosLoading] = useState(false);
   const [executingMacro, setExecutingMacro] = useState<string | null>(null);
   const [dialog, setDialog] = useState<AppDialog | null>(null);
@@ -578,6 +581,14 @@ export default function Home() {
   const iconByPath = useMemo(() => collectIconMap(tree), [tree]);
   const activeIncludes = useMemo(() => (activeFile ? getIncludes(activeFile.content) : []), [activeFile]);
   const activeSections = useMemo(() => (activeFile ? getConfigSections(activeFile.content) : []), [activeFile]);
+  const filteredSections = useMemo(() => {
+    const query = sectionSearch.trim().toLowerCase();
+    if (!query) return activeSections;
+
+    return activeSections.filter((section) =>
+      `${section.title} ${section.content} ${section.line}`.toLowerCase().includes(query)
+    );
+  }, [activeSections, sectionSearch]);
   const activeDirectory = activePath ? dirname(activePath) : "";
   const filteredMacros = useMemo(() => {
     const query = macroSearch.trim().toLowerCase();
@@ -1151,6 +1162,10 @@ export default function Home() {
   }, [loadPrinterStatus]);
 
   useEffect(() => {
+    setSectionSearch("");
+  }, [activePath]);
+
+  useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
         event.preventDefault();
@@ -1454,13 +1469,23 @@ export default function Home() {
                   aria-label={t("resize.height")}
                   onMouseDown={startOutlineHeightResize}
                 />
-                <section className="outline-section">
+                <section className="outline-section section-outline-section">
                   <div className="panel-title">{t("panels.sections")}</div>
+                  <label className="section-search-field">
+                    <FcSearch className="action-icon" />
+                    <input
+                      value={sectionSearch}
+                      placeholder={t("sections.search")}
+                      onChange={(event) => setSectionSearch(event.target.value)}
+                    />
+                  </label>
                   <div className="outline-list">
                     {activeSections.length === 0 ? (
                       <p className="empty-note">{t("empty.sections")}</p>
+                    ) : filteredSections.length === 0 ? (
+                      <p className="empty-note">{t("empty.sectionMatches")}</p>
                     ) : (
-                      activeSections.map((section) => (
+                      filteredSections.map((section) => (
                         <div
                           key={`${activeFile.path}-${section.line}-${section.title}`}
                           className="outline-link section-link"

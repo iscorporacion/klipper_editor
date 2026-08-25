@@ -616,6 +616,36 @@ body.is-resizing {
   min-height: 0;
 }
 
+.section-outline-section {
+  grid-template-rows: auto auto minmax(0, 1fr);
+}
+
+.section-search-field {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 32px;
+  margin-bottom: 8px;
+  border: 1px solid var(--border-soft);
+  background: var(--panel-soft);
+  padding: 0 8px;
+}
+
+.section-search-field:focus-within {
+  border-color: var(--accent);
+}
+
+.section-search-field input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+}
+
 .outline-list {
   min-height: 0;
   overflow: auto;

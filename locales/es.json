@@ -13,6 +13,10 @@
     "actions.deleteFile": "Borrar archivo",
     "actions.macros": "Macros",
     "actions.executeMacro": "Ejecutar macro",
+    "actions.hot": "Hot",
+    "actions.clearSearch": "Limpiar busqueda",
+    "actions.setHeaters": "Aplicar temperaturas",
+    "actions.settingHeaters": "Aplicando",
     "actions.homeAll": "Home All",
     "actions.homeX": "Home X",
     "actions.homeY": "Home Y",
@@ -37,6 +41,9 @@
     "status.openingMacro": "Abriendo macro {name}",
     "status.executingMacro": "Ejecutando macro {name}",
     "status.executedMacro": "Macro ejecutada {name}",
+    "status.loadingHeaters": "Cargando temperaturas",
+    "status.settingHeaters": "Aplicando temperaturas",
+    "status.heatersSet": "Temperaturas aplicadas",
     "status.runningCommand": "Ejecutando {command}",
     "status.commandDone": "{command} ejecutado",
     "status.saving": "Guardando {path}",
@@ -55,6 +62,8 @@
     "errors.deleteFile": "No se pudo borrar el archivo",
     "errors.loadMacros": "No se pudieron cargar las macros",
     "errors.executeMacro": "No se pudo ejecutar la macro",
+    "errors.loadHeaters": "No se pudieron cargar los calentadores",
+    "errors.setHeaters": "No se pudieron aplicar las temperaturas",
     "errors.quickCommand": "No se pudo ejecutar el comando",
     "errors.saveFile": "No se pudo guardar",
     "errors.saveGeneric": "Error al guardar",
@@ -97,6 +106,10 @@
     "macros.loading": "Cargando macros.",
     "macros.empty": "Sin macros detectadas.",
     "macros.count": "{count} macros",
-    "sections.search": "Buscar sesion"
+    "sections.search": "Buscar sesion",
+    "heaters.title": "Calentadores",
+    "heaters.empty": "Sin calentadores detectados.",
+    "heaters.current": "Actual",
+    "heaters.target": "Objetivo"
   }
 }

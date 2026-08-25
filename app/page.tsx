@@ -11,9 +11,10 @@ import { json } from "@codemirror/lang-json";
 import { javascript } from "@codemirror/lang-javascript";
 import { tags } from "@lezer/highlight";
 import { vscodeDark } from "@uiw/codemirror-theme-vscode";
+import { FaHotjar } from "react-icons/fa";
 import { FcDownload, FcExpand, FcNext, FcRefresh, FcSearch, FcSettings, FcStart, FcUpload } from "react-icons/fc";
 import { MdDelete, MdFunctions, MdHome } from "react-icons/md";
-import { IoDocumentTextOutline, IoPower } from "react-icons/io5";
+import { IoClose, IoDocumentTextOutline, IoPower } from "react-icons/io5";
 import logoWhite from "@/components/logoWhite.png";
 import { klipperConfigParser } from "@/lib/codemirror/klipper-config";
 
@@ -72,6 +73,14 @@ type PrinterStatus = {
 
 type QuickCommand = "home-all" | "home-x" | "home-y" | "home-z" | "z-tilt";
 
+type HeaterStatus = {
+  name: string;
+  label: string;
+  temperature: number;
+  target: number;
+  power?: number;
+};
+
 type MacroEntry = {
   name: string;
   title: string;
@@ -110,6 +119,10 @@ const defaultMessages: Messages = {
   "actions.deleteFile": "Borrar archivo",
   "actions.macros": "Macros",
   "actions.executeMacro": "Ejecutar macro",
+  "actions.hot": "Hot",
+  "actions.clearSearch": "Limpiar busqueda",
+  "actions.setHeaters": "Aplicar temperaturas",
+  "actions.settingHeaters": "Aplicando",
   "actions.homeAll": "Home All",
   "actions.homeX": "Home X",
   "actions.homeY": "Home Y",
@@ -131,6 +144,9 @@ const defaultMessages: Messages = {
   "status.openingMacro": "Abriendo macro {name}",
   "status.executingMacro": "Ejecutando macro {name}",
   "status.executedMacro": "Macro ejecutada {name}",
+  "status.loadingHeaters": "Cargando temperaturas",
+  "status.settingHeaters": "Aplicando temperaturas",
+  "status.heatersSet": "Temperaturas aplicadas",
   "status.runningCommand": "Ejecutando {command}",
   "status.commandDone": "{command} ejecutado",
   "status.saving": "Guardando {path}",
@@ -149,6 +165,8 @@ const defaultMessages: Messages = {
   "errors.deleteFile": "No se pudo borrar el archivo",
   "errors.loadMacros": "No se pudieron cargar las macros",
   "errors.executeMacro": "No se pudo ejecutar la macro",
+  "errors.loadHeaters": "No se pudieron cargar los calentadores",
+  "errors.setHeaters": "No se pudieron aplicar las temperaturas",
   "errors.quickCommand": "No se pudo ejecutar el comando",
   "errors.saveFile": "No se pudo guardar",
   "errors.saveGeneric": "Error al guardar",
@@ -191,7 +209,11 @@ const defaultMessages: Messages = {
   "macros.loading": "Cargando macros.",
   "macros.empty": "Sin macros detectadas.",
   "macros.count": "{count} macros",
-  "sections.search": "Buscar sesion"
+  "sections.search": "Buscar sesion",
+  "heaters.title": "Calentadores",
+  "heaters.empty": "Sin calentadores detectados.",
+  "heaters.current": "Actual",
+  "heaters.target": "Objetivo"
 };
 
 const cfgLanguage = StreamLanguage.define(klipperConfigParser);
@@ -240,6 +262,10 @@ function dirname(path: string) {
   const parts = path.split("/");
   parts.pop();
   return parts.join("/");
+}
+
+function formatTemperature(value: number) {
+  return `${Math.round(value)}C`;
 }
 
 function Icon({ children, className = "" }: { children: ReactNode; className?: string }) {
@@ -556,6 +582,11 @@ export default function Home() {
   const [localesLoading, setLocalesLoading] = useState(true);
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [macrosOpen, setMacrosOpen] = useState(false);
+  const [heatersOpen, setHeatersOpen] = useState(false);
+  const [heaters, setHeaters] = useState<HeaterStatus[]>([]);
+  const [heaterTargets, setHeaterTargets] = useState<Record<string, string>>({});
+  const [heatersLoading, setHeatersLoading] = useState(false);
+  const [settingHeaters, setSettingHeaters] = useState(false);
   const [macros, setMacros] = useState<MacroEntry[]>([]);
   const [macroSearch, setMacroSearch] = useState("");
   const [sectionSearch, setSectionSearch] = useState("");
@@ -598,6 +629,7 @@ export default function Home() {
       `${macro.name} ${macro.path} ${macro.title}`.toLowerCase().includes(query)
     );
   }, [macroSearch, macros]);
+  const anyHeaterActive = heaters.some((heater) => heater.target > 0);
   const t = useCallback(
     (key: string, values?: Record<string, string | number>) => translate(messages, key, values),
     [messages]
@@ -705,6 +737,42 @@ export default function Home() {
     }
   }, [t]);
 
+  const loadHeaters = useCallback(async (showError = false) => {
+    try {
+      const response = await fetch(apiPath("/api/printer/heaters"), { cache: "no-store" });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? t("errors.loadHeaters"));
+      setHeaters(payload.heaters ?? []);
+    } catch (error) {
+      setHeaters([]);
+      if (showError) {
+        setMessage(error instanceof Error ? error.message : t("errors.loadHeaters"));
+      }
+    }
+  }, [t]);
+
+  const openHeatersModal = useCallback(async () => {
+    setHeatersOpen(true);
+    setHeatersLoading(true);
+    setMessage(t("status.loadingHeaters"));
+
+    try {
+      const response = await fetch(apiPath("/api/printer/heaters"), { cache: "no-store" });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? t("errors.loadHeaters"));
+
+      const nextHeaters = (payload.heaters ?? []) as HeaterStatus[];
+      setHeaters(nextHeaters);
+      setHeaterTargets(
+        Object.fromEntries(nextHeaters.map((heater) => [heater.name, String(Math.round(heater.target))]))
+      );
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : t("errors.loadHeaters"));
+    } finally {
+      setHeatersLoading(false);
+    }
+  }, [t]);
+
   const restartFirmware = useCallback(async () => {
     if (restartingFirmware) return;
     if (!printerStatus || printerStatus.error) {
@@ -769,6 +837,50 @@ export default function Home() {
       }
     },
     [loadPrinterStatus, printerStatus, runningQuickCommand, t]
+  );
+
+  const setHeaterTargetValue = useCallback((heaterName: string, value: string) => {
+    setHeaterTargets((targets) => ({ ...targets, [heaterName]: value }));
+  }, []);
+
+  const submitHeaters = useCallback(
+    async (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      if (settingHeaters) return;
+
+      const targets = Object.fromEntries(
+        heaters.map((heater) => {
+          const value = Number(heaterTargets[heater.name] ?? heater.target);
+          return [heater.name, Number.isFinite(value) ? Math.max(0, value) : heater.target];
+        })
+      );
+
+      setSettingHeaters(true);
+      setMessage(t("status.settingHeaters"));
+
+      try {
+        const response = await fetch(apiPath("/api/printer/heaters"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ targets })
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error ?? t("errors.setHeaters"));
+
+        const nextHeaters = (payload.heaters ?? []) as HeaterStatus[];
+        setHeaters(nextHeaters);
+        setHeaterTargets(
+          Object.fromEntries(nextHeaters.map((heater) => [heater.name, String(Math.round(heater.target))]))
+        );
+        setHeatersOpen(false);
+        setMessage(t("status.heatersSet"));
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : t("errors.setHeaters"));
+      } finally {
+        setSettingHeaters(false);
+      }
+    },
+    [heaterTargets, heaters, settingHeaters, t]
   );
 
   const openFile = useCallback(
@@ -1162,6 +1274,12 @@ export default function Home() {
   }, [loadPrinterStatus]);
 
   useEffect(() => {
+    void loadHeaters();
+    const interval = window.setInterval(() => void loadHeaters(), 3000);
+    return () => window.clearInterval(interval);
+  }, [loadHeaters]);
+
+  useEffect(() => {
     setSectionSearch("");
   }, [activePath]);
 
@@ -1324,6 +1442,24 @@ export default function Home() {
                 </button>
               )}
             </div>
+            <div className="heater-toolbar">
+              <button
+                className={`hot-button ${anyHeaterActive ? "active" : ""}`}
+                type="button"
+                title={t("actions.hot")}
+                onClick={() => void openHeatersModal()}
+              >
+                <FaHotjar className="hot-button-icon" />
+                Hot
+              </button>
+              <div className="heater-indicators" aria-label={t("heaters.title")}>
+                {heaters.slice(0, 4).map((heater) => (
+                  <span key={heater.name} className={heater.target > 0 ? "heater-indicator active" : "heater-indicator"}>
+                    {heater.label} {formatTemperature(heater.temperature)}
+                  </span>
+                ))}
+              </div>
+            </div>
           </div>
           <div className="toolbar-actions">
             <button className="icon-button" type="button" onClick={() => setOptionsOpen(true)} title={t("actions.options")}>
@@ -1477,7 +1613,23 @@ export default function Home() {
                       value={sectionSearch}
                       placeholder={t("sections.search")}
                       onChange={(event) => setSectionSearch(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Escape") {
+                          setSectionSearch("");
+                        }
+                      }}
                     />
+                    {sectionSearch && (
+                      <button
+                        className="search-clear-button"
+                        type="button"
+                        title={t("actions.clearSearch")}
+                        aria-label={t("actions.clearSearch")}
+                        onClick={() => setSectionSearch("")}
+                      >
+                        <IoClose className="search-clear-icon" />
+                      </button>
+                    )}
                   </label>
                   <div className="outline-list">
                     {activeSections.length === 0 ? (
@@ -1570,6 +1722,79 @@ export default function Home() {
           </div>
         )}
 
+        {heatersOpen && (
+          <div className="modal-backdrop" role="presentation" onMouseDown={() => setHeatersOpen(false)}>
+            <section
+              className="options-modal heaters-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="heaters-title"
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <div className="modal-header">
+                <h2 id="heaters-title">{t("heaters.title")}</h2>
+                <div className="modal-header-actions">
+                  <button
+                    className="modal-icon-button"
+                    type="button"
+                    title={t("actions.refreshTree")}
+                    aria-label={t("actions.refreshTree")}
+                    onClick={() => void openHeatersModal()}
+                  >
+                    <FcRefresh className="action-icon" />
+                  </button>
+                  <button
+                    className="modal-close"
+                    type="button"
+                    title={t("options.close")}
+                    aria-label={t("options.close")}
+                    onClick={() => setHeatersOpen(false)}
+                  >
+                    x
+                  </button>
+                </div>
+              </div>
+              <form className="heater-modal-body" onSubmit={submitHeaters}>
+                {heatersLoading ? (
+                  <p className="empty-note">{t("status.loadingHeaters")}</p>
+                ) : heaters.length === 0 ? (
+                  <p className="empty-note">{t("heaters.empty")}</p>
+                ) : (
+                  <div className="heater-list">
+                    {heaters.map((heater) => (
+                      <label key={heater.name} className="heater-row">
+                        <span className="heater-row-name">{heater.label}</span>
+                        <span className="heater-row-current">
+                          {t("heaters.current")} {formatTemperature(heater.temperature)}
+                        </span>
+                        <span className="heater-row-target">
+                          {t("heaters.target")}
+                          <input
+                            type="number"
+                            min="0"
+                            max="350"
+                            step="1"
+                            value={heaterTargets[heater.name] ?? ""}
+                            onChange={(event) => setHeaterTargetValue(heater.name, event.target.value)}
+                          />
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+                <div className="dialog-actions">
+                  <button className="dialog-button" type="button" onClick={() => setHeatersOpen(false)}>
+                    {t("actions.cancel")}
+                  </button>
+                  <button className="dialog-button primary" type="submit" disabled={settingHeaters || heaters.length === 0}>
+                    {settingHeaters ? t("actions.settingHeaters") : t("actions.setHeaters")}
+                  </button>
+                </div>
+              </form>
+            </section>
+          </div>
+        )}
+
         {macrosOpen && (
           <div className="modal-backdrop" role="presentation" onMouseDown={() => setMacrosOpen(false)}>
             <section
@@ -1610,7 +1835,23 @@ export default function Home() {
                     value={macroSearch}
                     placeholder={t("macros.search")}
                     onChange={(event) => setMacroSearch(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Escape") {
+                        setMacroSearch("");
+                      }
+                    }}
                   />
+                  {macroSearch && (
+                    <button
+                      className="search-clear-button"
+                      type="button"
+                      title={t("actions.clearSearch")}
+                      aria-label={t("actions.clearSearch")}
+                      onClick={() => setMacroSearch("")}
+                    >
+                      <IoClose className="search-clear-icon" />
+                    </button>
+                  )}
                 </label>
                 <div className="macro-count">{t("macros.count", { count: filteredMacros.length })}</div>
                 <div className="macro-list">

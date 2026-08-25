@@ -13,6 +13,10 @@
     "actions.deleteFile": "Delete file",
     "actions.macros": "Macros",
     "actions.executeMacro": "Execute macro",
+    "actions.hot": "Hot",
+    "actions.clearSearch": "Clear search",
+    "actions.setHeaters": "Apply temperatures",
+    "actions.settingHeaters": "Applying",
     "actions.homeAll": "Home All",
     "actions.homeX": "Home X",
     "actions.homeY": "Home Y",
@@ -37,6 +41,9 @@
     "status.openingMacro": "Opening macro {name}",
     "status.executingMacro": "Executing macro {name}",
     "status.executedMacro": "Executed macro {name}",
+    "status.loadingHeaters": "Loading temperatures",
+    "status.settingHeaters": "Applying temperatures",
+    "status.heatersSet": "Temperatures applied",
     "status.runningCommand": "Running {command}",
     "status.commandDone": "{command} done",
     "status.saving": "Saving {path}",
@@ -55,6 +62,8 @@
     "errors.deleteFile": "Unable to delete file",
     "errors.loadMacros": "Unable to load macros",
     "errors.executeMacro": "Unable to execute macro",
+    "errors.loadHeaters": "Unable to load heaters",
+    "errors.setHeaters": "Unable to apply temperatures",
     "errors.quickCommand": "Unable to run command",
     "errors.saveFile": "Unable to save",
     "errors.saveGeneric": "Save failed",
@@ -97,6 +106,10 @@
     "macros.loading": "Loading macros.",
     "macros.empty": "No macros detected.",
     "macros.count": "{count} macros",
-    "sections.search": "Search section"
+    "sections.search": "Search section",
+    "heaters.title": "Heaters",
+    "heaters.empty": "No heaters detected.",
+    "heaters.current": "Current",
+    "heaters.target": "Target"
   }
 }

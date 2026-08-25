@@ -400,6 +400,13 @@ h1 {
   min-width: 0;
 }
 
+.heater-toolbar {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
 .home-button {
   display: inline-flex;
   align-items: center;
@@ -437,6 +444,81 @@ h1 {
 
 .z-tilt-button {
   min-width: 58px;
+}
+
+.hot-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 34px;
+  min-width: 58px;
+  border: 1px solid rgba(33, 150, 243, 0.55);
+  background: rgba(33, 150, 243, 0.14);
+  color: #dceeff;
+  cursor: pointer;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.hot-button.active {
+  border-color: rgba(255, 107, 107, 0.75);
+  background: rgba(255, 107, 107, 0.18);
+  color: #ffd4d4;
+}
+
+.hot-button:hover,
+.hot-button:focus-visible {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  outline: 0;
+}
+
+.hot-button.active:hover,
+.hot-button.active:focus-visible {
+  border-color: var(--danger);
+  background: rgba(255, 107, 107, 0.26);
+}
+
+.hot-button-icon {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  color: #2196f3;
+}
+
+.hot-button.active .hot-button-icon {
+  color: var(--danger);
+}
+
+.heater-indicators {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.heater-indicator {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  max-width: 92px;
+  overflow: hidden;
+  border: 1px solid var(--border-soft);
+  background: var(--panel-soft);
+  color: var(--muted);
+  font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0 6px;
+}
+
+.heater-indicator.active {
+  border-color: rgba(255, 107, 107, 0.5);
+  color: #ffd4d4;
 }
 
 .toolbar-actions {
@@ -644,6 +726,32 @@ body.is-resizing {
   color: var(--text);
   font: inherit;
   font-size: 12px;
+}
+
+.search-clear-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.search-clear-button:hover,
+.search-clear-button:focus-visible {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+  outline: 0;
+}
+
+.search-clear-icon {
+  width: 16px;
+  height: 16px;
 }
 
 .outline-list {
@@ -858,6 +966,76 @@ body.is-resizing {
 
 .macros-modal {
   width: min(680px, 100%);
+}
+
+.heaters-modal {
+  width: min(560px, 100%);
+}
+
+.heater-modal-body {
+  display: grid;
+  gap: 14px;
+  max-height: min(620px, calc(100vh - 140px));
+  min-height: 0;
+  padding: 14px 12px 16px;
+}
+
+.heater-list {
+  display: grid;
+  gap: 8px;
+  min-height: 0;
+  overflow: auto;
+}
+
+.heater-row {
+  display: grid;
+  grid-template-columns: minmax(70px, 0.7fr) minmax(110px, 1fr) minmax(130px, 1fr);
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  border: 1px solid var(--border-soft);
+  background: var(--panel-soft);
+  padding: 7px 10px;
+}
+
+.heater-row-name {
+  overflow: hidden;
+  color: #7fd4ff;
+  font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+  font-size: 13px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.heater-row-current {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.heater-row-target {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.heater-row-target input {
+  width: 78px;
+  height: 30px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+  font-size: 13px;
+  padding: 0 8px;
+}
+
+.heater-row-target input:focus-visible {
+  border-color: var(--accent);
+  outline: 0;
 }
 
 .app-dialog {

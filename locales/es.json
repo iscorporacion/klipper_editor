@@ -9,6 +9,8 @@
     "actions.refreshTree": "Actualizar arbol",
     "actions.createFile": "Crear archivo",
     "actions.uploadFiles": "Subir archivos",
+    "actions.hideBackupFiles": "Ocultar backups",
+    "actions.showBackupFiles": "Mostrar backups",
     "actions.downloadFile": "Descargar archivo",
     "actions.deleteFile": "Borrar archivo",
     "actions.downloadOnlyFile": "Descargar archivo",

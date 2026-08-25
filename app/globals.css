@@ -118,6 +118,11 @@ h1 {
   color: var(--text);
 }
 
+.active-toggle {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
 .macro-button {
   min-width: 112px;
   height: 34px;

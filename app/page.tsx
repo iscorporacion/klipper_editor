@@ -13,7 +13,18 @@ import { tags } from "@lezer/highlight";
 import { vscodeDark } from "@uiw/codemirror-theme-vscode";
 import { BsArrowsMove } from "react-icons/bs";
 import { FaHotjar } from "react-icons/fa";
-import { FcDownload, FcExpand, FcNext, FcRefresh, FcSearch, FcSettings, FcStart, FcUpload } from "react-icons/fc";
+import {
+  FcAcceptDatabase,
+  FcDeleteDatabase,
+  FcDownload,
+  FcExpand,
+  FcNext,
+  FcRefresh,
+  FcSearch,
+  FcSettings,
+  FcStart,
+  FcUpload
+} from "react-icons/fc";
 import {
   MdDelete,
   MdEmergency,
@@ -34,6 +45,7 @@ const CodeMirror = dynamic(() => import("@uiw/react-codemirror"), { ssr: false }
 const appBasePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 const heaterCacheKey = "klipper-editor-heater-cache";
 const heaterColorCacheKey = "klipper-editor-heater-colors";
+const hideBackupFilesKey = "klipper-editor-hide-backup-files";
 
 function apiPath(path: string) {
   return `${appBasePath}${path}`;
@@ -150,6 +162,8 @@ const defaultMessages: Messages = {
   "actions.refreshTree": "Actualizar arbol",
   "actions.createFile": "Crear archivo",
   "actions.uploadFiles": "Subir archivos",
+  "actions.hideBackupFiles": "Ocultar backups",
+  "actions.showBackupFiles": "Mostrar backups",
   "actions.downloadFile": "Descargar archivo",
   "actions.deleteFile": "Borrar archivo",
   "actions.downloadOnlyFile": "Descargar archivo",
@@ -506,6 +520,30 @@ function collectIconMap(nodes: TreeNode[], icons = new Map<string, string>()) {
   return icons;
 }
 
+function isBackupFilePath(path: string) {
+  const name = basename(path).toLowerCase();
+  return (
+    /-\d{8}_\d{6}(?:-\d+)?\.[^.]+$/.test(name) ||
+    /\.(bak|backup|old|orig)$/.test(name) ||
+    /~$/.test(name)
+  );
+}
+
+function filterBackupFiles(nodes: TreeNode[], hideBackups: boolean): TreeNode[] {
+  if (!hideBackups) return nodes;
+
+  return nodes
+    .filter((node) => node.type !== "file" || !isBackupFilePath(node.path))
+    .map((node) =>
+      node.children
+        ? {
+            ...node,
+            children: filterBackupFiles(node.children, hideBackups)
+          }
+        : node
+    );
+}
+
 function isCommentLine(text: string) {
   const trimmed = text.trimStart();
   return trimmed.startsWith("#") || trimmed.startsWith(";");
@@ -780,6 +818,7 @@ function TreeItem({
 
 export default function Home() {
   const [tree, setTree] = useState<TreeNode[]>([]);
+  const [hideBackupFiles, setHideBackupFiles] = useState(true);
   const [openFiles, setOpenFiles] = useState<OpenFile[]>([]);
   const [activePath, setActivePath] = useState<string>();
   const [messages, setMessages] = useState<Messages>(defaultLocaleMessages);
@@ -823,6 +862,7 @@ export default function Home() {
 
   const activeFile = openFiles.find((file) => file.path === activePath);
   const openPathSet = useMemo(() => new Set(openFiles.map((file) => file.path)), [openFiles]);
+  const visibleTree = useMemo(() => filterBackupFiles(tree, hideBackupFiles), [hideBackupFiles, tree]);
   const iconByPath = useMemo(() => collectIconMap(tree), [tree]);
   const activeIncludes = useMemo(
     () => (activeFile && activeFile.kind !== "image" ? getIncludes(activeFile.content) : []),
@@ -1676,6 +1716,11 @@ export default function Home() {
       setCreateBackupOnSave(savedBackupPreference === "true");
     }
 
+    const savedHideBackupFiles = window.localStorage.getItem(hideBackupFilesKey);
+    if (savedHideBackupFiles !== null) {
+      setHideBackupFiles(savedHideBackupFiles === "true");
+    }
+
     async function loadLocales() {
       try {
         const response = await fetch(apiPath("/api/locales"), { cache: "no-store" });
@@ -1826,6 +1871,24 @@ export default function Home() {
             >
               <FcUpload className="action-icon" />
             </button>
+            <button
+              className={hideBackupFiles ? "icon-button active-toggle" : "icon-button"}
+              type="button"
+              onClick={() => {
+                const nextValue = !hideBackupFiles;
+                setHideBackupFiles(nextValue);
+                window.localStorage.setItem(hideBackupFilesKey, String(nextValue));
+              }}
+              title={hideBackupFiles ? t("actions.showBackupFiles") : t("actions.hideBackupFiles")}
+              aria-pressed={hideBackupFiles}
+              aria-label={hideBackupFiles ? t("actions.showBackupFiles") : t("actions.hideBackupFiles")}
+            >
+              {hideBackupFiles ? (
+                <FcAcceptDatabase className="action-icon" />
+              ) : (
+                <FcDeleteDatabase className="action-icon" />
+              )}
+            </button>
             <button className="icon-button" type="button" onClick={() => void loadTree()} title={t("actions.refreshTree")}>
               <FcRefresh className="action-icon" />
             </button>
@@ -1840,7 +1903,7 @@ export default function Home() {
           onChange={(event) => void uploadFiles(event)}
         />
         <FileTree
-          nodes={tree}
+          nodes={visibleTree}
           activePath={activePath}
           openPaths={openPathSet}
           onOpen={openFile}

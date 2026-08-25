@@ -9,6 +9,8 @@
     "actions.refreshTree": "Refresh tree",
     "actions.createFile": "Create file",
     "actions.uploadFiles": "Upload files",
+    "actions.hideBackupFiles": "Hide backup files",
+    "actions.showBackupFiles": "Show backup files",
     "actions.downloadFile": "Download file",
     "actions.deleteFile": "Delete file",
     "actions.downloadOnlyFile": "Download file",

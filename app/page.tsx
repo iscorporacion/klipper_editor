@@ -25,7 +25,7 @@ import {
   MdKeyboardArrowUp
 } from "react-icons/md";
 import { TbActivityHeartbeat } from "react-icons/tb";
-import { IoClose, IoDocumentTextOutline, IoPower } from "react-icons/io5";
+import { IoClose, IoDocumentTextOutline, IoHelpCircleOutline, IoPower } from "react-icons/io5";
 import logoWhite from "@/components/logoWhite.png";
 import { klipperConfigParser } from "@/lib/codemirror/klipper-config";
 import { bundledLocaleOptions, bundledLocales } from "@/lib/locales";
@@ -156,6 +156,7 @@ const defaultMessages: Messages = {
   "actions.macros": "Macros",
   "actions.executeMacro": "Ejecutar macro",
   "actions.hot": "Hot",
+  "actions.help": "Ayuda",
   "actions.coolHeater": "Enfriar {heater}",
   "actions.refreshHeaters": "Actualizar calentadores",
   "actions.move": "Mover",
@@ -1983,6 +1984,9 @@ export default function Home() {
             </button>
           </div>
           <div className="toolbar-actions">
+            <a className="icon-button help-button" href={apiPath("/help")} target="_blank" rel="noreferrer" title={t("actions.help")}>
+              <IoHelpCircleOutline className="action-icon plain-action-icon" />
+            </a>
             <button className="icon-button" type="button" onClick={() => setOptionsOpen(true)} title={t("actions.options")}>
               <FcSettings className="action-icon" />
             </button>

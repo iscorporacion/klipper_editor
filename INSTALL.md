@@ -26,7 +26,7 @@ PORT=3007
 Default URL:
 
 ```text
-http://<printer-ip>/editor/
+http://<printer-ip>/editor
 ```
 
 Default Moonraker connection:
@@ -51,7 +51,12 @@ Nginx does not need the full host URL for the app. The installer adds this locat
 
 ```nginx
 location = /editor {
-    return 301 /editor/;
+    proxy_pass http://127.0.0.1:3007/editor;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
 }
 
 location /editor/ {

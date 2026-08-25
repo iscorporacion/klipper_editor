@@ -8,8 +8,8 @@
   --border-soft: #252c35;
   --text: #dce5ef;
   --muted: #8f9baa;
-  --accent: #4aa3ff;
-  --accent-soft: rgba(74, 163, 255, 0.17);
+  --accent: #2196f3;
+  --accent-soft: rgba(33, 150, 243, 0.18);
   --danger: #ff6b6b;
   --folder: #87a4bc;
   --file: #8bc1ff;
@@ -826,23 +826,38 @@ body.is-resizing {
 .macro-row {
   display: flex;
   align-items: center;
-  gap: 10px;
   width: 100%;
   min-width: 0;
   min-height: 44px;
-  border: 0;
   border-bottom: 1px solid var(--border-soft);
   background: transparent;
   color: var(--text);
+}
+
+.macro-row:hover,
+.macro-row:focus-within {
+  background: var(--accent-soft);
+}
+
+.macro-open-button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  min-height: 44px;
+  flex: 1 1 auto;
+  border: 0;
+  background: transparent;
+  color: inherit;
   cursor: pointer;
   padding: 7px 10px;
   text-align: left;
 }
 
-.macro-row:hover,
-.macro-row:focus-visible {
-  background: var(--accent-soft);
-  outline: 0;
+.macro-open-button:focus-visible,
+.macro-start-button:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
 }
 
 .macro-row-icon {
@@ -866,6 +881,41 @@ body.is-resizing {
   font-weight: 700;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.macro-start-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  min-height: 44px;
+  flex: 0 0 auto;
+  border: 0;
+  border-left: 1px solid var(--border-soft);
+  background: transparent;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.macro-row:hover .macro-start-button,
+.macro-row:focus-within .macro-start-button {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.macro-start-button:hover {
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.macro-start-button:disabled {
+  cursor: default;
+  opacity: 0.35;
+}
+
+.macro-start-icon {
+  width: 26px;
+  height: 26px;
 }
 
 .macro-row-path {

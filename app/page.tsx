@@ -11,7 +11,7 @@ import { json } from "@codemirror/lang-json";
 import { javascript } from "@codemirror/lang-javascript";
 import { tags } from "@lezer/highlight";
 import { vscodeDark } from "@uiw/codemirror-theme-vscode";
-import { FcDownload, FcExpand, FcNext, FcRefresh, FcSearch, FcSettings, FcUpload } from "react-icons/fc";
+import { FcDownload, FcExpand, FcNext, FcRefresh, FcSearch, FcSettings, FcStart, FcUpload } from "react-icons/fc";
 import { MdDelete, MdFunctions } from "react-icons/md";
 import { IoDocumentTextOutline, IoPower } from "react-icons/io5";
 import logoWhite from "@/components/logoWhite.png";
@@ -84,7 +84,7 @@ type PendingJump = {
 type Messages = Record<string, string>;
 
 const defaultMessages: Messages = {
-  "app.title": "FINAL",
+  "app.title": "Klipper Editor",
   "explorer.label": "Explorador",
   "actions.refreshTree": "Actualizar arbol",
   "actions.createFile": "Crear archivo",
@@ -92,6 +92,7 @@ const defaultMessages: Messages = {
   "actions.downloadFile": "Descargar archivo",
   "actions.deleteFile": "Borrar archivo",
   "actions.macros": "Macros",
+  "actions.executeMacro": "Ejecutar macro",
   "actions.save": "Guardar",
   "actions.saving": "Guardando",
   "actions.options": "Opciones",
@@ -106,6 +107,8 @@ const defaultMessages: Messages = {
   "status.uploaded": "Subido {path}",
   "status.deleted": "Borrado {path}",
   "status.openingMacro": "Abriendo macro {name}",
+  "status.executingMacro": "Ejecutando macro {name}",
+  "status.executedMacro": "Macro ejecutada {name}",
   "status.saving": "Guardando {path}",
   "status.saved": "Guardado {path}",
   "status.firmwareRestarting": "Reiniciando firmware",
@@ -121,6 +124,7 @@ const defaultMessages: Messages = {
   "errors.uploadFile": "No se pudo subir el archivo",
   "errors.deleteFile": "No se pudo borrar el archivo",
   "errors.loadMacros": "No se pudieron cargar las macros",
+  "errors.executeMacro": "No se pudo ejecutar la macro",
   "errors.saveFile": "No se pudo guardar",
   "errors.saveGeneric": "Error al guardar",
   "errors.restartFirmware": "No se pudo reiniciar el firmware",
@@ -131,6 +135,7 @@ const defaultMessages: Messages = {
   "confirm.closeUnsaved": "{path} tiene cambios sin guardar. Cerrar?",
   "confirm.deleteFile": "Borrar {path}? Esta accion no se puede deshacer.",
   "confirm.restartFirmware": "Reiniciar firmware ahora?",
+  "confirm.executeMacro": "Ejecutar macro {name} en la impresora?",
   "prompt.newFilePath": "Ruta del nuevo archivo",
   "panels.openEditors": "Editores abiertos",
   "panels.includes": "Includes",
@@ -527,6 +532,7 @@ export default function Home() {
   const [macros, setMacros] = useState<MacroEntry[]>([]);
   const [macroSearch, setMacroSearch] = useState("");
   const [macrosLoading, setMacrosLoading] = useState(false);
+  const [executingMacro, setExecutingMacro] = useState<string | null>(null);
   const [message, setMessage] = useState(defaultMessages["status.ready"]);
   const [printerStatus, setPrinterStatus] = useState<PrinterStatus | null>(null);
   const [restartingFirmware, setRestartingFirmware] = useState(false);
@@ -844,6 +850,34 @@ export default function Home() {
       await openFile(macro.path);
     },
     [openFile, t]
+  );
+
+  const executeMacro = useCallback(
+    async (macro: MacroEntry) => {
+      if (executingMacro) return;
+      if (!window.confirm(t("confirm.executeMacro", { name: macro.name }))) return;
+
+      setExecutingMacro(macro.name);
+      setMessage(t("status.executingMacro", { name: macro.name }));
+
+      try {
+        const response = await fetch(apiPath("/api/printer/run-macro"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: macro.name })
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error ?? t("errors.executeMacro"));
+
+        setMessage(t("status.executedMacro", { name: macro.name }));
+        await loadPrinterStatus();
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : t("errors.executeMacro"));
+      } finally {
+        setExecutingMacro(null);
+      }
+    },
+    [executingMacro, loadPrinterStatus, t]
   );
 
   const resolveAndOpenInclude = useCallback(
@@ -1343,21 +1377,31 @@ export default function Home() {
                     <p className="empty-note">{t("macros.empty")}</p>
                   ) : (
                     filteredMacros.map((macro) => (
-                      <button
+                      <div
                         key={`${macro.path}-${macro.line}-${macro.name}`}
                         className="macro-row"
-                        type="button"
                         title={`${macro.title} - ${macro.path}:${macro.line}`}
-                        onClick={() => void openMacro(macro)}
                       >
-                        <MdFunctions className="macro-row-icon" />
-                        <span className="macro-row-main">
-                          <span className="macro-row-name">{macro.name}</span>
-                          <span className="macro-row-path">
-                            {macro.path}:{macro.line}
+                        <button className="macro-open-button" type="button" onClick={() => void openMacro(macro)}>
+                          <MdFunctions className="macro-row-icon" />
+                          <span className="macro-row-main">
+                            <span className="macro-row-name">{macro.name}</span>
+                            <span className="macro-row-path">
+                              {macro.path}:{macro.line}
+                            </span>
                           </span>
-                        </span>
-                      </button>
+                        </button>
+                        <button
+                          className="macro-start-button"
+                          type="button"
+                          title={t("actions.executeMacro")}
+                          aria-label={t("actions.executeMacro")}
+                          disabled={executingMacro !== null}
+                          onClick={() => void executeMacro(macro)}
+                        >
+                          <FcStart className="macro-start-icon" />
+                        </button>
+                      </div>
                     ))
                   )}
                 </div>

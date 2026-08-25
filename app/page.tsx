@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import Image from "next/image";
-import type { CSSProperties, MouseEvent as ReactMouseEvent, ReactNode } from "react";
+import type { ChangeEvent, CSSProperties, MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Decoration, DecorationSet, EditorView, ViewPlugin, ViewUpdate } from "@codemirror/view";
 import { HighlightStyle, StreamLanguage, syntaxHighlighting } from "@codemirror/language";
@@ -12,7 +12,7 @@ import { javascript } from "@codemirror/lang-javascript";
 import { tags } from "@lezer/highlight";
 import { vscodeDark } from "@uiw/codemirror-theme-vscode";
 import { FcExpand, FcNext, FcRefresh, FcSearch, FcSettings, FcUpload } from "react-icons/fc";
-import { IoPower } from "react-icons/io5";
+import { IoDocumentTextOutline, IoDownloadOutline, IoPower, IoTrashOutline } from "react-icons/io5";
 import logoWhite from "@/components/logoWhite.png";
 import { klipperConfigParser } from "@/lib/codemirror/klipper-config";
 
@@ -74,6 +74,10 @@ const defaultMessages: Messages = {
   "app.title": "FINAL",
   "explorer.label": "Explorador",
   "actions.refreshTree": "Actualizar arbol",
+  "actions.createFile": "Crear archivo",
+  "actions.uploadFiles": "Subir archivos",
+  "actions.downloadFile": "Descargar archivo",
+  "actions.deleteFile": "Borrar archivo",
   "actions.save": "Guardar",
   "actions.saving": "Guardando",
   "actions.options": "Opciones",
@@ -82,6 +86,11 @@ const defaultMessages: Messages = {
   "status.ready": "Listo",
   "status.opening": "Abriendo {path}",
   "status.opened": "Abierto {path}",
+  "status.creating": "Creando {path}",
+  "status.created": "Creado {path}",
+  "status.uploading": "Subiendo {path}",
+  "status.uploaded": "Subido {path}",
+  "status.deleted": "Borrado {path}",
   "status.saving": "Guardando {path}",
   "status.saved": "Guardado {path}",
   "status.firmwareRestarting": "Reiniciando firmware",
@@ -93,6 +102,9 @@ const defaultMessages: Messages = {
   "errors.loadTree": "No se pudo cargar el arbol",
   "errors.openFile": "No se pudo abrir el archivo",
   "errors.openGeneric": "Error al abrir",
+  "errors.createFile": "No se pudo crear el archivo",
+  "errors.uploadFile": "No se pudo subir el archivo",
+  "errors.deleteFile": "No se pudo borrar el archivo",
   "errors.saveFile": "No se pudo guardar",
   "errors.saveGeneric": "Error al guardar",
   "errors.restartFirmware": "No se pudo reiniciar el firmware",
@@ -101,7 +113,9 @@ const defaultMessages: Messages = {
   "errors.includeNotFound": "No se encontro el include",
   "errors.includeOpen": "No se pudo abrir el include",
   "confirm.closeUnsaved": "{path} tiene cambios sin guardar. Cerrar?",
+  "confirm.deleteFile": "Borrar {path}? Esta accion no se puede deshacer.",
   "confirm.restartFirmware": "Reiniciar firmware ahora?",
+  "prompt.newFilePath": "Ruta del nuevo archivo",
   "panels.openEditors": "Editores abiertos",
   "panels.includes": "Includes",
   "panels.sections": "Sesiones",
@@ -167,6 +181,12 @@ function fileLanguage(path: string) {
 
 function basename(path: string) {
   return path.split("/").at(-1) ?? path;
+}
+
+function dirname(path: string) {
+  const parts = path.split("/");
+  parts.pop();
+  return parts.join("/");
 }
 
 function Icon({ children, className = "" }: { children: ReactNode; className?: string }) {
@@ -354,17 +374,35 @@ function FileTree({
   nodes,
   activePath,
   openPaths,
-  onOpen
+  onOpen,
+  onDownload,
+  onDelete,
+  downloadLabel,
+  deleteLabel
 }: {
   nodes: TreeNode[];
   activePath?: string;
   openPaths: Set<string>;
   onOpen: (path: string) => void;
+  onDownload: (path: string) => void;
+  onDelete: (path: string) => void;
+  downloadLabel: string;
+  deleteLabel: string;
 }) {
   return (
     <div className="tree">
       {nodes.map((node) => (
-        <TreeItem key={node.path} node={node} activePath={activePath} openPaths={openPaths} onOpen={onOpen} />
+        <TreeItem
+          key={node.path}
+          node={node}
+          activePath={activePath}
+          openPaths={openPaths}
+          onOpen={onOpen}
+          onDownload={onDownload}
+          onDelete={onDelete}
+          downloadLabel={downloadLabel}
+          deleteLabel={deleteLabel}
+        />
       ))}
     </div>
   );
@@ -374,12 +412,20 @@ function TreeItem({
   node,
   activePath,
   openPaths,
-  onOpen
+  onOpen,
+  onDownload,
+  onDelete,
+  downloadLabel,
+  deleteLabel
 }: {
   node: TreeNode;
   activePath?: string;
   openPaths: Set<string>;
   onOpen: (path: string) => void;
+  onDownload: (path: string) => void;
+  onDelete: (path: string) => void;
+  downloadLabel: string;
+  deleteLabel: string;
 }) {
   const defaultOpen = node.type === "directory" && (node.name === "RatOS" || node.name === "ratos_generated");
   const [expanded, setExpanded] = useState(defaultOpen);
@@ -397,7 +443,17 @@ function TreeItem({
         {expanded && node.children && (
           <div className="tree-children">
             {node.children.map((child) => (
-              <TreeItem key={child.path} node={child} activePath={activePath} openPaths={openPaths} onOpen={onOpen} />
+              <TreeItem
+                key={child.path}
+                node={child}
+                activePath={activePath}
+                openPaths={openPaths}
+                onOpen={onOpen}
+                onDownload={onDownload}
+                onDelete={onDelete}
+                downloadLabel={downloadLabel}
+                deleteLabel={deleteLabel}
+              />
             ))}
           </div>
         )}
@@ -406,17 +462,34 @@ function TreeItem({
   }
 
   return (
-    <button
-      className={`tree-row file-row ${activePath === node.path ? "active" : ""}`}
-      type="button"
-      onClick={() => onOpen(node.path)}
-      title={node.path}
-    >
-      <span className="tree-spacer" />
-      <FileIcon path={node.path} icon={node.icon} />
-      <span>{node.name}</span>
-      {isOpenFile && <Icon className="open-dot">*</Icon>}
-    </button>
+    <div className={`tree-row file-row ${activePath === node.path ? "active" : ""}`} title={node.path}>
+      <button className="tree-open-button" type="button" onClick={() => onOpen(node.path)}>
+        <span className="tree-spacer" />
+        <FileIcon path={node.path} icon={node.icon} />
+        <span>{node.name}</span>
+        {isOpenFile && <Icon className="open-dot">*</Icon>}
+      </button>
+      <div className="tree-file-actions">
+        <button
+          className="tree-action-button"
+          type="button"
+          title={downloadLabel}
+          aria-label={downloadLabel}
+          onClick={() => onDownload(node.path)}
+        >
+          <IoDownloadOutline className="tree-action-icon" />
+        </button>
+        <button
+          className="tree-action-button danger"
+          type="button"
+          title={deleteLabel}
+          aria-label={deleteLabel}
+          onClick={() => onDelete(node.path)}
+        >
+          <IoTrashOutline className="tree-action-icon" />
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -439,12 +512,14 @@ export default function Home() {
   const editorViewRef = useRef<EditorView | null>(null);
   const includePanelRef = useRef<HTMLElement | null>(null);
   const previewCloseTimerRef = useRef<number | null>(null);
+  const uploadInputRef = useRef<HTMLInputElement | null>(null);
 
   const activeFile = openFiles.find((file) => file.path === activePath);
   const openPathSet = useMemo(() => new Set(openFiles.map((file) => file.path)), [openFiles]);
   const iconByPath = useMemo(() => collectIconMap(tree), [tree]);
   const activeIncludes = useMemo(() => (activeFile ? getIncludes(activeFile.content) : []), [activeFile]);
   const activeSections = useMemo(() => (activeFile ? getConfigSections(activeFile.content) : []), [activeFile]);
+  const activeDirectory = activePath ? dirname(activePath) : "";
   const t = useCallback(
     (key: string, values?: Record<string, string | number>) => translate(messages, key, values),
     [messages]
@@ -613,6 +688,99 @@ export default function Home() {
       }
     },
     [activePath, openFiles, t]
+  );
+
+  const createBlankFile = useCallback(async () => {
+    const defaultPath = activeDirectory ? `${activeDirectory}/new.cfg` : "new.cfg";
+    const requestedPath = window.prompt(t("prompt.newFilePath"), defaultPath);
+    if (!requestedPath) return;
+
+    const nextPath = requestedPath.trim().replaceAll("\\", "/").replace(/^\/+/, "");
+    if (!nextPath) return;
+
+    setMessage(t("status.creating", { path: nextPath }));
+
+    try {
+      const response = await fetch(apiPath("/api/file"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: nextPath, content: "" })
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? t("errors.createFile"));
+
+      await loadTree();
+      await openFile(payload.path ?? nextPath);
+      setMessage(t("status.created", { path: payload.path ?? nextPath }));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : t("errors.createFile"));
+    }
+  }, [activeDirectory, loadTree, openFile, t]);
+
+  const downloadFile = useCallback((path: string) => {
+    window.open(apiPath(`/api/download?path=${encodeURIComponent(path)}`), "_blank", "noopener,noreferrer");
+  }, []);
+
+  const deleteFile = useCallback(
+    async (path: string) => {
+      if (!window.confirm(t("confirm.deleteFile", { path }))) return;
+
+      try {
+        const response = await fetch(apiPath(`/api/file?path=${encodeURIComponent(path)}`), { method: "DELETE" });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error ?? t("errors.deleteFile"));
+
+        const nextFiles = openFiles.filter((file) => file.path !== path);
+        setOpenFiles(nextFiles);
+        if (activePath === path) {
+          setActivePath(nextFiles.at(-1)?.path);
+        }
+        await loadTree();
+        setMessage(t("status.deleted", { path }));
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : t("errors.deleteFile"));
+      }
+    },
+    [activePath, loadTree, openFiles, t]
+  );
+
+  const uploadFiles = useCallback(
+    async (event: ChangeEvent<HTMLInputElement>) => {
+      const files = Array.from(event.target.files ?? []);
+      event.target.value = "";
+      if (files.length === 0) return;
+
+      const uploadedPaths: string[] = [];
+
+      for (const file of files) {
+        const targetPath = activeDirectory ? `${activeDirectory}/${file.name}` : file.name;
+        setMessage(t("status.uploading", { path: targetPath }));
+
+        try {
+          const formData = new FormData();
+          formData.append("file", file);
+          formData.append("path", targetPath);
+
+          const response = await fetch(apiPath("/api/upload"), {
+            method: "POST",
+            body: formData
+          });
+          const payload = await response.json();
+          if (!response.ok) throw new Error(payload.error ?? t("errors.uploadFile"));
+          uploadedPaths.push(payload.path ?? targetPath);
+        } catch (error) {
+          setMessage(error instanceof Error ? error.message : t("errors.uploadFile"));
+          return;
+        }
+      }
+
+      await loadTree();
+      if (uploadedPaths[0]) {
+        await openFile(uploadedPaths[0]);
+      }
+      setMessage(t("status.uploaded", { path: uploadedPaths.join(", ") }));
+    },
+    [activeDirectory, loadTree, openFile, t]
   );
 
   const resolveAndOpenInclude = useCallback(
@@ -801,11 +969,41 @@ export default function Home() {
             <div className="eyebrow">{t("explorer.label")}</div>
             <h1>{t("app.title")}</h1>
           </div>
-          <button className="icon-button" type="button" onClick={() => void loadTree()} title={t("actions.refreshTree")}>
-            <FcRefresh className="action-icon" />
-          </button>
+          <div className="sidebar-actions">
+            <button className="icon-button" type="button" onClick={() => void createBlankFile()} title={t("actions.createFile")}>
+              <IoDocumentTextOutline className="action-icon plain-action-icon" />
+            </button>
+            <button
+              className="icon-button"
+              type="button"
+              onClick={() => uploadInputRef.current?.click()}
+              title={t("actions.uploadFiles")}
+            >
+              <FcUpload className="action-icon" />
+            </button>
+            <button className="icon-button" type="button" onClick={() => void loadTree()} title={t("actions.refreshTree")}>
+              <FcRefresh className="action-icon" />
+            </button>
+          </div>
         </div>
-        <FileTree nodes={tree} activePath={activePath} openPaths={openPathSet} onOpen={openFile} />
+        <input
+          ref={uploadInputRef}
+          className="hidden-file-input"
+          type="file"
+          multiple
+          accept=".cfg,.conf,.ini,.txt,.sh,.json,.yaml,.yml"
+          onChange={(event) => void uploadFiles(event)}
+        />
+        <FileTree
+          nodes={tree}
+          activePath={activePath}
+          openPaths={openPathSet}
+          onOpen={openFile}
+          onDownload={downloadFile}
+          onDelete={deleteFile}
+          downloadLabel={t("actions.downloadFile")}
+          deleteLabel={t("actions.deleteFile")}
+        />
         <div className="open-editors">
           <div className="panel-title">{t("panels.openEditors")}</div>
           {openFiles.length === 0 ? (

@@ -59,6 +59,17 @@ button {
   border-bottom: 1px solid var(--border-soft);
 }
 
+.sidebar-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.hidden-file-input {
+  display: none;
+}
+
 .eyebrow {
   color: var(--muted);
   font-size: 11px;
@@ -130,6 +141,7 @@ h1 {
 }
 
 .tree-row,
+.tree-open-button,
 .open-editor,
 .tab,
 .include-link,
@@ -153,7 +165,69 @@ h1 {
   font-size: 13px;
 }
 
+.file-row {
+  justify-content: space-between;
+  gap: 4px;
+  padding-right: 2px;
+}
+
+.tree-open-button {
+  gap: 6px;
+  height: 100%;
+  min-width: 0;
+  flex: 1 1 auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.tree-file-actions {
+  display: inline-flex;
+  align-items: center;
+  height: 100%;
+  flex: 0 0 auto;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.file-row:hover .tree-file-actions,
+.file-row:focus-within .tree-file-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.tree-action-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.tree-action-button:hover,
+.tree-action-button:focus-visible {
+  background: rgba(255, 255, 255, 0.09);
+  color: var(--text);
+  outline: 0;
+}
+
+.tree-action-button.danger:hover,
+.tree-action-button.danger:focus-visible {
+  color: var(--danger);
+}
+
+.tree-action-icon {
+  width: 15px;
+  height: 15px;
+}
+
 .tree-row:focus-visible,
+.tree-open-button:focus-visible,
 .open-editor:focus-visible,
 .tab:focus-visible,
 .include-link:focus-visible,
@@ -174,11 +248,16 @@ h1 {
 }
 
 .tree-row span,
+.tree-open-button span,
 .open-editor span,
 .tab span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.plain-action-icon {
+  color: var(--file);
 }
 
 .tree-children {

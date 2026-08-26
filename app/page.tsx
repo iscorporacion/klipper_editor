@@ -120,6 +120,56 @@ type AxisLimit = {
   max: number;
 };
 
+function numericValue(value: unknown) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : 0;
+}
+
+function axisLimitValue(value: unknown): AxisLimit {
+  const limit = value && typeof value === "object" ? (value as Partial<AxisLimit>) : {};
+  return {
+    min: numericValue(limit.min),
+    max: numericValue(limit.max)
+  };
+}
+
+function normalizePrinterStatus(value: unknown, fallbackMessage: string): PrinterStatus {
+  const status = value && typeof value === "object" ? (value as Partial<PrinterStatus>) : {};
+  const position =
+    status.position && typeof status.position === "object"
+      ? (status.position as Partial<Record<JogAxis, unknown>>)
+      : {};
+  const positionLimits =
+    status.positionLimits && typeof status.positionLimits === "object"
+      ? (status.positionLimits as Partial<Record<JogAxis, unknown>>)
+      : {};
+  const printState = String(status.printState ?? "unknown");
+  const error = typeof status.error === "string" && status.error.trim() ? status.error : undefined;
+
+  return {
+    webhooksState: String(status.webhooksState ?? "unknown"),
+    webhooksMessage: String(status.webhooksMessage ?? error ?? fallbackMessage),
+    printState,
+    filename: String(status.filename ?? ""),
+    printing: Boolean(status.printing),
+    zTiltAvailable: Boolean(status.zTiltAvailable),
+    homedAxes: String(status.homedAxes ?? ""),
+    allAxesHomed: Boolean(status.allAxesHomed),
+    position: {
+      x: numericValue(position.x),
+      y: numericValue(position.y),
+      z: numericValue(position.z)
+    },
+    positionLimits: {
+      x: axisLimitValue(positionLimits.x),
+      y: axisLimitValue(positionLimits.y),
+      z: axisLimitValue(positionLimits.z)
+    },
+    zOffset: numericValue(status.zOffset),
+    error
+  };
+}
+
 type HeaterStatus = {
   name: string;
   label: string;
@@ -1003,30 +1053,10 @@ export default function Home() {
       const response = await fetch(apiPath("/api/printer/status"), { cache: "no-store" });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? t("errors.printerStatus"));
-      setPrinterStatus(payload);
+      setPrinterStatus(normalizePrinterStatus(payload, t("errors.printerStatus")));
     } catch (error) {
-      setPrinterStatus({
-        webhooksState: "unknown",
-        webhooksMessage: error instanceof Error ? error.message : t("errors.printerStatus"),
-        printState: "unknown",
-        filename: "",
-        printing: false,
-        zTiltAvailable: false,
-        homedAxes: "",
-        allAxesHomed: false,
-        position: {
-          x: 0,
-          y: 0,
-          z: 0
-        },
-        positionLimits: {
-          x: { min: 0, max: 0 },
-          y: { min: 0, max: 0 },
-          z: { min: 0, max: 0 }
-        },
-        zOffset: 0,
-        error: error instanceof Error ? error.message : t("errors.printerStatus")
-      });
+      const message = error instanceof Error ? error.message : t("errors.printerStatus");
+      setPrinterStatus(normalizePrinterStatus({ error: message }, t("errors.printerStatus")));
     }
   }, [t]);
 

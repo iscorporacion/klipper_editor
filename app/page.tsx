@@ -461,6 +461,10 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
 }
 
+function maxTerminalHeight(viewportHeight: number) {
+  return Math.max(140, viewportHeight - 170);
+}
+
 function translate(messages: Messages, key: string, values: Record<string, string | number> = {}) {
   const template = messages[key] ?? defaultLocaleMessages[key] ?? defaultMessages[key] ?? key;
   return Object.entries(values).reduce(
@@ -2141,7 +2145,7 @@ export default function Home() {
       let latestHeight = terminalHeight;
 
       const onMouseMove = (moveEvent: MouseEvent) => {
-        const nextHeight = clamp(startHeight - (moveEvent.clientY - startY), 140, window.innerHeight * 0.72);
+        const nextHeight = clamp(startHeight - (moveEvent.clientY - startY), 140, maxTerminalHeight(window.innerHeight));
         latestHeight = nextHeight;
         setTerminalHeight(nextHeight);
       };
@@ -2184,7 +2188,7 @@ export default function Home() {
 
     const savedTerminalHeight = Number(window.localStorage.getItem(terminalHeightKey));
     if (Number.isFinite(savedTerminalHeight) && savedTerminalHeight > 0) {
-      setTerminalHeight(clamp(savedTerminalHeight, 140, window.innerHeight * 0.72));
+      setTerminalHeight(clamp(savedTerminalHeight, 140, maxTerminalHeight(window.innerHeight)));
     }
 
     try {
@@ -2327,6 +2331,22 @@ export default function Home() {
     if (!output) return;
     output.scrollTop = output.scrollHeight;
   }, [terminalOpen, terminalOutput]);
+
+  useEffect(() => {
+    const clampTerminalToViewport = () => {
+      setTerminalHeight((current) => {
+        const nextHeight = clamp(current, 140, maxTerminalHeight(window.innerHeight));
+        if (nextHeight !== current) {
+          window.localStorage.setItem(terminalHeightKey, String(Math.round(nextHeight)));
+        }
+        return nextHeight;
+      });
+    };
+
+    clampTerminalToViewport();
+    window.addEventListener("resize", clampTerminalToViewport);
+    return () => window.removeEventListener("resize", clampTerminalToViewport);
+  }, []);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {

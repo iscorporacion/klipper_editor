@@ -753,7 +753,9 @@ h1 {
   display: grid;
   grid-template-rows: 7px auto minmax(0, 1fr) auto;
   height: 238px;
+  max-height: calc(100vh - 170px);
   min-height: 0;
+  overflow: hidden;
   border-top: 1px solid var(--border);
   background: #0b0f14;
 }
@@ -870,6 +872,7 @@ h1 {
   align-items: center;
   gap: 8px;
   min-height: 38px;
+  flex: 0 0 auto;
   border-top: 1px solid var(--border-soft);
   background: var(--panel-soft);
   padding: 5px 8px;

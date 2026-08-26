@@ -11,6 +11,7 @@
   --accent: #2196f3;
   --accent-soft: rgba(33, 150, 243, 0.18);
   --accent-hover: rgba(33, 150, 243, 0.3);
+  --accent-contrast: #ffffff;
   --mainsail-logo-color: #d41216;
   --control-radius: 3.5px;
   --danger: #ff6b6b;
@@ -193,7 +194,7 @@ h1 {
 }
 
 .klipper-console-button {
-  min-width: 48px;
+  min-width: 34px;
 }
 
 .macro-button:hover,
@@ -216,7 +217,7 @@ h1 {
   padding: 0 12px;
   border-color: var(--accent);
   background: var(--accent);
-  color: #ffffff;
+  color: var(--accent-contrast);
 }
 
 .save-button:hover,
@@ -225,7 +226,7 @@ h1 {
 }
 
 .save-icon {
-  color: #ffffff;
+  color: var(--accent-contrast);
 }
 
 .format-button {
@@ -830,7 +831,7 @@ h1 {
 .terminal-button.primary {
   border-color: var(--accent);
   background: var(--accent);
-  color: #ffffff;
+  color: var(--accent-contrast);
 }
 
 .terminal-icon-button {
@@ -1662,7 +1663,7 @@ body.is-resizing-row {
   min-height: 30px;
   background: var(--accent);
   border-color: var(--accent);
-  color: #ffffff;
+  color: var(--accent-contrast);
   font-size: 12px;
 }
 
@@ -1840,7 +1841,7 @@ body.is-resizing-row {
   min-height: 36px;
   border: 1px solid var(--accent);
   background: var(--accent);
-  color: #ffffff;
+  color: var(--accent-contrast);
   font-size: 13px;
   font-weight: 800;
   padding: 0 14px;
@@ -2115,7 +2116,7 @@ body.is-resizing-row {
 .dialog-button.primary {
   border-color: var(--accent);
   background: var(--accent);
-  color: #ffffff;
+  color: var(--accent-contrast);
 }
 
 .dialog-button-icon {

@@ -208,6 +208,24 @@ function rgbaFromHex(value: string, alpha: number) {
   return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
 }
 
+function contrastTextForColor(value: string) {
+  const hex = value.trim();
+  const match = hex.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+  if (!match) return "#ffffff";
+
+  const raw = match[1];
+  const expanded = raw.length === 3 ? raw.split("").map((char) => char + char).join("") : raw;
+  const red = Number.parseInt(expanded.slice(0, 2), 16) / 255;
+  const green = Number.parseInt(expanded.slice(2, 4), 16) / 255;
+  const blue = Number.parseInt(expanded.slice(4, 6), 16) / 255;
+  const [linearRed, linearGreen, linearBlue] = [red, green, blue].map((channel) =>
+    channel <= 0.03928 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4
+  );
+  const luminance = 0.2126 * linearRed + 0.7152 * linearGreen + 0.0722 * linearBlue;
+
+  return luminance > 0.55 ? "#111418" : "#ffffff";
+}
+
 function axisLimitValue(value: unknown): AxisLimit {
   const limit = value && typeof value === "object" ? (value as Partial<AxisLimit>) : {};
   return {
@@ -1154,6 +1172,7 @@ export default function Home() {
       "--accent": primary,
       "--accent-soft": rgbaFromHex(primary, 0.18),
       "--accent-hover": rgbaFromHex(primary, 0.3),
+      "--accent-contrast": contrastTextForColor(primary),
       "--mainsail-logo-color": logo
     };
   }, [mainsailTheme.logo, mainsailTheme.primary]);
@@ -2605,13 +2624,13 @@ export default function Home() {
               {t("actions.macros")}
             </button>
             <button
-              className="macro-button klipper-console-button"
+              className="icon-button klipper-console-button"
               type="button"
               onClick={() => setKlipperConsoleOpen(true)}
+              aria-label={t("actions.klipperConsole")}
               title={t("actions.klipperConsole")}
             >
-              <MdiIcon className="macro-button-icon" path={mdiConsoleLine} size={1} />
-              
+              <MdiIcon className="action-icon plain-action-icon" path={mdiConsoleLine} size={1} />
             </button>
             <div className="home-actions">
               <button

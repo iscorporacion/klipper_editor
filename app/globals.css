@@ -29,7 +29,13 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family:
-    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
 }
 
 button {
@@ -184,6 +190,10 @@ h1 {
   height: 34px;
   padding: 0 12px;
   justify-content: flex-start;
+}
+
+.klipper-console-button {
+  min-width: 48px;
 }
 
 .macro-button:hover,
@@ -751,7 +761,7 @@ h1 {
 
 .terminal-panel {
   display: grid;
-  grid-template-rows: 7px auto minmax(0, 1fr) auto;
+  grid-template-rows: 7px auto auto minmax(0, 1fr) auto;
   height: 238px;
   max-height: calc(100vh - 260px);
   min-height: 0;
@@ -850,6 +860,26 @@ h1 {
 .terminal-close-icon {
   width: 17px;
   height: 17px;
+}
+
+.terminal-warning {
+  min-height: 30px;
+  border-bottom: 1px solid rgba(255, 107, 107, 0.28);
+  background: rgba(255, 107, 107, 0.1);
+  color: var(--danger);
+  font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.4;
+  padding: 6px 12px;
+}
+
+.terminal-warning.hidden {
+  min-height: 0;
+  height: 0;
+  overflow: hidden;
+  border: 0;
+  padding: 0;
 }
 
 .terminal-output {
@@ -1446,6 +1476,10 @@ body.is-resizing-row {
   width: min(680px, 100%);
 }
 
+.klipper-console-modal {
+  width: min(760px, 100%);
+}
+
 .heaters-modal {
   width: min(560px, 100%);
 }
@@ -1958,7 +1992,10 @@ body.is-resizing-row {
 
 .heater-row {
   display: grid;
-  grid-template-columns: minmax(70px, 0.7fr) minmax(110px, 1fr) minmax(130px, 1fr);
+  grid-template-columns: minmax(70px, 0.7fr) minmax(110px, 1fr) minmax(
+      130px,
+      1fr
+    );
   align-items: center;
   gap: 10px;
   min-height: 44px;
@@ -2079,6 +2116,12 @@ body.is-resizing-row {
   border-color: var(--accent);
   background: var(--accent);
   color: #ffffff;
+}
+
+.dialog-button-icon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
 }
 
 .macro-modal-body {
@@ -2240,6 +2283,98 @@ body.is-resizing-row {
   font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.klipper-console-body {
+  display: grid;
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+  gap: 12px;
+  height: min(680px, calc(100vh - 120px));
+  min-height: 0;
+  padding: 14px 12px 16px;
+}
+
+.klipper-console-field {
+  display: grid;
+  gap: 8px;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.klipper-console-field textarea {
+  width: 100%;
+  min-height: 150px;
+  resize: vertical;
+  border: 1px solid var(--border);
+  border-radius: var(--control-radius);
+  background: #0f141a;
+  color: var(--text);
+  font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  outline: 0;
+  padding: 10px;
+}
+
+.klipper-console-field textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+.klipper-console-log {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid var(--border-soft);
+  background: var(--panel-soft);
+  padding: 8px;
+}
+
+.klipper-console-entry {
+  display: grid;
+  gap: 6px;
+  border-left: 3px solid var(--accent);
+  background: rgba(255, 255, 255, 0.03);
+  padding: 8px 10px;
+}
+
+.klipper-console-entry.error {
+  border-left-color: var(--danger);
+}
+
+.klipper-console-entry-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.klipper-console-entry-header span {
+  color: var(--text);
+  font-weight: 800;
+}
+
+.klipper-console-entry.error .klipper-console-entry-header span {
+  color: var(--danger);
+}
+
+.klipper-console-entry pre {
+  margin: 0;
+  overflow: auto;
+  color: #d4d4d4;
+  font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.klipper-console-entry p {
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .modal-body {

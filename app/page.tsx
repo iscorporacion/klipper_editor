@@ -4,6 +4,8 @@ import dynamic from "next/dynamic";
 import Image from "next/image";
 import type { ChangeEvent, CSSProperties, FormEvent, MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import MdiIcon from "@mdi/react";
+import { mdiConsoleLine } from "@mdi/js";
 import type { Range } from "@codemirror/state";
 import { Decoration, DecorationSet, EditorView, ViewPlugin, ViewUpdate, WidgetType } from "@codemirror/view";
 import { HighlightStyle, StreamLanguage, syntaxHighlighting } from "@codemirror/language";
@@ -36,6 +38,7 @@ import {
   MdKeyboardArrowLeft,
   MdKeyboardArrowRight,
   MdKeyboardArrowUp,
+  MdSend,
   MdTerminal
 } from "react-icons/md";
 import { TbActivityHeartbeat } from "react-icons/tb";
@@ -149,6 +152,14 @@ type TerminalPayload = {
   exitCode: number | null;
   output: TerminalChunk[];
   error?: string;
+};
+
+type KlipperConsoleEntry = {
+  id: string;
+  script: string;
+  status: "sent" | "error";
+  message: string;
+  timestamp: string;
 };
 
 const fallbackMainsailTheme: MainsailVisualTheme = {
@@ -293,6 +304,9 @@ const defaultMessages: Messages = {
   "actions.downloadOnlyFile": "Descargar archivo",
   "actions.macros": "Macros",
   "actions.executeMacro": "Ejecutar macro",
+  "actions.klipperConsole": "Consola Klipper",
+  "actions.sendGcode": "Enviar",
+  "actions.sendingGcode": "Enviando",
   "actions.hot": "Hot",
   "actions.help": "Ayuda",
   "actions.coolHeater": "Enfriar {heater}",
@@ -330,6 +344,7 @@ const defaultMessages: Messages = {
   "status.openingMacro": "Abriendo macro {name}",
   "status.executingMacro": "Ejecutando macro {name}",
   "status.executedMacro": "Macro ejecutada {name}",
+  "status.gcodeSent": "G-code enviado",
   "status.loadingHeaters": "Cargando temperaturas",
   "status.heatersRefreshed": "Calentadores actualizados",
   "status.coolingHeater": "Enfriando {heater}",
@@ -362,6 +377,7 @@ const defaultMessages: Messages = {
   "errors.deleteFile": "No se pudo borrar el archivo",
   "errors.loadMacros": "No se pudieron cargar las macros",
   "errors.executeMacro": "No se pudo ejecutar la macro",
+  "errors.gcodeCommand": "No se pudo enviar el G-code",
   "errors.loadHeaters": "No se pudieron cargar los calentadores",
   "errors.coolHeater": "No se pudo enfriar el calentador",
   "errors.setHeaters": "No se pudieron aplicar las temperaturas",
@@ -378,6 +394,7 @@ const defaultMessages: Messages = {
   "errors.terminalDisabled": "La terminal esta deshabilitada en este host",
   "errors.terminalConnection": "No se pudo conectar la terminal",
   "errors.terminalCommand": "No se pudo enviar el comando",
+  "errors.terminalUnsupportedCommand": "{command} no funciona en esta terminal. Usa SSH o una terminal TTY real para herramientas interactivas.",
   "errors.printerStatus": "No se pudo consultar Moonraker",
   "errors.includeNotFound": "No se encontro el include",
   "errors.includeOpen": "No se pudo abrir el include",
@@ -388,6 +405,7 @@ const defaultMessages: Messages = {
   "prompt.newFilePath": "Ruta del nuevo archivo",
   "panels.openEditors": "Editores abiertos",
   "panels.terminal": "Terminal",
+  "panels.klipperConsole": "Consola Klipper",
   "panels.includes": "Includes",
   "panels.sections": "Sesiones",
   "empty.openFile": "Abre un archivo del arbol.",
@@ -419,6 +437,11 @@ const defaultMessages: Messages = {
   "macros.loading": "Cargando macros.",
   "macros.empty": "Sin macros detectadas.",
   "macros.count": "{count} macros",
+  "klipperConsole.placeholder": "Escribe G-code o una macro, por ejemplo:\nG28\nBED_MESH_CALIBRATE",
+  "klipperConsole.help": "Los comandos se envian a Moonraker como script G-code. Puedes enviar varias lineas.",
+  "klipperConsole.empty": "Sin comandos enviados en esta sesion.",
+  "klipperConsole.sent": "Enviado",
+  "klipperConsole.error": "Error",
   "sections.search": "Buscar sesion",
   "heaters.title": "Calentadores",
   "heaters.empty": "Sin calentadores detectados.",
@@ -463,6 +486,41 @@ function clamp(value: number, min: number, max: number) {
 
 function maxTerminalHeight(viewportHeight: number) {
   return Math.max(140, viewportHeight - 260);
+}
+
+const unsupportedTerminalCommands = [
+  { label: "make menuconfig", pattern: /(^|[;&|]\s*)make\s+menuconfig(\s|$)/i },
+  { label: "menuconfig", pattern: /(^|[;&|]\s*)menuconfig(\s|$)/i },
+  { label: "raspi-config", pattern: /(^|[;&|]\s*)(sudo\s+)?raspi-config(\s|$)/i },
+  { label: "kiauh", pattern: /(^|[;&|]\s*)kiauh(\s|$)/i },
+  { label: "nano", pattern: /(^|[;&|]\s*)nano(\s|$)/i },
+  { label: "vim", pattern: /(^|[;&|]\s*)vim?(\s|$)/i },
+  { label: "less", pattern: /(^|[;&|]\s*)less(\s|$)/i },
+  { label: "more", pattern: /(^|[;&|]\s*)more(\s|$)/i },
+  { label: "top", pattern: /(^|[;&|]\s*)top(\s|$)/i },
+  { label: "htop", pattern: /(^|[;&|]\s*)htop(\s|$)/i },
+  { label: "screen", pattern: /(^|[;&|]\s*)screen(\s|$)/i },
+  { label: "tmux", pattern: /(^|[;&|]\s*)tmux(\s|$)/i },
+  { label: "ssh", pattern: /(^|[;&|]\s*)ssh(\s|$)/i }
+];
+
+function unsupportedTerminalCommand(command: string) {
+  return unsupportedTerminalCommands.find((item) => item.pattern.test(command));
+}
+
+function createConsoleEntry(script: string, status: KlipperConsoleEntry["status"], message: string): KlipperConsoleEntry {
+  const id =
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+  return {
+    id,
+    script,
+    status,
+    message,
+    timestamp: new Date().toLocaleString()
+  };
 }
 
 function translate(messages: Messages, key: string, values: Record<string, string | number> = {}) {
@@ -1020,6 +1078,10 @@ export default function Home() {
   const [sectionSearch, setSectionSearch] = useState("");
   const [macrosLoading, setMacrosLoading] = useState(false);
   const [executingMacro, setExecutingMacro] = useState<string | null>(null);
+  const [klipperConsoleOpen, setKlipperConsoleOpen] = useState(false);
+  const [klipperConsoleInput, setKlipperConsoleInput] = useState("");
+  const [klipperConsoleLog, setKlipperConsoleLog] = useState<KlipperConsoleEntry[]>([]);
+  const [sendingKlipperCommand, setSendingKlipperCommand] = useState(false);
   const [dialog, setDialog] = useState<AppDialog | null>(null);
   const [dialogInputValue, setDialogInputValue] = useState("");
   const [message, setMessage] = useState(defaultLocaleMessages["status.ready"] ?? "Ready");
@@ -1040,6 +1102,7 @@ export default function Home() {
   const [terminalAlive, setTerminalAlive] = useState(false);
   const [terminalBusy, setTerminalBusy] = useState(false);
   const [terminalError, setTerminalError] = useState<string | null>(null);
+  const [terminalWarning, setTerminalWarning] = useState<string | null>(null);
   const [terminalHeight, setTerminalHeight] = useState(238);
   const [outlineWidth, setOutlineWidth] = useState(320);
   const [includePanelHeight, setIncludePanelHeight] = useState(240);
@@ -1386,10 +1449,21 @@ export default function Home() {
       const command = terminalInput.trim();
       if (!command || terminalBusy) return;
 
+      const blockedCommand = unsupportedTerminalCommand(command);
+      if (blockedCommand) {
+        const warning = t("errors.terminalUnsupportedCommand", { command: blockedCommand.label });
+        setTerminalInput("");
+        rememberTerminalCommand(command);
+        setTerminalWarning(warning);
+        setMessage(warning);
+        return;
+      }
+
       const id = terminalSessionId && terminalAlive ? terminalSessionId : await startTerminalSession();
       if (!id) return;
 
       setTerminalInput("");
+      setTerminalWarning(null);
       rememberTerminalCommand(command);
       setMessage(t("status.terminalRunning"));
 
@@ -1418,6 +1492,42 @@ export default function Home() {
       terminalInput,
       terminalSessionId
     ]
+  );
+
+  const sendKlipperConsoleCommand = useCallback(
+    async (event?: FormEvent<HTMLFormElement>) => {
+      event?.preventDefault();
+
+      const script = klipperConsoleInput.trim();
+      if (!script || sendingKlipperCommand) return;
+
+      setSendingKlipperCommand(true);
+      setMessage(t("status.runningCommand", { command: script.split(/\s+/)[0] ?? "G-code" }));
+
+      try {
+        const response = await fetch(apiPath("/api/printer/gcode"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ script })
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error ?? t("errors.gcodeCommand"));
+
+        setKlipperConsoleLog((current) =>
+          [createConsoleEntry(script, "sent", t("status.gcodeSent")), ...current].slice(0, 80)
+        );
+        setKlipperConsoleInput("");
+        setMessage(t("status.gcodeSent"));
+        await loadPrinterStatus();
+      } catch (error) {
+        const nextError = error instanceof Error ? error.message : t("errors.gcodeCommand");
+        setKlipperConsoleLog((current) => [createConsoleEntry(script, "error", nextError), ...current].slice(0, 80));
+        setMessage(nextError);
+      } finally {
+        setSendingKlipperCommand(false);
+      }
+    },
+    [klipperConsoleInput, loadPrinterStatus, sendingKlipperCommand, t]
   );
 
   const loadHeaters = useCallback(
@@ -2494,6 +2604,15 @@ export default function Home() {
               <MdFunctions className="macro-button-icon" />
               {t("actions.macros")}
             </button>
+            <button
+              className="macro-button klipper-console-button"
+              type="button"
+              onClick={() => setKlipperConsoleOpen(true)}
+              title={t("actions.klipperConsole")}
+            >
+              <MdiIcon className="macro-button-icon" path={mdiConsoleLine} size={1} />
+              
+            </button>
             <div className="home-actions">
               <button
                 className="home-button"
@@ -2941,6 +3060,9 @@ export default function Home() {
                   <IoClose className="terminal-close-icon" />
                 </button>
               </div>
+            </div>
+            <div className={terminalWarning ? "terminal-warning" : "terminal-warning hidden"} role="status">
+              {terminalWarning}
             </div>
             <pre ref={terminalOutputRef} className="terminal-output">
               {terminalOutput || terminalError || t("empty.terminal")}
@@ -3442,6 +3564,85 @@ export default function Home() {
                   )}
                 </div>
               </div>
+            </section>
+          </div>
+        )}
+
+        {klipperConsoleOpen && (
+          <div className="modal-backdrop" role="presentation" onMouseDown={() => setKlipperConsoleOpen(false)}>
+            <section
+              className="options-modal klipper-console-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="klipper-console-title"
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <div className="modal-header">
+                <h2 id="klipper-console-title">{t("panels.klipperConsole")}</h2>
+                <button
+                  className="modal-close"
+                  type="button"
+                  title={t("actions.close")}
+                  aria-label={t("actions.close")}
+                  onClick={() => setKlipperConsoleOpen(false)}
+                >
+                  x
+                </button>
+              </div>
+              <form className="klipper-console-body" onSubmit={sendKlipperConsoleCommand}>
+                <p className="setting-help">{t("klipperConsole.help")}</p>
+                <label className="klipper-console-field">
+                  <span>{t("panels.klipperConsole")}</span>
+                  <textarea
+                    autoFocus
+                    value={klipperConsoleInput}
+                    placeholder={t("klipperConsole.placeholder")}
+                    spellCheck={false}
+                    autoCapitalize="off"
+                    onChange={(event) => setKlipperConsoleInput(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Escape") {
+                        setKlipperConsoleInput("");
+                        return;
+                      }
+
+                      if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+                        event.preventDefault();
+                        void sendKlipperConsoleCommand();
+                      }
+                    }}
+                  />
+                </label>
+                <div className="dialog-actions">
+                  <button className="dialog-button" type="button" onClick={() => setKlipperConsoleOpen(false)}>
+                    {t("actions.cancel")}
+                  </button>
+                  <button
+                    className="dialog-button primary"
+                    type="submit"
+                    disabled={sendingKlipperCommand || !klipperConsoleInput.trim()}
+                  >
+                    <MdSend className="dialog-button-icon" />
+                    {sendingKlipperCommand ? t("actions.sendingGcode") : t("actions.sendGcode")}
+                  </button>
+                </div>
+                <div className="klipper-console-log" aria-label={t("panels.klipperConsole")}>
+                  {klipperConsoleLog.length === 0 ? (
+                    <p className="empty-note">{t("klipperConsole.empty")}</p>
+                  ) : (
+                    klipperConsoleLog.map((entry) => (
+                      <article key={entry.id} className={`klipper-console-entry ${entry.status}`}>
+                        <div className="klipper-console-entry-header">
+                          <span>{entry.status === "sent" ? t("klipperConsole.sent") : t("klipperConsole.error")}</span>
+                          <time>{entry.timestamp}</time>
+                        </div>
+                        <pre>{entry.script}</pre>
+                        <p>{entry.message}</p>
+                      </article>
+                    ))
+                  )}
+                </div>
+              </form>
             </section>
           </div>
         )}

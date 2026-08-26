@@ -253,8 +253,8 @@ type AppDialog =
 type Messages = Record<string, string>;
 
 const defaultMessages: Messages = {
-  "app.title": "Klipper Editor",
-  "explorer.label": "Explorador",
+  "app.title": "K-Editor",
+  "explorer.label": "Explorer",
   "actions.refreshTree": "Actualizar arbol",
   "actions.createFile": "Crear archivo",
   "actions.uploadFiles": "Subir archivos",

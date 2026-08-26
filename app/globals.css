@@ -534,6 +534,7 @@ h1 {
   height: 34px;
   padding: 0 8px;
   border: 1px solid var(--border);
+  border-radius: var(--control-radius);
   background: var(--panel-strong);
   color: var(--text);
   cursor: pointer;
@@ -571,8 +572,9 @@ h1 {
   gap: 6px;
   height: 34px;
   min-width: 58px;
-  border: 1px solid rgba(33, 150, 243, 0.55);
-  background: rgba(33, 150, 243, 0.14);
+  border: 1px solid var(--accent);
+  border-radius: var(--control-radius);
+  background: var(--accent-soft);
   color: #dceeff;
   cursor: pointer;
   padding: 0 10px;
@@ -603,7 +605,7 @@ h1 {
   width: 18px;
   height: 18px;
   flex: 0 0 auto;
-  color: #2196f3;
+  color: var(--accent);
 }
 
 .hot-button.active .hot-button-icon {
@@ -623,23 +625,24 @@ h1 {
   align-items: center;
   justify-content: center;
   gap: 4px;
-  height: 24px;
-  max-width: 118px;
+  height: 34px;
+  max-width: 132px;
   overflow: hidden;
   border: 1px solid var(--border-soft);
+  border-radius: var(--control-radius);
   background: var(--panel-soft);
   color: var(--muted);
   cursor: pointer;
   font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
-  font-size: 11px;
+  font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
-  padding: 0 6px;
+  padding: 0 9px;
 }
 
 .heater-indicator-icon {
-  width: 15px;
-  height: 15px;
+  width: 17px;
+  height: 17px;
   flex: 0 0 auto;
 }
 

@@ -4,7 +4,7 @@
     "name": "English"
   },
   "messages": {
-    "app.title": "Klipper Editor",
+    "app.title": "K-Editor",
     "explorer.label": "Explorer",
     "actions.refreshTree": "Refresh tree",
     "actions.createFile": "Create file",

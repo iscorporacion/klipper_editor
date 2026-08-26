@@ -50,6 +50,8 @@ const mainsailUrl = process.env.NEXT_PUBLIC_MAINSAIL_URL ?? "/";
 const heaterCacheKey = "klipper-editor-heater-cache";
 const heaterColorCacheKey = "klipper-editor-heater-colors";
 const hideBackupFilesKey = "klipper-editor-hide-backup-files";
+const terminalHeightKey = "klipper-editor-terminal-height";
+const terminalHistoryKey = "klipper-editor-terminal-history";
 
 function apiPath(path: string) {
   return `${appBasePath}${path}`;
@@ -1028,10 +1030,13 @@ export default function Home() {
   const [terminalSessionId, setTerminalSessionId] = useState<string | null>(null);
   const [terminalOutput, setTerminalOutput] = useState("");
   const [terminalInput, setTerminalInput] = useState("");
+  const [terminalHistory, setTerminalHistory] = useState<string[]>([]);
+  const [terminalHistoryIndex, setTerminalHistoryIndex] = useState<number | null>(null);
   const [terminalCursor, setTerminalCursor] = useState(0);
   const [terminalAlive, setTerminalAlive] = useState(false);
   const [terminalBusy, setTerminalBusy] = useState(false);
   const [terminalError, setTerminalError] = useState<string | null>(null);
+  const [terminalHeight, setTerminalHeight] = useState(238);
   const [outlineWidth, setOutlineWidth] = useState(320);
   const [includePanelHeight, setIncludePanelHeight] = useState(240);
   const [sectionPreview, setSectionPreview] = useState<SectionPreview | null>(null);
@@ -1360,6 +1365,16 @@ export default function Home() {
     }
   }, [t, terminalSessionId]);
 
+  const rememberTerminalCommand = useCallback((command: string) => {
+    setTerminalHistory((current) => {
+      const withoutDuplicateTail = current.at(-1) === command ? current : [...current, command];
+      const nextHistory = withoutDuplicateTail.slice(-80);
+      window.localStorage.setItem(terminalHistoryKey, JSON.stringify(nextHistory));
+      return nextHistory;
+    });
+    setTerminalHistoryIndex(null);
+  }, []);
+
   const submitTerminalCommand = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
@@ -1371,7 +1386,7 @@ export default function Home() {
       if (!id) return;
 
       setTerminalInput("");
-      setTerminalOutput((current) => `${current}$ ${command}\n`);
+      rememberTerminalCommand(command);
       setMessage(t("status.terminalRunning"));
 
       try {
@@ -1389,7 +1404,16 @@ export default function Home() {
         setMessage(nextError);
       }
     },
-    [applyTerminalPayload, startTerminalSession, t, terminalAlive, terminalBusy, terminalInput, terminalSessionId]
+    [
+      applyTerminalPayload,
+      rememberTerminalCommand,
+      startTerminalSession,
+      t,
+      terminalAlive,
+      terminalBusy,
+      terminalInput,
+      terminalSessionId
+    ]
   );
 
   const loadHeaters = useCallback(
@@ -2096,15 +2120,45 @@ export default function Home() {
       };
       const onMouseUp = () => {
         document.body.classList.remove("is-resizing");
+        document.body.classList.remove("is-resizing-row");
         window.removeEventListener("mousemove", onMouseMove);
         window.removeEventListener("mouseup", onMouseUp);
       };
 
       document.body.classList.add("is-resizing");
+      document.body.classList.add("is-resizing-row");
       window.addEventListener("mousemove", onMouseMove);
       window.addEventListener("mouseup", onMouseUp);
     },
     [includePanelHeight]
+  );
+
+  const startTerminalHeightResize = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      event.preventDefault();
+      const startY = event.clientY;
+      const startHeight = terminalHeight;
+      let latestHeight = terminalHeight;
+
+      const onMouseMove = (moveEvent: MouseEvent) => {
+        const nextHeight = clamp(startHeight - (moveEvent.clientY - startY), 140, window.innerHeight * 0.72);
+        latestHeight = nextHeight;
+        setTerminalHeight(nextHeight);
+      };
+      const onMouseUp = () => {
+        document.body.classList.remove("is-resizing");
+        document.body.classList.remove("is-resizing-row");
+        window.localStorage.setItem(terminalHeightKey, String(Math.round(latestHeight)));
+        window.removeEventListener("mousemove", onMouseMove);
+        window.removeEventListener("mouseup", onMouseUp);
+      };
+
+      document.body.classList.add("is-resizing");
+      document.body.classList.add("is-resizing-row");
+      window.addEventListener("mousemove", onMouseMove);
+      window.addEventListener("mouseup", onMouseUp);
+    },
+    [terminalHeight]
   );
 
   useEffect(() => {
@@ -2126,6 +2180,20 @@ export default function Home() {
     const savedHideBackupFiles = window.localStorage.getItem(hideBackupFilesKey);
     if (savedHideBackupFiles !== null) {
       setHideBackupFiles(savedHideBackupFiles === "true");
+    }
+
+    const savedTerminalHeight = Number(window.localStorage.getItem(terminalHeightKey));
+    if (Number.isFinite(savedTerminalHeight) && savedTerminalHeight > 0) {
+      setTerminalHeight(clamp(savedTerminalHeight, 140, window.innerHeight * 0.72));
+    }
+
+    try {
+      const savedTerminalHistory = JSON.parse(window.localStorage.getItem(terminalHistoryKey) ?? "[]") as unknown;
+      if (Array.isArray(savedTerminalHistory)) {
+        setTerminalHistory(savedTerminalHistory.filter((entry): entry is string => typeof entry === "string").slice(-80));
+      }
+    } catch {
+      window.localStorage.removeItem(terminalHistoryKey);
     }
 
     async function loadLocales() {
@@ -2819,7 +2887,13 @@ export default function Home() {
         </div>
 
         {terminalOpen && (
-          <section className="terminal-panel" aria-label={t("panels.terminal")}>
+          <section className="terminal-panel" style={{ height: terminalHeight }} aria-label={t("panels.terminal")}>
+            <button
+              className="panel-resizer terminal-resizer-height"
+              type="button"
+              aria-label={t("resize.height")}
+              onMouseDown={startTerminalHeightResize}
+            />
             <div className="terminal-header">
               <div className="terminal-title">
                 <MdTerminal className="terminal-title-icon" />
@@ -2859,10 +2933,40 @@ export default function Home() {
                 spellCheck={false}
                 autoCapitalize="off"
                 autoComplete="off"
-                onChange={(event) => setTerminalInput(event.target.value)}
+                onChange={(event) => {
+                  setTerminalInput(event.target.value);
+                  setTerminalHistoryIndex(null);
+                }}
                 onKeyDown={(event) => {
                   if (event.key === "Escape") {
                     setTerminalInput("");
+                    setTerminalHistoryIndex(null);
+                    return;
+                  }
+
+                  if (event.key === "ArrowUp") {
+                    event.preventDefault();
+                    if (terminalHistory.length === 0) return;
+                    const nextIndex =
+                      terminalHistoryIndex === null
+                        ? terminalHistory.length - 1
+                        : Math.max(0, terminalHistoryIndex - 1);
+                    setTerminalHistoryIndex(nextIndex);
+                    setTerminalInput(terminalHistory[nextIndex] ?? "");
+                    return;
+                  }
+
+                  if (event.key === "ArrowDown") {
+                    event.preventDefault();
+                    if (terminalHistory.length === 0 || terminalHistoryIndex === null) return;
+                    const nextIndex = terminalHistoryIndex + 1;
+                    if (nextIndex >= terminalHistory.length) {
+                      setTerminalHistoryIndex(null);
+                      setTerminalInput("");
+                      return;
+                    }
+                    setTerminalHistoryIndex(nextIndex);
+                    setTerminalInput(terminalHistory[nextIndex] ?? "");
                   }
                 }}
               />

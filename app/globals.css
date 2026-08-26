@@ -12,7 +12,7 @@
   --accent-soft: rgba(33, 150, 243, 0.18);
   --accent-hover: rgba(33, 150, 243, 0.3);
   --mainsail-logo-color: #d41216;
-  --control-radius: 7px;
+  --control-radius: 3.5px;
   --danger: #ff6b6b;
   --folder: #87a4bc;
   --file: #8bc1ff;
@@ -81,7 +81,6 @@ button {
   height: 34px;
   flex: 0 0 auto;
   color: var(--mainsail-logo-color);
-  border: 1px solid var(--accent);
   border-radius: var(--control-radius);
   background:
     radial-gradient(circle at 50% 45%, var(--accent-soft), transparent 72%),
@@ -752,7 +751,7 @@ h1 {
 
 .terminal-panel {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: 7px auto minmax(0, 1fr) auto;
   height: 238px;
   min-height: 0;
   border-top: 1px solid var(--border);
@@ -1139,9 +1138,22 @@ body.is-resizing .panel-resizer {
   border-bottom: 1px solid var(--border-soft);
 }
 
+.terminal-resizer-height {
+  width: 100%;
+  height: 7px;
+  min-height: 7px;
+  cursor: row-resize;
+  border-width: 0 0 1px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
 body.is-resizing {
   cursor: col-resize;
   user-select: none;
+}
+
+body.is-resizing-row {
+  cursor: row-resize;
 }
 
 .include-panel {

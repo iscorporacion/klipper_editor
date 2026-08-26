@@ -22,6 +22,17 @@ type TerminalSession = {
 const sessions = new Map<string, TerminalSession>();
 const idleTimeoutMs = 30 * 60 * 1000;
 const maxBufferedCharacters = 80_000;
+const ansiPattern =
+  // eslint-disable-next-line no-control-regex
+  /(?:\x1B\][^\x07]*(?:\x07|\x1B\\)|\x1B[@-Z\\-_]|\x1B\[[0-?]*[ -/]*[@-~])/g;
+
+function sanitizeTerminalOutput(text: string) {
+  return text
+    .replace(ansiPattern, "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "");
+}
 
 export function isTerminalEnabled() {
   return process.env.KLIPPER_EDITOR_ENABLE_TERMINAL === "true";
@@ -54,10 +65,11 @@ function shellArgs(shell: string) {
 }
 
 function appendOutput(session: TerminalSession, text: string) {
-  if (!text) return;
+  const cleanText = sanitizeTerminalOutput(text);
+  if (!cleanText) return;
 
   session.cursor += 1;
-  session.chunks.push({ id: session.cursor, text });
+  session.chunks.push({ id: session.cursor, text: cleanText });
 
   let total = session.chunks.reduce((sum, chunk) => sum + chunk.text.length, 0);
   while (total > maxBufferedCharacters && session.chunks.length > 1) {

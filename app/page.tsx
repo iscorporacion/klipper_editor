@@ -4,7 +4,8 @@ import dynamic from "next/dynamic";
 import Image from "next/image";
 import type { ChangeEvent, CSSProperties, FormEvent, MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Decoration, DecorationSet, EditorView, ViewPlugin, ViewUpdate } from "@codemirror/view";
+import type { Range } from "@codemirror/state";
+import { Decoration, DecorationSet, EditorView, ViewPlugin, ViewUpdate, WidgetType } from "@codemirror/view";
 import { HighlightStyle, StreamLanguage, syntaxHighlighting } from "@codemirror/language";
 import { yaml } from "@codemirror/lang-yaml";
 import { json } from "@codemirror/lang-json";
@@ -13,6 +14,7 @@ import { tags } from "@lezer/highlight";
 import { vscodeDark } from "@uiw/codemirror-theme-vscode";
 import { BsArrowsMove } from "react-icons/bs";
 import { FaHotjar } from "react-icons/fa";
+import { FaFloppyDisk } from "react-icons/fa6";
 import {
   FcAcceptDatabase,
   FcDeleteDatabase,
@@ -90,6 +92,15 @@ type LocaleOption = {
   name: string;
 };
 
+type MainsailVisualTheme = {
+  mode: string;
+  theme: string;
+  logo: string;
+  primary: string;
+  logoPath: string | null;
+  error?: string;
+};
+
 type PrinterStatus = {
   webhooksState: string;
   webhooksMessage: string;
@@ -121,9 +132,42 @@ type AxisLimit = {
   max: number;
 };
 
+const fallbackMainsailTheme: MainsailVisualTheme = {
+  mode: "dark",
+  theme: "mainsail",
+  logo: "#D41216",
+  primary: "#2196f3",
+  logoPath: null
+};
+
+type ThemeVariables = CSSProperties & Record<`--${string}`, string>;
+
 function numericValue(value: unknown) {
   const number = Number(value);
   return Number.isFinite(number) ? number : 0;
+}
+
+function normalizeCssColor(value: unknown, fallback: string) {
+  if (typeof value !== "string") return fallback;
+  const color = value.trim();
+  if (!color) return fallback;
+  if (/^#[0-9a-f]{3,8}$/i.test(color)) return color;
+  if (/^(rgb|rgba|hsl|hsla)\(/i.test(color)) return color;
+  return fallback;
+}
+
+function rgbaFromHex(value: string, alpha: number) {
+  const hex = value.trim();
+  const match = hex.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+  if (!match) return `color-mix(in srgb, ${hex} 18%, transparent)`;
+
+  const raw = match[1];
+  const expanded = raw.length === 3 ? raw.split("").map((char) => char + char).join("") : raw;
+  const red = Number.parseInt(expanded.slice(0, 2), 16);
+  const green = Number.parseInt(expanded.slice(2, 4), 16);
+  const blue = Number.parseInt(expanded.slice(4, 6), 16);
+
+  return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
 }
 
 function axisLimitValue(value: unknown): AxisLimit {
@@ -640,8 +684,40 @@ function getConfigSections(content: string) {
 const includeMark = Decoration.mark({ class: "cm-include-link" });
 const urlMark = Decoration.mark({ class: "cm-url-link" });
 
+class IncludeOpenWidget extends WidgetType {
+  constructor(private readonly includePath: string) {
+    super();
+  }
+
+  eq(other: WidgetType) {
+    return other instanceof IncludeOpenWidget && other.includePath === this.includePath;
+  }
+
+  toDOM() {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "cm-include-open-button";
+    button.title = `Open include ${this.includePath}`;
+    button.setAttribute("aria-label", `Open include ${this.includePath}`);
+    button.dataset.includePath = this.includePath;
+    button.innerHTML = `
+      <svg viewBox="0 0 512 512" aria-hidden="true" focusable="false">
+        <path d="M384 224v184a40 40 0 0 1-40 40H104a40 40 0 0 1-40-40V168a40 40 0 0 1 40-40h184" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="40"/>
+        <path d="M336 64h112v112" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="40"/>
+        <path d="M224 288 440 72" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="40"/>
+      </svg>
+    `;
+
+    return button;
+  }
+
+  ignoreEvent() {
+    return false;
+  }
+}
+
 function buildLinkDecorations(view: EditorView) {
-  const ranges = [];
+  const ranges: Range<Decoration>[] = [];
   for (let lineNumber = 1; lineNumber <= view.state.doc.lines; lineNumber += 1) {
     const line = view.state.doc.line(lineNumber);
 
@@ -658,8 +734,11 @@ function buildLinkDecorations(view: EditorView) {
 
     const includeMatch = line.text.match(/^\s*\[include\s+([^\]]+)\]/i);
     if (includeMatch) {
+      const includePath = includeMatch[1].trim();
       const start = line.from + (includeMatch.index ?? 0);
-      ranges.push(includeMark.range(start, start + includeMatch[0].length));
+      const end = start + includeMatch[0].length;
+      ranges.push(includeMark.range(start, end));
+      ranges.push(Decoration.widget({ widget: new IncludeOpenWidget(includePath), side: 1 }).range(end));
     }
   }
 
@@ -688,6 +767,16 @@ function editorLinkExtension(activePath: string, onInclude: (includePath: string
 
   const linkClickHandler = EditorView.domEventHandlers({
     click(event, view) {
+      const target = event.target instanceof Element ? event.target : null;
+      const includeButton = target?.closest<HTMLButtonElement>(".cm-include-open-button");
+      const includePath = includeButton?.dataset.includePath;
+      if (includePath) {
+        event.preventDefault();
+        event.stopPropagation();
+        onInclude(includePath, activePath);
+        return true;
+      }
+
       const pos = view.posAtCoords({ x: event.clientX, y: event.clientY });
       if (pos === null) return false;
 
@@ -708,18 +797,6 @@ function editorLinkExtension(activePath: string, onInclude: (includePath: string
 
         return false;
       }
-
-      const includeMatch = line.text.match(/^\s*\[include\s+([^\]]+)\]/i);
-      if (includeMatch) {
-        const start = line.from + (includeMatch.index ?? 0);
-        const end = start + includeMatch[0].length;
-        if (pos >= start && pos <= end) {
-          event.preventDefault();
-          onInclude(includeMatch[1].trim(), activePath);
-          return true;
-        }
-      }
-
       return false;
     }
   });
@@ -878,6 +955,7 @@ export default function Home() {
   const [localeCode, setLocaleCode] = useState(defaultLocaleCode);
   const [locales, setLocales] = useState<LocaleOption[]>([]);
   const [localesLoading, setLocalesLoading] = useState(true);
+  const [mainsailTheme, setMainsailTheme] = useState<MainsailVisualTheme>(fallbackMainsailTheme);
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [macrosOpen, setMacrosOpen] = useState(false);
   const [movementOpen, setMovementOpen] = useState(false);
@@ -946,6 +1024,20 @@ export default function Home() {
     );
   }, [macroSearch, macros]);
   const anyHeaterActive = heaters.some((heater) => heater.target > 0);
+  const themeStyle = useMemo<ThemeVariables>(() => {
+    const primary = normalizeCssColor(mainsailTheme.primary, fallbackMainsailTheme.primary);
+    const logo = normalizeCssColor(mainsailTheme.logo, fallbackMainsailTheme.logo);
+
+    return {
+      "--accent": primary,
+      "--accent-soft": rgbaFromHex(primary, 0.18),
+      "--accent-hover": rgbaFromHex(primary, 0.3),
+      "--mainsail-logo-color": logo
+    };
+  }, [mainsailTheme.logo, mainsailTheme.primary]);
+  const mainsailLogoUrl = mainsailTheme.logoPath
+    ? apiPath(`/api/download?path=${encodeURIComponent(mainsailTheme.logoPath)}&inline=1`)
+    : null;
   const t = useCallback(
     (key: string, values?: Record<string, string | number>) => translate(messages, key, values),
     [messages]
@@ -1063,6 +1155,28 @@ export default function Home() {
       setPrinterStatus(normalizePrinterStatus({ error: message }, t("errors.printerStatus")));
     }
   }, [t]);
+
+  const loadMainsailTheme = useCallback(async () => {
+    try {
+      const response = await fetch(apiPath("/api/mainsail/theme"), { cache: "no-store" });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? "Unable to load Mainsail theme");
+
+      setMainsailTheme({
+        mode: typeof payload.mode === "string" ? payload.mode : fallbackMainsailTheme.mode,
+        theme: typeof payload.theme === "string" ? payload.theme : fallbackMainsailTheme.theme,
+        logo: typeof payload.logo === "string" ? payload.logo : fallbackMainsailTheme.logo,
+        primary: typeof payload.primary === "string" ? payload.primary : fallbackMainsailTheme.primary,
+        logoPath: typeof payload.logoPath === "string" ? payload.logoPath : null,
+        error: typeof payload.error === "string" ? payload.error : undefined
+      });
+    } catch (error) {
+      setMainsailTheme({
+        ...fallbackMainsailTheme,
+        error: error instanceof Error ? error.message : "Unable to load Mainsail theme"
+      });
+    }
+  }, []);
 
   const loadHeaters = useCallback(
     async (showError = false, refreshCatalog = false) => {
@@ -1851,6 +1965,10 @@ export default function Home() {
   }, [loadTree]);
 
   useEffect(() => {
+    void loadMainsailTheme();
+  }, [loadMainsailTheme]);
+
+  useEffect(() => {
     void loadPrinterStatus();
     const interval = window.setInterval(() => void loadPrinterStatus(), 5000);
     return () => window.clearInterval(interval);
@@ -1955,12 +2073,21 @@ export default function Home() {
     runningMachinePowerAction !== null || !printerStatus || Boolean(printerStatus.error) || printerStatus.printing;
 
   return (
-    <main className="workspace-shell">
+    <main className="workspace-shell" style={themeStyle}>
       <aside className="sidebar">
         <div className="sidebar-header">
-          <div>
-            <div className="eyebrow">{t("explorer.label")}</div>
-            <h1>{t("app.title")}</h1>
+          <div className="sidebar-brand">
+            <div className="sidebar-brand-logo" title={mainsailTheme.theme}>
+              {mainsailLogoUrl ? (
+                <img className="sidebar-theme-logo" src={mainsailLogoUrl} alt="" />
+              ) : (
+                <Image className="sidebar-theme-logo" src={logoWhite} alt="" width={28} height={28} />
+              )}
+            </div>
+            <div className="sidebar-brand-text">
+              <div className="eyebrow">{t("explorer.label")}</div>
+              <h1>{t("app.title")}</h1>
+            </div>
           </div>
           <div className="sidebar-actions">
             <button className="icon-button" type="button" onClick={() => void createBlankFile()} title={t("actions.createFile")}>
@@ -2191,7 +2318,7 @@ export default function Home() {
                 activeFile.saving
               }
             >
-              <FcUpload className="action-icon" />
+              <FaFloppyDisk className="action-icon save-icon" />
               {activeFile?.saving ? t("actions.saving") : t("actions.save")}
             </button>
             <div className="machine-power-menu" ref={machinePowerMenuRef}>

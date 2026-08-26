@@ -42,6 +42,13 @@ export type HeaterStatus = {
   color?: string;
 };
 
+export type MainsailUiSettings = {
+  mode: string;
+  theme: string;
+  logo: string;
+  primary: string;
+};
+
 function moonrakerPath(path: string) {
   return `${moonrakerUrl}${path}`;
 }
@@ -126,6 +133,18 @@ export async function shutdownMachine() {
 export async function rebootMachine() {
   const payload = await moonrakerFetch("/machine/reboot", { method: "POST" });
   return payload?.result ?? payload;
+}
+
+export async function getMainsailUiSettings(): Promise<MainsailUiSettings> {
+  const payload = await moonrakerFetch("/server/database/item?namespace=mainsail&key=uiSettings");
+  const value = payload?.result?.value ?? payload?.value ?? {};
+
+  return {
+    mode: typeof value.mode === "string" && value.mode.trim() ? value.mode.trim() : "dark",
+    theme: typeof value.theme === "string" && value.theme.trim() ? value.theme.trim() : "mainsail",
+    logo: typeof value.logo === "string" && value.logo.trim() ? value.logo.trim() : "#D41216",
+    primary: typeof value.primary === "string" && value.primary.trim() ? value.primary.trim() : "#2196f3"
+  };
 }
 
 export async function runGcodeScript(script: string) {

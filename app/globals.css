@@ -10,6 +10,9 @@
   --muted: #8f9baa;
   --accent: #2196f3;
   --accent-soft: rgba(33, 150, 243, 0.18);
+  --accent-hover: rgba(33, 150, 243, 0.3);
+  --mainsail-logo-color: #d41216;
+  --control-radius: 7px;
   --danger: #ff6b6b;
   --folder: #87a4bc;
   --file: #8bc1ff;
@@ -63,6 +66,39 @@ button {
   border-bottom: 1px solid var(--border-soft);
 }
 
+.sidebar-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.sidebar-brand-logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  color: var(--mainsail-logo-color);
+  border: 1px solid var(--accent);
+  border-radius: var(--control-radius);
+  background:
+    radial-gradient(circle at 50% 45%, var(--accent-soft), transparent 72%),
+    var(--panel-strong);
+}
+
+.sidebar-theme-logo {
+  display: block;
+  width: 26px;
+  height: 26px;
+  object-fit: contain;
+}
+
+.sidebar-brand-text {
+  min-width: 0;
+}
+
 .sidebar-actions {
   display: inline-flex;
   align-items: center;
@@ -104,6 +140,7 @@ h1 {
   justify-content: center;
   gap: 8px;
   border: 1px solid var(--border);
+  border-radius: var(--control-radius);
   background: var(--panel-strong);
   color: var(--text);
   cursor: pointer;
@@ -117,6 +154,21 @@ h1 {
 
 .help-button {
   color: var(--text);
+}
+
+.icon-button:hover,
+.icon-button:focus-visible,
+.format-button:hover,
+.format-button:focus-visible,
+.save-button:hover,
+.save-button:focus-visible,
+.restart-button:hover,
+.restart-button:focus-visible,
+.machine-power-option:hover,
+.machine-power-option:focus-visible {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  outline: 0;
 }
 
 .active-toggle {
@@ -149,6 +201,18 @@ h1 {
   min-width: 104px;
   height: 34px;
   padding: 0 12px;
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #ffffff;
+}
+
+.save-button:hover,
+.save-button:focus-visible {
+  background: var(--accent-hover);
+}
+
+.save-icon {
+  color: #ffffff;
 }
 
 .format-button {
@@ -612,10 +676,13 @@ h1 {
 .machine-power-menu {
   position: relative;
   display: inline-flex;
+  margin-left: 4px;
 }
 
 .machine-power-trigger {
-  gap: 2px;
+  width: 42px;
+  gap: 4px;
+  padding: 0 7px;
 }
 
 .power-menu-chevron {
@@ -824,14 +891,53 @@ h1 {
 
 .cm-include-link {
   color: #7fd4ff;
-  background: rgba(74, 163, 255, 0.18);
-  border-bottom: 1px solid #7fd4ff;
-  cursor: pointer;
+  background: rgba(74, 163, 255, 0.14);
+  border-bottom: 1px solid rgba(127, 212, 255, 0.75);
 }
 
 .cm-include-link:hover {
   color: #ffffff;
-  background: rgba(74, 163, 255, 0.32);
+  background: rgba(74, 163, 255, 0.22);
+}
+
+.cm-include-open-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 20px;
+  margin-left: 6px;
+  padding: 0;
+  color: #7fd4ff;
+  background: rgba(33, 150, 243, 0.14);
+  border: 1px solid rgba(127, 212, 255, 0.45);
+  border-radius: 3px;
+  cursor: pointer;
+  opacity: 0;
+  vertical-align: text-bottom;
+  transition:
+    opacity 120ms ease,
+    color 120ms ease,
+    background 120ms ease,
+    border-color 120ms ease;
+}
+
+.cm-line:hover .cm-include-open-button,
+.cm-include-open-button:focus-visible {
+  opacity: 1;
+}
+
+.cm-include-open-button:hover,
+.cm-include-open-button:focus-visible {
+  color: #ffffff;
+  background: rgba(33, 150, 243, 0.32);
+  border-color: rgba(127, 212, 255, 0.85);
+  outline: none;
+}
+
+.cm-include-open-button svg {
+  width: 14px;
+  height: 14px;
 }
 
 .cm-url-link {
@@ -1076,6 +1182,7 @@ body.is-resizing {
   height: 28px;
   flex: 0 0 auto;
   border: 1px solid var(--border);
+  border-radius: var(--control-radius);
   background: var(--panel-strong);
   cursor: pointer;
 }
@@ -1112,6 +1219,7 @@ body.is-resizing {
 .options-modal {
   width: min(420px, 100%);
   border: 1px solid var(--border);
+  border-radius: var(--control-radius);
   background: var(--panel);
   box-shadow: 0 22px 58px rgba(0, 0, 0, 0.46);
 }
@@ -1145,6 +1253,7 @@ body.is-resizing {
   width: 30px;
   height: 30px;
   border: 1px solid var(--border);
+  border-radius: var(--control-radius);
   background: var(--panel-strong);
   color: var(--text);
   cursor: pointer;
@@ -1208,6 +1317,7 @@ body.is-resizing {
   gap: 2px;
   min-height: 43px;
   border: 1px solid var(--border);
+  border-radius: var(--control-radius);
   background: var(--panel-soft);
   color: var(--muted);
   padding: 4px 8px 6px;
@@ -1288,6 +1398,7 @@ body.is-resizing {
   align-items: center;
   justify-content: center;
   border: 1px solid var(--border);
+  border-radius: var(--control-radius);
   background: var(--panel-strong);
   color: var(--text);
   cursor: pointer;
@@ -1341,8 +1452,8 @@ body.is-resizing {
 
 .movement-action-button {
   min-height: 30px;
-  background: #ff8700;
-  border-color: #ff8700;
+  background: var(--accent);
+  border-color: var(--accent);
   color: #ffffff;
   font-size: 12px;
 }
@@ -1358,6 +1469,8 @@ body.is-resizing {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
   border: 1px solid var(--border);
+  border-radius: var(--control-radius);
+  overflow: hidden;
 }
 
 .movement-step {
@@ -1423,7 +1536,7 @@ body.is-resizing {
 
 .movement-action-button:hover,
 .movement-action-button:focus-visible {
-  background: #f29a24;
+  background: var(--accent-hover);
 }
 
 .jog-button:disabled,
@@ -1708,6 +1821,7 @@ body.is-resizing {
   width: 78px;
   height: 30px;
   border: 1px solid var(--border);
+  border-radius: var(--control-radius);
   background: var(--panel);
   color: var(--text);
   font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
@@ -1747,6 +1861,7 @@ body.is-resizing {
   width: 100%;
   height: 36px;
   border: 1px solid var(--border);
+  border-radius: var(--control-radius);
   background: var(--panel-soft);
   color: var(--text);
   font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
@@ -1772,6 +1887,7 @@ body.is-resizing {
   min-width: 86px;
   height: 34px;
   border: 1px solid var(--border);
+  border-radius: var(--control-radius);
   background: var(--panel-strong);
   color: var(--text);
   cursor: pointer;
@@ -1806,6 +1922,7 @@ body.is-resizing {
   gap: 8px;
   height: 36px;
   border: 1px solid var(--border);
+  border-radius: var(--control-radius);
   background: var(--panel-soft);
   padding: 0 10px;
 }

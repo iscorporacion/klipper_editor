@@ -462,7 +462,7 @@ function clamp(value: number, min: number, max: number) {
 }
 
 function maxTerminalHeight(viewportHeight: number) {
-  return Math.max(140, viewportHeight - 170);
+  return Math.max(140, viewportHeight - 260);
 }
 
 function translate(messages: Messages, key: string, values: Record<string, string | number> = {}) {
@@ -2487,7 +2487,7 @@ export default function Home() {
         </div>
       </aside>
 
-      <section className="editor-area">
+      <section className={terminalOpen ? "editor-area terminal-open" : "editor-area"}>
         <div className="topbar">
           <div className="quick-toolbar">
             <button className="macro-button" type="button" onClick={openMacrosModal} title={t("actions.macros")}>

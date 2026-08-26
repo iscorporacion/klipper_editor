@@ -14,9 +14,9 @@ import { json } from "@codemirror/lang-json";
 import { javascript } from "@codemirror/lang-javascript";
 import { tags } from "@lezer/highlight";
 import { vscodeDark } from "@uiw/codemirror-theme-vscode";
-import { BsArrowsMove } from "react-icons/bs";
+import { BsArrowsMove, BsSignStopFill } from "react-icons/bs";
 import { FaHotjar } from "react-icons/fa";
-import { FaFloppyDisk } from "react-icons/fa6";
+import { FaFloppyDisk, FaPlay } from "react-icons/fa6";
 import {
   FcAcceptDatabase,
   FcDeleteDatabase,
@@ -26,12 +26,10 @@ import {
   FcRefresh,
   FcSearch,
   FcSettings,
-  FcStart,
   FcUpload
 } from "react-icons/fc";
 import {
   MdDelete,
-  MdEmergency,
   MdFunctions,
   MdHome,
   MdKeyboardArrowDown,
@@ -455,7 +453,7 @@ const defaultMessages: Messages = {
   "macros.loading": "Cargando macros.",
   "macros.empty": "Sin macros detectadas.",
   "macros.count": "{count} macros",
-  "klipperConsole.placeholder": "Escribe G-code o una macro, por ejemplo:\nG28\nBED_MESH_CALIBRATE",
+  "klipperConsole.placeholder": "Escribe G-code o una macro. Ctrl+Enter envia.\n\nEjemplos:\nG28\nBED_MESH_CALIBRATE",
   "klipperConsole.help": "Los comandos se envian a Moonraker como script G-code. Puedes enviar varias lineas.",
   "klipperConsole.empty": "Sin comandos enviados en esta sesion.",
   "klipperConsole.sent": "Enviado",
@@ -2730,11 +2728,11 @@ export default function Home() {
               className="emergency-button"
               type="button"
               title={t("actions.emergencyStop")}
+              aria-label={t("actions.emergencyStop")}
               disabled={emergencyStopping}
               onClick={() => void triggerEmergencyStop()}
             >
-              <MdEmergency className="emergency-button-icon" />
-              {emergencyStopping ? t("actions.emergencyStopping") : t("actions.emergencyStop")}
+              <BsSignStopFill className="emergency-button-icon" />
             </button>
           </div>
           <div className="toolbar-actions">
@@ -3139,7 +3137,7 @@ export default function Home() {
         )}
 
         {dialog && (
-          <div className="modal-backdrop" role="presentation" onMouseDown={closeDialog}>
+          <div className="modal-backdrop dialog-backdrop" role="presentation" onMouseDown={closeDialog}>
             <section
               className="options-modal app-dialog"
               role="dialog"
@@ -3576,7 +3574,7 @@ export default function Home() {
                           disabled={executingMacro !== null}
                           onClick={() => void executeMacro(macro)}
                         >
-                          <FcStart className="macro-start-icon" />
+                          <FaPlay className="macro-start-icon" />
                         </button>
                       </div>
                     ))

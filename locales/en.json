@@ -166,7 +166,7 @@
     "macros.loading": "Loading macros.",
     "macros.empty": "No macros detected.",
     "macros.count": "{count} macros",
-    "klipperConsole.placeholder": "Enter G-code or a macro, for example:\nG28\nBED_MESH_CALIBRATE",
+    "klipperConsole.placeholder": "Enter G-code or a macro. Ctrl+Enter sends it.\n\nExamples:\nG28\nBED_MESH_CALIBRATE",
     "klipperConsole.help": "Commands are sent to Moonraker as a G-code script. You can send multiple lines.",
     "klipperConsole.empty": "No commands sent in this session.",
     "klipperConsole.sent": "Sent",

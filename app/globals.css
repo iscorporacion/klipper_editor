@@ -236,14 +236,13 @@ h1 {
 }
 
 .emergency-button {
-  min-width: 172px;
+  width: 34px;
   height: 34px;
-  padding: 0 12px;
+  min-width: 34px;
+  padding: 0;
   border-color: rgba(255, 61, 61, 0.78);
   background: rgba(255, 61, 61, 0.18);
   color: #ffd6d6;
-  font-size: 12px;
-  font-weight: 800;
 }
 
 .emergency-button:hover,
@@ -259,8 +258,8 @@ h1 {
 }
 
 .emergency-button-icon {
-  width: 19px;
-  height: 19px;
+  width: 20px;
+  height: 20px;
   flex: 0 0 auto;
   color: #ff3d3d;
 }
@@ -1421,6 +1420,10 @@ body.is-resizing-row {
   background: rgba(0, 0, 0, 0.48);
 }
 
+.dialog-backdrop {
+  z-index: 90;
+}
+
 .options-modal {
   width: min(420px, 100%);
   border: 1px solid var(--border);
@@ -2273,8 +2276,9 @@ body.is-resizing-row {
 }
 
 .macro-start-icon {
-  width: 26px;
-  height: 26px;
+  width: 18px;
+  height: 18px;
+  color: var(--accent);
 }
 
 .macro-row-path {

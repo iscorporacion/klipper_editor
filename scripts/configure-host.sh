@@ -9,12 +9,20 @@ PUBLIC_HOST="${KLIPPER_EDITOR_PUBLIC_HOST:-}"
 SERVICE_NAME="${KLIPPER_EDITOR_SERVICE_NAME:-klipper-editor}"
 CONFIGURE_UPDATE_MANAGER="${KLIPPER_EDITOR_CONFIGURE_UPDATE_MANAGER:-true}"
 CONFIGURE_MAINSAIL_LINK="${KLIPPER_EDITOR_CONFIGURE_MAINSAIL_LINK:-true}"
+ENABLE_TERMINAL="${KLIPPER_EDITOR_ENABLE_TERMINAL:-false}"
 NGINX_SNIPPET="/etc/nginx/snippets/${APP_NAME}.conf"
 SYSTEMD_UNIT="/etc/systemd/system/${SERVICE_NAME}.service"
 APP_DIR="${KLIPPER_EDITOR_APP_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 START_COMMAND="${KLIPPER_EDITOR_START_COMMAND:-/usr/bin/env npm run start -- -p ${APP_PORT}}"
 SERVICE_USER="${SUDO_USER:-$USER}"
 SERVICE_GROUP="$(id -gn "${SERVICE_USER}")"
+
+if [[ -z "${KLIPPER_EDITOR_ENABLE_TERMINAL+x}" && -f "${APP_DIR}/.env.production.local" ]]; then
+  EXISTING_ENABLE_TERMINAL="$(grep -E '^KLIPPER_EDITOR_ENABLE_TERMINAL=' "${APP_DIR}/.env.production.local" | tail -n 1 | cut -d= -f2- || true)"
+  if [[ -n "${EXISTING_ENABLE_TERMINAL}" ]]; then
+    ENABLE_TERMINAL="${EXISTING_ENABLE_TERMINAL}"
+  fi
+fi
 
 log() {
   printf '%s\n' "$*"
@@ -236,6 +244,7 @@ log "Moonraker URL: ${MOONRAKER_URL}"
 log "Base path: ${BASE_PATH}"
 log "Port: ${APP_PORT}"
 log "Mainsail sidebar link: ${CONFIGURE_MAINSAIL_LINK}"
+log "Terminal enabled: ${ENABLE_TERMINAL}"
 if [[ -n "${PUBLIC_HOST}" ]]; then
   log "Public host: ${PUBLIC_HOST}"
 fi
@@ -248,6 +257,8 @@ NEXT_PUBLIC_BASE_PATH=${BASE_PATH}
 PORT=${APP_PORT}
 NODE_ENV=production
 KLIPPER_EDITOR_CONFIGURE_MAINSAIL_LINK=${CONFIGURE_MAINSAIL_LINK}
+KLIPPER_EDITOR_ENABLE_TERMINAL=${ENABLE_TERMINAL}
+KLIPPER_EDITOR_TERMINAL_SHELL=${KLIPPER_EDITOR_TERMINAL_SHELL:-}
 ENV
 
 run_sudo tee "${SYSTEMD_UNIT}" >/dev/null <<UNIT

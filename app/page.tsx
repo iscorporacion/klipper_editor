@@ -35,7 +35,8 @@ import {
   MdKeyboardArrowDown,
   MdKeyboardArrowLeft,
   MdKeyboardArrowRight,
-  MdKeyboardArrowUp
+  MdKeyboardArrowUp,
+  MdTerminal
 } from "react-icons/md";
 import { TbActivityHeartbeat } from "react-icons/tb";
 import { IoClose, IoDocumentTextOutline, IoHelpCircleOutline, IoPower } from "react-icons/io5";
@@ -132,6 +133,20 @@ type MachinePowerAction = "shutdown" | "reboot";
 type AxisLimit = {
   min: number;
   max: number;
+};
+
+type TerminalChunk = {
+  id: number;
+  text: string;
+};
+
+type TerminalPayload = {
+  id: string;
+  cursor: number;
+  alive: boolean;
+  exitCode: number | null;
+  output: TerminalChunk[];
+  error?: string;
 };
 
 const fallbackMainsailTheme: MainsailVisualTheme = {
@@ -239,6 +254,7 @@ type MacroEntry = {
   title: string;
   path: string;
   line: number;
+  description?: string;
 };
 
 type PendingJump = {
@@ -293,6 +309,12 @@ const defaultMessages: Messages = {
   "actions.save": "Guardar",
   "actions.saving": "Guardando",
   "actions.options": "Opciones",
+  "actions.terminal": "Terminal",
+  "actions.openTerminal": "Abrir terminal",
+  "actions.closeTerminal": "Ocultar terminal",
+  "actions.connectTerminal": "Conectar terminal",
+  "actions.disconnectTerminal": "Desconectar terminal",
+  "actions.runTerminalCommand": "Ejecutar",
   "actions.restartFirmware": "Reiniciar firmware",
   "actions.restartingFirmware": "Reiniciando",
   "status.ready": "Listo",
@@ -323,6 +345,9 @@ const defaultMessages: Messages = {
   "status.savedWithBackup": "Guardado {path}; copia creada en {backupPath}",
   "status.firmwareRestarting": "Reiniciando firmware",
   "status.firmwareRestarted": "Reinicio de firmware solicitado",
+  "status.terminalConnected": "Terminal conectada",
+  "status.terminalDisconnected": "Terminal desconectada",
+  "status.terminalRunning": "Ejecutando comando",
   "status.printerState": "Impresora: {state}",
   "status.resolvingInclude": "Resolviendo include {include}",
   "status.wildcardInclude": "Include con comodin: abierto {path}; {count} coincidencias",
@@ -348,6 +373,9 @@ const defaultMessages: Messages = {
   "errors.saveGeneric": "Error al guardar",
   "errors.restartFirmware": "No se pudo reiniciar el firmware",
   "errors.restartPrinting": "No se puede reiniciar firmware mientras hay una impresion en curso",
+  "errors.terminalDisabled": "La terminal esta deshabilitada en este host",
+  "errors.terminalConnection": "No se pudo conectar la terminal",
+  "errors.terminalCommand": "No se pudo enviar el comando",
   "errors.printerStatus": "No se pudo consultar Moonraker",
   "errors.includeNotFound": "No se encontro el include",
   "errors.includeOpen": "No se pudo abrir el include",
@@ -357,9 +385,11 @@ const defaultMessages: Messages = {
   "confirm.executeMacro": "Ejecutar macro {name} en la impresora?",
   "prompt.newFilePath": "Ruta del nuevo archivo",
   "panels.openEditors": "Editores abiertos",
+  "panels.terminal": "Terminal",
   "panels.includes": "Includes",
   "panels.sections": "Sesiones",
   "empty.openFile": "Abre un archivo del arbol.",
+  "empty.terminal": "Terminal deshabilitada. Activa KLIPPER_EDITOR_ENABLE_TERMINAL=true en el servicio.",
   "empty.includes": "Sin includes detectados.",
   "empty.sections": "Sin sesiones detectadas.",
   "empty.sectionMatches": "Sin sesiones que coincidan.",
@@ -993,6 +1023,15 @@ export default function Home() {
   const [runningQuickCommand, setRunningQuickCommand] = useState<QuickCommand | null>(null);
   const [machinePowerMenuOpen, setMachinePowerMenuOpen] = useState(false);
   const [runningMachinePowerAction, setRunningMachinePowerAction] = useState<MachinePowerAction | null>(null);
+  const [terminalOpen, setTerminalOpen] = useState(false);
+  const [terminalEnabled, setTerminalEnabled] = useState(false);
+  const [terminalSessionId, setTerminalSessionId] = useState<string | null>(null);
+  const [terminalOutput, setTerminalOutput] = useState("");
+  const [terminalInput, setTerminalInput] = useState("");
+  const [terminalCursor, setTerminalCursor] = useState(0);
+  const [terminalAlive, setTerminalAlive] = useState(false);
+  const [terminalBusy, setTerminalBusy] = useState(false);
+  const [terminalError, setTerminalError] = useState<string | null>(null);
   const [outlineWidth, setOutlineWidth] = useState(320);
   const [includePanelHeight, setIncludePanelHeight] = useState(240);
   const [sectionPreview, setSectionPreview] = useState<SectionPreview | null>(null);
@@ -1003,6 +1042,7 @@ export default function Home() {
   const uploadInputRef = useRef<HTMLInputElement | null>(null);
   const heatersRef = useRef<HeaterStatus[]>([]);
   const machinePowerMenuRef = useRef<HTMLDivElement | null>(null);
+  const terminalOutputRef = useRef<HTMLPreElement | null>(null);
 
   const activeFile = openFiles.find((file) => file.path === activePath);
   const openPathSet = useMemo(() => new Set(openFiles.map((file) => file.path)), [openFiles]);
@@ -1030,7 +1070,7 @@ export default function Home() {
     if (!query) return macros;
 
     return macros.filter((macro) =>
-      `${macro.name} ${macro.path} ${macro.title}`.toLowerCase().includes(query)
+      `${macro.name} ${macro.path} ${macro.title} ${macro.description ?? ""}`.toLowerCase().includes(query)
     );
   }, [macroSearch, macros]);
   const anyHeaterActive = heaters.some((heater) => heater.target > 0);
@@ -1067,6 +1107,25 @@ export default function Home() {
   const t = useCallback(
     (key: string, values?: Record<string, string | number>) => translate(messages, key, values),
     [messages]
+  );
+
+  const appendTerminalOutput = useCallback((chunks: TerminalChunk[]) => {
+    if (chunks.length === 0) return;
+
+    setTerminalOutput((current) => {
+      const next = `${current}${chunks.map((chunk) => chunk.text).join("")}`;
+      return next.length > 80_000 ? next.slice(next.length - 80_000) : next;
+    });
+  }, []);
+
+  const applyTerminalPayload = useCallback(
+    (payload: TerminalPayload) => {
+      appendTerminalOutput(payload.output ?? []);
+      setTerminalCursor(payload.cursor ?? 0);
+      setTerminalAlive(Boolean(payload.alive));
+      setTerminalSessionId(payload.id);
+    },
+    [appendTerminalOutput]
   );
 
   const cacheAndSetHeaters = useCallback((nextHeaters: HeaterStatus[]) => {
@@ -1205,6 +1264,133 @@ export default function Home() {
       });
     }
   }, []);
+
+  const loadTerminalStatus = useCallback(async () => {
+    try {
+      const response = await fetch(apiPath("/api/terminal/status"), { cache: "no-store" });
+      const payload = (await response.json()) as { enabled?: boolean; shell?: string; error?: string };
+      if (!response.ok) throw new Error(payload.error ?? t("errors.terminalConnection"));
+
+      const enabled = Boolean(payload.enabled);
+      setTerminalEnabled(enabled);
+      setTerminalError(enabled ? null : t("errors.terminalDisabled"));
+      return enabled;
+    } catch (error) {
+      setTerminalEnabled(false);
+      setTerminalError(error instanceof Error ? error.message : t("errors.terminalConnection"));
+      return false;
+    }
+  }, [t]);
+
+  const startTerminalSession = useCallback(async () => {
+    if (terminalSessionId && terminalAlive) return terminalSessionId;
+
+    const enabled = terminalEnabled || (await loadTerminalStatus());
+    if (!enabled) return undefined;
+
+    setTerminalBusy(true);
+    setTerminalError(null);
+
+    try {
+      const response = await fetch(apiPath("/api/terminal/session"), { method: "POST" });
+      const payload = (await response.json()) as TerminalPayload;
+      if (!response.ok) throw new Error(payload.error ?? t("errors.terminalConnection"));
+
+      setTerminalOutput("");
+      applyTerminalPayload(payload);
+      setMessage(t("status.terminalConnected"));
+      return payload.id;
+    } catch (error) {
+      const nextError = error instanceof Error ? error.message : t("errors.terminalConnection");
+      setTerminalError(nextError);
+      setMessage(nextError);
+      return undefined;
+    } finally {
+      setTerminalBusy(false);
+    }
+  }, [applyTerminalPayload, loadTerminalStatus, t, terminalAlive, terminalEnabled, terminalSessionId]);
+
+  const pollTerminalSession = useCallback(async () => {
+    if (!terminalSessionId) return;
+
+    try {
+      const response = await fetch(
+        apiPath(`/api/terminal/session?id=${encodeURIComponent(terminalSessionId)}&cursor=${terminalCursor}`),
+        { cache: "no-store" }
+      );
+      const payload = (await response.json()) as TerminalPayload;
+      if (!response.ok) throw new Error(payload.error ?? t("errors.terminalConnection"));
+      applyTerminalPayload(payload);
+      setTerminalError(null);
+    } catch (error) {
+      const nextError = error instanceof Error ? error.message : t("errors.terminalConnection");
+      setTerminalError(nextError);
+      setTerminalAlive(false);
+    }
+  }, [applyTerminalPayload, t, terminalCursor, terminalSessionId]);
+
+  const toggleTerminal = useCallback(async () => {
+    if (terminalOpen) {
+      setTerminalOpen(false);
+      return;
+    }
+
+    setTerminalOpen(true);
+    const enabled = terminalEnabled || (await loadTerminalStatus());
+    if (enabled && !terminalSessionId) {
+      await startTerminalSession();
+    }
+  }, [loadTerminalStatus, startTerminalSession, terminalEnabled, terminalOpen, terminalSessionId]);
+
+  const disconnectTerminal = useCallback(async () => {
+    const id = terminalSessionId;
+    if (!id) return;
+
+    setTerminalBusy(true);
+
+    try {
+      await fetch(apiPath(`/api/terminal/session?id=${encodeURIComponent(id)}`), { method: "DELETE" });
+    } finally {
+      setTerminalBusy(false);
+      setTerminalSessionId(null);
+      setTerminalAlive(false);
+      setTerminalCursor(0);
+      setTerminalOutput((current) => `${current}\n${t("status.terminalDisconnected")}\n`);
+      setMessage(t("status.terminalDisconnected"));
+    }
+  }, [t, terminalSessionId]);
+
+  const submitTerminalCommand = useCallback(
+    async (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+
+      const command = terminalInput.trim();
+      if (!command || terminalBusy) return;
+
+      const id = terminalSessionId && terminalAlive ? terminalSessionId : await startTerminalSession();
+      if (!id) return;
+
+      setTerminalInput("");
+      setTerminalOutput((current) => `${current}$ ${command}\n`);
+      setMessage(t("status.terminalRunning"));
+
+      try {
+        const response = await fetch(apiPath("/api/terminal/input"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id, input: `${command}\n` })
+        });
+        const payload = (await response.json()) as TerminalPayload;
+        if (!response.ok) throw new Error(payload.error ?? t("errors.terminalCommand"));
+        applyTerminalPayload(payload);
+      } catch (error) {
+        const nextError = error instanceof Error ? error.message : t("errors.terminalCommand");
+        setTerminalError(nextError);
+        setMessage(nextError);
+      }
+    },
+    [applyTerminalPayload, startTerminalSession, t, terminalAlive, terminalBusy, terminalInput, terminalSessionId]
+  );
 
   const loadHeaters = useCallback(
     async (showError = false, refreshCatalog = false) => {
@@ -1997,6 +2183,10 @@ export default function Home() {
   }, [loadMainsailTheme]);
 
   useEffect(() => {
+    void loadTerminalStatus();
+  }, [loadTerminalStatus]);
+
+  useEffect(() => {
     void loadPrinterStatus();
     const interval = window.setInterval(() => void loadPrinterStatus(), 5000);
     return () => window.clearInterval(interval);
@@ -2054,6 +2244,21 @@ export default function Home() {
       window.removeEventListener("keydown", closeOnEscape);
     };
   }, [machinePowerMenuOpen]);
+
+  useEffect(() => {
+    if (!terminalOpen || !terminalSessionId) return;
+
+    void pollTerminalSession();
+    const interval = window.setInterval(() => void pollTerminalSession(), 1000);
+    return () => window.clearInterval(interval);
+  }, [pollTerminalSession, terminalOpen, terminalSessionId]);
+
+  useEffect(() => {
+    if (!terminalOpen) return;
+    const output = terminalOutputRef.current;
+    if (!output) return;
+    output.scrollTop = output.scrollHeight;
+  }, [terminalOpen, terminalOutput]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -2320,6 +2525,16 @@ export default function Home() {
             </a>
             <button className="icon-button" type="button" onClick={() => setOptionsOpen(true)} title={t("actions.options")}>
               <FcSettings className="action-icon" />
+            </button>
+            <button
+              className={terminalOpen ? "icon-button active-toggle" : "icon-button"}
+              type="button"
+              onClick={() => void toggleTerminal()}
+              title={terminalOpen ? t("actions.closeTerminal") : t("actions.openTerminal")}
+              aria-label={terminalOpen ? t("actions.closeTerminal") : t("actions.openTerminal")}
+              aria-pressed={terminalOpen}
+            >
+              <MdTerminal className="action-icon plain-action-icon" />
             </button>
             <button
               className="restart-button"
@@ -2602,6 +2817,61 @@ export default function Home() {
             </div>
           )}
         </div>
+
+        {terminalOpen && (
+          <section className="terminal-panel" aria-label={t("panels.terminal")}>
+            <div className="terminal-header">
+              <div className="terminal-title">
+                <MdTerminal className="terminal-title-icon" />
+                <span>{t("panels.terminal")}</span>
+                <small>{terminalAlive ? t("status.terminalConnected") : t("status.terminalDisconnected")}</small>
+              </div>
+              <div className="terminal-actions">
+                <button
+                  className="terminal-button"
+                  type="button"
+                  disabled={terminalBusy || terminalAlive}
+                  onClick={() => void startTerminalSession()}
+                >
+                  {t("actions.connectTerminal")}
+                </button>
+                <button
+                  className="terminal-button"
+                  type="button"
+                  disabled={terminalBusy || !terminalSessionId}
+                  onClick={() => void disconnectTerminal()}
+                >
+                  {t("actions.disconnectTerminal")}
+                </button>
+                <button className="terminal-icon-button" type="button" onClick={() => setTerminalOpen(false)}>
+                  <IoClose className="terminal-close-icon" />
+                </button>
+              </div>
+            </div>
+            <pre ref={terminalOutputRef} className="terminal-output">
+              {terminalOutput || terminalError || t("empty.terminal")}
+            </pre>
+            <form className="terminal-input-row" onSubmit={submitTerminalCommand}>
+              <span className="terminal-prompt">$</span>
+              <input
+                value={terminalInput}
+                disabled={!terminalEnabled || terminalBusy}
+                spellCheck={false}
+                autoCapitalize="off"
+                autoComplete="off"
+                onChange={(event) => setTerminalInput(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") {
+                    setTerminalInput("");
+                  }
+                }}
+              />
+              <button className="terminal-button primary" type="submit" disabled={!terminalEnabled || terminalBusy || !terminalInput.trim()}>
+                {t("actions.runTerminalCommand")}
+              </button>
+            </form>
+          </section>
+        )}
 
         {dialog && (
           <div className="modal-backdrop" role="presentation" onMouseDown={closeDialog}>
@@ -3021,12 +3291,13 @@ export default function Home() {
                       <div
                         key={`${macro.path}-${macro.line}-${macro.name}`}
                         className="macro-row"
-                        title={`${macro.title} - ${macro.path}:${macro.line}`}
+                        title={`${macro.title} - ${macro.path}:${macro.line}${macro.description ? ` - ${macro.description}` : ""}`}
                       >
                         <button className="macro-open-button" type="button" onClick={() => void openMacro(macro)}>
                           <MdFunctions className="macro-row-icon" />
                           <span className="macro-row-main">
                             <span className="macro-row-name">{macro.name}</span>
+                            {macro.description && <span className="macro-row-description">{macro.description}</span>}
                             <span className="macro-row-path">
                               {macro.path}:{macro.line}
                             </span>

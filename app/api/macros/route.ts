@@ -8,27 +8,70 @@ type MacroEntry = {
   title: string;
   path: string;
   line: number;
+  description?: string;
 };
 
 const maxDepth = 12;
 const rootConfigPath = "printer.cfg";
 
 function getMacrosFromContent(relativePath: string, content: string): MacroEntry[] {
-  return content
-    .split(/\r?\n/)
-    .map((line, index) => {
-      const match = line.match(/^\s*\[gcode_macro\s+([^\]]+)\]/i);
-      if (!match) return undefined;
+  const lines = content.split(/\r?\n/);
+  const macros: MacroEntry[] = [];
 
-      const name = match[1].trim();
-      return {
-        name,
-        title: `[gcode_macro ${name}]`,
-        path: relativePath,
-        line: index + 1
-      };
-    })
-    .filter((macro): macro is MacroEntry => Boolean(macro));
+  for (let index = 0; index < lines.length; index += 1) {
+    const match = lines[index].match(/^\s*\[gcode_macro\s+([^\]]+)\]/i);
+    if (!match) continue;
+
+    const name = match[1].trim();
+    const blockLines: string[] = [];
+
+    for (let blockIndex = index + 1; blockIndex < lines.length; blockIndex += 1) {
+      if (/^\s*\[[^\]]+\]/.test(lines[blockIndex])) break;
+      blockLines.push(lines[blockIndex]);
+    }
+
+    macros.push({
+      name,
+      title: `[gcode_macro ${name}]`,
+      path: relativePath,
+      line: index + 1,
+      description: getMacroDescription(blockLines)
+    });
+  }
+
+  return macros;
+}
+
+function getMacroDescription(lines: string[]) {
+  const description: string[] = [];
+  let collecting = false;
+  let baseIndent = 0;
+
+  for (const line of lines) {
+    if (!collecting) {
+      const match = line.match(/^(\s*)description\s*:\s*(.*)$/i);
+      if (!match) continue;
+
+      collecting = true;
+      baseIndent = match[1].length;
+      if (match[2].trim()) {
+        description.push(match[2].trim());
+      }
+      continue;
+    }
+
+    const keyMatch = line.match(/^(\s*)[A-Za-z0-9_]+\s*:/);
+    if (keyMatch && keyMatch[1].length <= baseIndent) break;
+
+    description.push(line.trim());
+  }
+
+  const normalized = description
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return normalized || undefined;
 }
 
 function getIncludesFromContent(content: string) {

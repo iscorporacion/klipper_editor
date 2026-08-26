@@ -63,6 +63,7 @@ RATOS_VIEWER_ROOT=/home/pi/printer_data/config
 RATOS_MOONRAKER_URL=http://127.0.0.1:7125
 NEXT_PUBLIC_BASE_PATH=/editor
 PORT=3007
+KLIPPER_EDITOR_ENABLE_TERMINAL=false
 ```
 
 Default URL:
@@ -79,6 +80,14 @@ http://127.0.0.1:7125
 
 That is the correct value when Klipper Editor runs on the same printer host as Moonraker.
 
+Optional terminal panel:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/iscorporacion/klipper_editor/main/install-release.sh | KLIPPER_EDITOR_ENABLE_TERMINAL=true bash
+```
+
+This starts a local shell on the printer host as the Klipper Editor service user. Keep it disabled on untrusted networks.
+
 Useful overrides:
 
 ```bash
@@ -86,6 +95,7 @@ RATOS_VIEWER_ROOT=/home/biqu/printer_data/config \
 RATOS_MOONRAKER_URL=http://127.0.0.1:7125 \
 NEXT_PUBLIC_BASE_PATH=/editor \
 PORT=3007 \
+KLIPPER_EDITOR_ENABLE_TERMINAL=false \
 bash install.sh
 ```
 

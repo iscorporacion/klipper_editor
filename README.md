@@ -24,6 +24,7 @@ Features:
 - home buttons, movement modal, absolute axis moves, and Z-offset controls
 - emergency stop button
 - printer shutdown and reboot menu through Moonraker
+- optional local host terminal panel, disabled by default
 - file upload, blank file creation, file download, and delete confirmation
 - image preview for supported image files
 - backup copies on save, configurable from options
@@ -43,6 +44,7 @@ Create `.env.local` if you want to connect to a printer while developing:
 
 ```env
 RATOS_MOONRAKER_URL=http://<printer-ip>:7125
+KLIPPER_EDITOR_ENABLE_TERMINAL=false
 ```
 
 ## Install on printer host
@@ -56,6 +58,14 @@ curl -fsSL https://raw.githubusercontent.com/iscorporacion/klipper_editor/main/i
 This downloads the precompiled GitHub Release and avoids building Next.js on the printer.
 The installer also registers Klipper Editor in Moonraker Update Manager so Mainsail can show future updates.
 It also adds a Mainsail sidebar link named `code editor` through `printer_data/config/.theme/navi.json`.
+
+To enable the optional terminal panel on the printer host:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/iscorporacion/klipper_editor/main/install-release.sh | KLIPPER_EDITOR_ENABLE_TERMINAL=true bash
+```
+
+The terminal runs commands as the Klipper Editor systemd service user, so only enable it on trusted networks.
 
 Source install, useful for development hosts:
 

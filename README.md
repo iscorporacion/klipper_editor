@@ -23,6 +23,7 @@ Features:
 - heater status, cached heater list, target temperature controls, and cooldown shortcuts
 - home buttons, movement modal, absolute axis moves, and Z-offset controls
 - emergency stop button
+- printer shutdown and reboot menu through Moonraker
 - file upload, blank file creation, file download, and delete confirmation
 - image preview for supported image files
 - backup copies on save, configurable from options

@@ -70,6 +70,11 @@ const features = [
     text: "Permite reiniciar firmware manualmente y bloquea la accion mientras hay una impresion activa."
   },
   {
+    icon: IoPower,
+    title: "Apagar o reiniciar impresora",
+    text: "Agrega un menu de energia para apagar o reiniciar el host de la impresora desde Moonraker, bloqueado durante impresion activa."
+  },
+  {
     icon: FaUpload,
     title: "Subir y crear archivos",
     text: "Permite subir archivos de configuracion y crear archivos en blanco usando dialogos propios de la aplicacion."

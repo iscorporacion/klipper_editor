@@ -118,6 +118,16 @@ export async function emergencyStop() {
   return payload?.result ?? payload;
 }
 
+export async function shutdownMachine() {
+  const payload = await moonrakerFetch("/machine/shutdown", { method: "POST" });
+  return payload?.result ?? payload;
+}
+
+export async function rebootMachine() {
+  const payload = await moonrakerFetch("/machine/reboot", { method: "POST" });
+  return payload?.result ?? payload;
+}
+
 export async function runGcodeScript(script: string) {
   const payload = await moonrakerFetch("/printer/gcode/script", {
     method: "POST",

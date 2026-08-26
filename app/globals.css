@@ -97,7 +97,8 @@ h1 {
 .save-button,
 .format-button,
 .emergency-button,
-.restart-button {
+.restart-button,
+.machine-power-option {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -197,7 +198,9 @@ h1 {
 .save-button:disabled,
 .format-button:disabled,
 .emergency-button:disabled,
-.restart-button:disabled {
+.restart-button:disabled,
+.machine-power-trigger:disabled,
+.machine-power-option:disabled {
   cursor: default;
   opacity: 0.45;
 }
@@ -603,6 +606,73 @@ h1 {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  flex: 0 0 auto;
+}
+
+.machine-power-menu {
+  position: relative;
+  display: inline-flex;
+}
+
+.machine-power-trigger {
+  gap: 2px;
+}
+
+.power-menu-chevron {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+
+.machine-power-popover {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 7px);
+  z-index: 55;
+  display: grid;
+  min-width: 190px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.42);
+}
+
+.machine-power-option {
+  justify-content: flex-start;
+  width: 100%;
+  min-height: 36px;
+  border-width: 0 0 1px;
+  border-color: var(--border-soft);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  padding: 0 10px;
+}
+
+.machine-power-option:last-child {
+  border-bottom: 0;
+}
+
+.machine-power-option:hover,
+.machine-power-option:focus-visible {
+  border-color: var(--border-soft);
+  background: var(--accent-soft);
+  outline: 0;
+}
+
+.machine-power-option.danger {
+  color: #ffd4d4;
+}
+
+.machine-power-option.danger .machine-power-option-icon {
+  color: var(--danger);
+}
+
+.machine-power-option-icon {
+  width: 18px;
+  height: 18px;
   flex: 0 0 auto;
 }
 

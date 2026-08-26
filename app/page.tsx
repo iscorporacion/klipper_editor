@@ -115,6 +115,7 @@ type PrinterStatus = {
 
 type QuickCommand = "home-all" | "home-x" | "home-y" | "home-z" | "z-tilt";
 type JogAxis = "x" | "y" | "z";
+type MachinePowerAction = "shutdown" | "reboot";
 type AxisLimit = {
   min: number;
   max: number;
@@ -902,6 +903,8 @@ export default function Home() {
   const [restartingFirmware, setRestartingFirmware] = useState(false);
   const [emergencyStopping, setEmergencyStopping] = useState(false);
   const [runningQuickCommand, setRunningQuickCommand] = useState<QuickCommand | null>(null);
+  const [machinePowerMenuOpen, setMachinePowerMenuOpen] = useState(false);
+  const [runningMachinePowerAction, setRunningMachinePowerAction] = useState<MachinePowerAction | null>(null);
   const [outlineWidth, setOutlineWidth] = useState(320);
   const [includePanelHeight, setIncludePanelHeight] = useState(240);
   const [sectionPreview, setSectionPreview] = useState<SectionPreview | null>(null);
@@ -911,6 +914,7 @@ export default function Home() {
   const previewCloseTimerRef = useRef<number | null>(null);
   const uploadInputRef = useRef<HTMLInputElement | null>(null);
   const heatersRef = useRef<HeaterStatus[]>([]);
+  const machinePowerMenuRef = useRef<HTMLDivElement | null>(null);
 
   const activeFile = openFiles.find((file) => file.path === activePath);
   const openPathSet = useMemo(() => new Set(openFiles.map((file) => file.path)), [openFiles]);
@@ -1322,6 +1326,49 @@ export default function Home() {
       setEmergencyStopping(false);
     }
   }, [emergencyStopping, loadHeaters, loadPrinterStatus, t]);
+
+  const runMachinePowerAction = useCallback(
+    async (action: MachinePowerAction) => {
+      if (runningMachinePowerAction) return;
+
+      if (!printerStatus || printerStatus.error) {
+        setMessage(printerStatus?.error ?? t("errors.printerStatus"));
+        return;
+      }
+
+      if (printerStatus.printing) {
+        setMessage(t("errors.machinePowerPrinting"));
+        return;
+      }
+
+      const label = action === "shutdown" ? t("actions.shutdownPrinter") : t("actions.rebootPrinter");
+      const confirmMessage =
+        action === "shutdown" ? t("confirm.shutdownPrinter") : t("confirm.rebootPrinter");
+
+      if (!(await confirmDialog(label, confirmMessage))) return;
+
+      setMachinePowerMenuOpen(false);
+      setRunningMachinePowerAction(action);
+      setMessage(action === "shutdown" ? t("status.shuttingDownPrinter") : t("status.rebootingPrinter"));
+
+      try {
+        const response = await fetch(apiPath("/api/printer/machine-power"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action })
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error ?? t("errors.machinePower"));
+
+        setMessage(action === "shutdown" ? t("status.shutdownPrinterSent") : t("status.rebootPrinterSent"));
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : t("errors.machinePower"));
+      } finally {
+        setRunningMachinePowerAction(null);
+      }
+    },
+    [confirmDialog, printerStatus, runningMachinePowerAction, t]
+  );
 
   const setHeaterTargetValue = useCallback((heaterName: string, value: string) => {
     setHeaterTargets((targets) => ({ ...targets, [heaterName]: value }));
@@ -1841,6 +1888,28 @@ export default function Home() {
   }, [activePath]);
 
   useEffect(() => {
+    if (!machinePowerMenuOpen) return;
+
+    const closeOnPointerDown = (event: PointerEvent) => {
+      if (!machinePowerMenuRef.current?.contains(event.target as Node)) {
+        setMachinePowerMenuOpen(false);
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setMachinePowerMenuOpen(false);
+      }
+    };
+
+    window.addEventListener("pointerdown", closeOnPointerDown);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      window.removeEventListener("pointerdown", closeOnPointerDown);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [machinePowerMenuOpen]);
+
+  useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
         event.preventDefault();
@@ -1882,6 +1951,8 @@ export default function Home() {
     Boolean(printerStatus.error) ||
     printerStatus.printing ||
     !printerStatus.allAxesHomed;
+  const machinePowerDisabled =
+    runningMachinePowerAction !== null || !printerStatus || Boolean(printerStatus.error) || printerStatus.printing;
 
   return (
     <main className="workspace-shell">
@@ -2123,6 +2194,53 @@ export default function Home() {
               <FcUpload className="action-icon" />
               {activeFile?.saving ? t("actions.saving") : t("actions.save")}
             </button>
+            <div className="machine-power-menu" ref={machinePowerMenuRef}>
+              <button
+                className="icon-button machine-power-trigger"
+                type="button"
+                disabled={machinePowerDisabled}
+                title={
+                  printerStatus?.printing
+                    ? t("errors.machinePowerPrinting")
+                    : printerStatus?.error
+                      ? printerStatus.error
+                      : t("actions.machinePower")
+                }
+                aria-label={t("actions.machinePower")}
+                aria-haspopup="menu"
+                aria-expanded={machinePowerMenuOpen}
+                onClick={() => setMachinePowerMenuOpen((open) => !open)}
+              >
+                <IoPower className="power-icon" />
+                <MdKeyboardArrowDown className="power-menu-chevron" />
+              </button>
+              {machinePowerMenuOpen && (
+                <div className="machine-power-popover" role="menu">
+                  <button
+                    className="machine-power-option danger"
+                    type="button"
+                    role="menuitem"
+                    disabled={runningMachinePowerAction !== null}
+                    onClick={() => void runMachinePowerAction("shutdown")}
+                  >
+                    <IoPower className="machine-power-option-icon" />
+                    {runningMachinePowerAction === "shutdown"
+                      ? t("actions.shuttingDownPrinter")
+                      : t("actions.shutdownPrinter")}
+                  </button>
+                  <button
+                    className="machine-power-option"
+                    type="button"
+                    role="menuitem"
+                    disabled={runningMachinePowerAction !== null}
+                    onClick={() => void runMachinePowerAction("reboot")}
+                  >
+                    <FcRefresh className="machine-power-option-icon" />
+                    {runningMachinePowerAction === "reboot" ? t("actions.rebootingPrinter") : t("actions.rebootPrinter")}
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 

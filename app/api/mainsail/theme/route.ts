@@ -8,7 +8,21 @@ const fallbackTheme = {
   theme: "mainsail",
   logo: "#D41216",
   primary: "#2196f3",
-  logoPath: null as string | null
+  logoPath: null as string | null,
+  logoUrl: "/mainsail-themes/logo.svg",
+  logoMask: true
+};
+
+const builtInThemeLogos: Record<string, string> = {
+  btt: "/mainsail-themes/sidebarLogo-btt.svg",
+  klipper: "/mainsail-themes/sidebarLogo-klipper.svg",
+  ldo: "/mainsail-themes/sidebarLogo-ldo.svg",
+  mainsail: "/mainsail-themes/logo.svg",
+  multec: "/mainsail-themes/sidebarLogo-multec.svg",
+  prusa: "/mainsail-themes/sidebarLogo-prusa.svg",
+  voron: "/mainsail-themes/sidebarLogo-voron.svg",
+  vzbot: "/mainsail-themes/sidebarLogo-vzbot.svg",
+  yumi: "/mainsail-themes/sidebarLogo-yumi.svg"
 };
 
 async function firstExistingThemeLogo(mode: string) {
@@ -46,10 +60,13 @@ export async function GET() {
   try {
     const settings = await getMainsailUiSettings();
     const logoPath = await firstExistingThemeLogo(settings.mode);
+    const logoUrl = logoPath ? null : builtInThemeLogos[settings.theme.toLowerCase()] ?? fallbackTheme.logoUrl;
 
     return NextResponse.json({
       ...settings,
-      logoPath
+      logoPath,
+      logoUrl,
+      logoMask: Boolean(logoUrl)
     });
   } catch (error) {
     return NextResponse.json({

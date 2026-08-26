@@ -95,6 +95,10 @@ button {
   object-fit: contain;
 }
 
+.sidebar-theme-logo-mask {
+  background: var(--mainsail-logo-color);
+}
+
 .sidebar-brand-text {
   min-width: 0;
 }

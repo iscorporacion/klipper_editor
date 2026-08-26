@@ -98,6 +98,8 @@ type MainsailVisualTheme = {
   logo: string;
   primary: string;
   logoPath: string | null;
+  logoUrl?: string | null;
+  logoMask?: boolean;
   error?: string;
 };
 
@@ -137,10 +139,18 @@ const fallbackMainsailTheme: MainsailVisualTheme = {
   theme: "mainsail",
   logo: "#D41216",
   primary: "#2196f3",
-  logoPath: null
+  logoPath: null,
+  logoUrl: "/mainsail-themes/logo.svg",
+  logoMask: true
 };
 
 type ThemeVariables = CSSProperties & Record<`--${string}`, string>;
+type LogoMaskStyle = CSSProperties & {
+  WebkitMaskImage?: string;
+  WebkitMaskPosition?: string;
+  WebkitMaskRepeat?: string;
+  WebkitMaskSize?: string;
+};
 
 function numericValue(value: unknown) {
   const number = Number(value);
@@ -1037,7 +1047,23 @@ export default function Home() {
   }, [mainsailTheme.logo, mainsailTheme.primary]);
   const mainsailLogoUrl = mainsailTheme.logoPath
     ? apiPath(`/api/download?path=${encodeURIComponent(mainsailTheme.logoPath)}&inline=1`)
-    : null;
+    : mainsailTheme.logoUrl
+      ? apiPath(mainsailTheme.logoUrl)
+      : null;
+  const mainsailLogoMaskStyle = useMemo<LogoMaskStyle | undefined>(() => {
+    if (!mainsailTheme.logoMask || !mainsailLogoUrl) return undefined;
+
+    return {
+      maskImage: `url(${mainsailLogoUrl})`,
+      maskPosition: "center",
+      maskRepeat: "no-repeat",
+      maskSize: "contain",
+      WebkitMaskImage: `url(${mainsailLogoUrl})`,
+      WebkitMaskPosition: "center",
+      WebkitMaskRepeat: "no-repeat",
+      WebkitMaskSize: "contain"
+    };
+  }, [mainsailLogoUrl, mainsailTheme.logoMask]);
   const t = useCallback(
     (key: string, values?: Record<string, string | number>) => translate(messages, key, values),
     [messages]
@@ -1168,6 +1194,8 @@ export default function Home() {
         logo: typeof payload.logo === "string" ? payload.logo : fallbackMainsailTheme.logo,
         primary: typeof payload.primary === "string" ? payload.primary : fallbackMainsailTheme.primary,
         logoPath: typeof payload.logoPath === "string" ? payload.logoPath : null,
+        logoUrl: typeof payload.logoUrl === "string" ? payload.logoUrl : null,
+        logoMask: Boolean(payload.logoMask),
         error: typeof payload.error === "string" ? payload.error : undefined
       });
     } catch (error) {
@@ -2078,7 +2106,9 @@ export default function Home() {
         <div className="sidebar-header">
           <div className="sidebar-brand">
             <div className="sidebar-brand-logo" title={mainsailTheme.theme}>
-              {mainsailLogoUrl ? (
+              {mainsailLogoUrl && mainsailTheme.logoMask ? (
+                <span className="sidebar-theme-logo sidebar-theme-logo-mask" aria-hidden="true" style={mainsailLogoMaskStyle} />
+              ) : mainsailLogoUrl ? (
                 <img className="sidebar-theme-logo" src={mainsailLogoUrl} alt="" />
               ) : (
                 <Image className="sidebar-theme-logo" src={logoWhite} alt="" width={28} height={28} />

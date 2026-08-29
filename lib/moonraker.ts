@@ -82,6 +82,25 @@ export type GcodeHistoryEntry = {
   metadata?: Partial<GcodeFileEntry>;
 };
 
+export type UpdateManagerApp = {
+  name: string;
+  configuredType: string;
+  channel: string;
+  version: string;
+  remoteVersion: string;
+  isValid: boolean;
+  isDirty: boolean;
+  detached: boolean;
+  commitsBehind: number;
+  warnings: string[];
+};
+
+export type UpdateManagerStatus = {
+  busy: boolean;
+  versionInfo: UpdateManagerApp[];
+  raw: unknown;
+};
+
 function moonrakerPath(path: string) {
   return `${moonrakerUrl}${path}`;
 }
@@ -173,6 +192,62 @@ export async function shutdownMachine() {
 
 export async function rebootMachine() {
   const payload = await moonrakerFetch("/machine/reboot", { method: "POST" });
+  return payload?.result ?? payload;
+}
+
+function updateAppFromEntry(name: string, value: unknown): UpdateManagerApp {
+  const entry = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  const version = String(entry.version ?? entry.local_version ?? entry.current_version ?? "");
+  const remoteVersion = String(entry.remote_version ?? entry.remoteVersion ?? entry.version_remote ?? "");
+  const commitsBehindValue = entry.commits_behind ?? entry.commitsBehind ?? entry.behind;
+  const commitsBehind = Number.isFinite(Number(commitsBehindValue)) ? Number(commitsBehindValue) : 0;
+  const warnings = Array.isArray(entry.warnings) ? entry.warnings.map(String) : [];
+
+  return {
+    name,
+    configuredType: String(entry.configured_type ?? entry.type ?? ""),
+    channel: String(entry.channel ?? ""),
+    version,
+    remoteVersion,
+    isValid: entry.is_valid === undefined ? true : Boolean(entry.is_valid),
+    isDirty: Boolean(entry.is_dirty ?? entry.dirty),
+    detached: Boolean(entry.detached),
+    commitsBehind,
+    warnings
+  };
+}
+
+export async function getUpdateManagerStatus(refresh = false): Promise<UpdateManagerStatus> {
+  const payload = await moonrakerFetch(`/machine/update/status?refresh=${refresh ? "true" : "false"}`);
+  const result = payload?.result ?? payload ?? {};
+  const versionInfo = result.version_info && typeof result.version_info === "object"
+    ? (result.version_info as Record<string, unknown>)
+    : {};
+
+  return {
+    busy: Boolean(result.busy),
+    versionInfo: Object.entries(versionInfo).map(([name, value]) => updateAppFromEntry(name, value)),
+    raw: result
+  };
+}
+
+export async function updateAllComponents() {
+  const payload = await moonrakerFetch("/machine/update/full", { method: "POST" });
+  return payload?.result ?? payload;
+}
+
+export async function updateComponent(name: string, configuredType?: string) {
+  const encodedName = encodeURIComponent(name);
+  const type = configuredType?.toLowerCase() ?? "";
+  const path =
+    name === "system" || type === "system"
+      ? "/machine/update/system"
+      : name === "moonraker"
+        ? "/machine/update/moonraker"
+        : name === "klipper"
+          ? "/machine/update/klipper"
+          : `/machine/update/client?name=${encodedName}`;
+  const payload = await moonrakerFetch(path, { method: "POST" });
   return payload?.result ?? payload;
 }
 

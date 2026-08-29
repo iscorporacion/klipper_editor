@@ -202,6 +202,19 @@ type SearchResult = {
   text: string;
 };
 
+type UpdateApp = {
+  name: string;
+  configuredType: string;
+  channel: string;
+  version: string;
+  remoteVersion: string;
+  isValid: boolean;
+  isDirty: boolean;
+  detached: boolean;
+  commitsBehind: number;
+  warnings: string[];
+};
+
 const fallbackMainsailTheme: MainsailVisualTheme = {
   mode: "dark",
   theme: "mainsail",
@@ -387,6 +400,11 @@ const defaultMessages: Messages = {
   "actions.cancelPrint": "Cancelar impresion",
   "actions.hot": "Hot",
   "actions.help": "Ayuda",
+  "actions.updates": "Actualizaciones",
+  "actions.checkUpdates": "Revisar actualizaciones",
+  "actions.updateAll": "Actualizar todo",
+  "actions.updateComponent": "Actualizar",
+  "actions.updating": "Actualizando",
   "actions.coolHeater": "Enfriar {heater}",
   "actions.refreshHeaters": "Actualizar calentadores",
   "actions.move": "Mover",
@@ -440,6 +458,9 @@ const defaultMessages: Messages = {
   "status.emergencyStopped": "Parada de emergencia enviada",
   "status.runningCommand": "Ejecutando {command}",
   "status.commandDone": "{command} ejecutado",
+  "status.loadingUpdates": "Revisando actualizaciones",
+  "status.updatesLoaded": "Actualizaciones revisadas",
+  "status.updateStarted": "Actualizacion iniciada",
   "status.saving": "Guardando {path}",
   "status.saved": "Guardado {path}",
   "status.savedWithBackup": "Guardado {path}; copia creada en {backupPath}",
@@ -478,6 +499,9 @@ const defaultMessages: Messages = {
   "errors.moveRange": "{axis} debe estar entre {min} y {max}",
   "errors.emergencyStop": "No se pudo ejecutar la parada de emergencia",
   "errors.quickCommand": "No se pudo ejecutar el comando",
+  "errors.loadUpdates": "No se pudieron cargar las actualizaciones",
+  "errors.runUpdate": "No se pudo iniciar la actualizacion",
+  "errors.updatePrinting": "No se puede actualizar mientras hay una impresion en curso",
   "errors.saveFile": "No se pudo guardar",
   "errors.saveGeneric": "Error al guardar",
   "errors.restartFirmware": "No se pudo reiniciar el firmware",
@@ -496,12 +520,15 @@ const defaultMessages: Messages = {
   "confirm.executeMacro": "Ejecutar macro {name} en la impresora?",
   "confirm.printFile": "Imprimir {name} ahora?",
   "confirm.cancelPrint": "Cancelar la impresion actual?",
+  "confirm.updateAll": "Ejecutar todas las actualizaciones pendientes?",
+  "confirm.updateComponent": "Actualizar {name}?",
   "prompt.newFilePath": "Ruta del nuevo archivo",
   "panels.openEditors": "Editores abiertos",
   "panels.terminal": "Terminal",
   "panels.klipperConsole": "Consola Klipper",
   "panels.printedFiles": "Archivos impresos",
   "panels.globalSearch": "Busqueda global",
+  "panels.updates": "Actualizaciones",
   "panels.includes": "Includes",
   "panels.sections": "Sesiones",
   "empty.openFile": "Abre un archivo del arbol.",
@@ -562,6 +589,16 @@ const defaultMessages: Messages = {
   "globalSearch.empty": "Ingresa al menos 2 caracteres.",
   "globalSearch.noResults": "Sin resultados.",
   "globalSearch.count": "{count} resultados",
+  "updates.loading": "Revisando actualizaciones.",
+  "updates.empty": "No hay actualizaciones pendientes.",
+  "updates.count": "{count} pendientes",
+  "updates.current": "Actual",
+  "updates.available": "Disponible",
+  "updates.channel": "Canal",
+  "updates.dirty": "Cambios locales",
+  "updates.detached": "Detached",
+  "updates.invalid": "Invalido",
+  "updates.busy": "Moonraker update manager esta ocupado.",
   "sections.search": "Buscar sesion",
   "heaters.title": "Calentadores",
   "heaters.empty": "Sin calentadores detectados.",
@@ -1304,6 +1341,11 @@ export default function Home() {
   const [globalSearchQuery, setGlobalSearchQuery] = useState("");
   const [globalSearchResults, setGlobalSearchResults] = useState<SearchResult[]>([]);
   const [globalSearchLoading, setGlobalSearchLoading] = useState(false);
+  const [updatesOpen, setUpdatesOpen] = useState(false);
+  const [updates, setUpdates] = useState<UpdateApp[]>([]);
+  const [updatesBusy, setUpdatesBusy] = useState(false);
+  const [updatesLoading, setUpdatesLoading] = useState(false);
+  const [runningUpdate, setRunningUpdate] = useState<string | null>(null);
   const [klipperConsoleOpen, setKlipperConsoleOpen] = useState(false);
   const [klipperConsoleInput, setKlipperConsoleInput] = useState("");
   const [klipperConsoleLog, setKlipperConsoleLog] = useState<KlipperConsoleEntry[]>([]);
@@ -1383,6 +1425,18 @@ export default function Home() {
       `${macro.name} ${macro.path} ${macro.title} ${macro.description ?? ""}`.toLowerCase().includes(query)
     );
   }, [macroSearch, macros]);
+  const pendingUpdates = useMemo(
+    () =>
+      updates.filter(
+        (update) =>
+          update.commitsBehind > 0 ||
+          (update.remoteVersion && update.version && update.remoteVersion !== update.version) ||
+          update.isDirty ||
+          update.detached ||
+          !update.isValid
+      ),
+    [updates]
+  );
   const anyHeaterActive = heaters.some((heater) => heater.target > 0);
   const filteredGcodeFiles = useMemo(() => {
     const query = gcodeSearch.trim().toLowerCase();
@@ -1579,6 +1633,73 @@ export default function Home() {
     setSelectedGcodeItem(null);
     void loadGcodes();
   }, [loadGcodes]);
+
+  const loadUpdates = useCallback(
+    async (refresh = false) => {
+      setUpdatesLoading(true);
+      setMessage(t("status.loadingUpdates"));
+
+      try {
+        const response = await fetch(apiPath(`/api/updates?refresh=${refresh ? "1" : "0"}`), { cache: "no-store" });
+        const payload = (await response.json()) as { busy?: boolean; versionInfo?: UpdateApp[]; error?: string };
+        if (!response.ok) throw new Error(payload.error ?? t("errors.loadUpdates"));
+
+        setUpdatesBusy(Boolean(payload.busy));
+        setUpdates(payload.versionInfo ?? []);
+        setMessage(t("status.updatesLoaded"));
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : t("errors.loadUpdates"));
+      } finally {
+        setUpdatesLoading(false);
+      }
+    },
+    [t]
+  );
+
+  const openUpdatesModal = useCallback(() => {
+    setUpdatesOpen(true);
+    void loadUpdates(false);
+  }, [loadUpdates]);
+
+  const runUpdate = useCallback(
+    async (update?: UpdateApp) => {
+      if (runningUpdate || updatesBusy) return;
+      if (printerStatus?.printing) {
+        setMessage(t("errors.updatePrinting"));
+        return;
+      }
+
+      const title = update ? t("actions.updateComponent") : t("actions.updateAll");
+      const message = update
+        ? t("confirm.updateComponent", { name: update.name })
+        : t("confirm.updateAll");
+      if (!(await confirmDialog(title, message))) return;
+
+      const updateId = update?.name ?? "all";
+      setRunningUpdate(updateId);
+      setMessage(t("status.updateStarted"));
+
+      try {
+        const response = await fetch(apiPath("/api/updates"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(
+            update
+              ? { action: "component", name: update.name, configuredType: update.configuredType }
+              : { action: "full" }
+          )
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error ?? t("errors.runUpdate"));
+        await loadUpdates(true);
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : t("errors.runUpdate"));
+      } finally {
+        setRunningUpdate(null);
+      }
+    },
+    [confirmDialog, loadUpdates, printerStatus?.printing, runningUpdate, t, updatesBusy]
+  );
 
   const loadPrinterStatus = useCallback(async () => {
     try {
@@ -3325,6 +3446,9 @@ export default function Home() {
             <a className="icon-button help-button" href={apiPath("/help")} target="_blank" rel="noreferrer" title={t("actions.help")}>
               <IoHelpCircleOutline className="action-icon plain-action-icon" />
             </a>
+            <button className="icon-button" type="button" onClick={openUpdatesModal} title={t("actions.updates")}>
+              <FcRefresh className="action-icon" />
+            </button>
             <button className="icon-button" type="button" onClick={() => setOptionsOpen(true)} title={t("actions.options")}>
               <FcSettings className="action-icon" />
             </button>
@@ -3463,9 +3587,10 @@ export default function Home() {
               <p>{t("welcome.description")}</p>
             </div>
           ) : activeFile.loading ? (
-            <div className="welcome">
+            <div className="welcome editor-loading">
               <h2>{t("loading.title")}</h2>
               <p>{activeFile.path}</p>
+              <div className="panel-loading-bar" />
             </div>
           ) : activeFile.error ? (
             <div className="welcome error">
@@ -4126,7 +4251,10 @@ export default function Home() {
                 <div className="macro-count">{t("macros.count", { count: filteredMacros.length })}</div>
                 <div className="macro-list">
                   {macrosLoading ? (
-                    <p className="empty-note">{t("macros.loading")}</p>
+                    <div className="panel-loading-state" role="status" aria-live="polite">
+                      <span>{t("macros.loading")}</span>
+                      <div className="panel-loading-bar" />
+                    </div>
                   ) : filteredMacros.length === 0 ? (
                     <p className="empty-note">{t("macros.empty")}</p>
                   ) : (
@@ -4252,6 +4380,112 @@ export default function Home() {
           </div>
         )}
 
+        {updatesOpen && (
+          <div className="modal-backdrop" role="presentation" onMouseDown={() => setUpdatesOpen(false)}>
+            <section
+              className="options-modal updates-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="updates-title"
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <div className="modal-header">
+                <h2 id="updates-title">{t("panels.updates")}</h2>
+                <div className="modal-header-actions">
+                  <button
+                    className="modal-icon-button"
+                    type="button"
+                    title={t("actions.checkUpdates")}
+                    aria-label={t("actions.checkUpdates")}
+                    disabled={updatesLoading || runningUpdate !== null}
+                    onClick={() => void loadUpdates(true)}
+                  >
+                    <FcRefresh className="action-icon" />
+                  </button>
+                  <button
+                    className="modal-close"
+                    type="button"
+                    title={t("options.close")}
+                    aria-label={t("options.close")}
+                    onClick={() => setUpdatesOpen(false)}
+                  >
+                    x
+                  </button>
+                </div>
+              </div>
+              <div className="updates-modal-body">
+                <div className="updates-summary">
+                  <span>{t("updates.count", { count: pendingUpdates.length })}</span>
+                  <button
+                    className="dialog-button primary"
+                    type="button"
+                    disabled={updatesLoading || updatesBusy || runningUpdate !== null || pendingUpdates.length === 0 || printerStatus?.printing}
+                    title={printerStatus?.printing ? t("errors.updatePrinting") : t("actions.updateAll")}
+                    onClick={() => void runUpdate()}
+                  >
+                    {runningUpdate === "all" ? t("actions.updating") : t("actions.updateAll")}
+                  </button>
+                </div>
+                {updatesBusy && <p className="setting-help">{t("updates.busy")}</p>}
+                <div className="updates-list">
+                  {updatesLoading ? (
+                    <div className="panel-loading-state" role="status" aria-live="polite">
+                      <span>{t("updates.loading")}</span>
+                      <div className="panel-loading-bar" />
+                    </div>
+                  ) : pendingUpdates.length === 0 ? (
+                    <p className="empty-note">{t("updates.empty")}</p>
+                  ) : (
+                    pendingUpdates.map((update) => (
+                      <article className="update-row" key={update.name}>
+                        <div className="update-row-main">
+                          <div className="update-row-title">
+                            <strong>{update.name}</strong>
+                            {update.configuredType && <span>{update.configuredType}</span>}
+                          </div>
+                          <dl className="update-meta">
+                            <div>
+                              <dt>{t("updates.current")}</dt>
+                              <dd>{update.version || "-"}</dd>
+                            </div>
+                            <div>
+                              <dt>{t("updates.available")}</dt>
+                              <dd>{update.remoteVersion || update.commitsBehind || "-"}</dd>
+                            </div>
+                            {update.channel && (
+                              <div>
+                                <dt>{t("updates.channel")}</dt>
+                                <dd>{update.channel}</dd>
+                              </div>
+                            )}
+                          </dl>
+                          <div className="update-badges">
+                            {update.isDirty && <span>{t("updates.dirty")}</span>}
+                            {update.detached && <span>{t("updates.detached")}</span>}
+                            {!update.isValid && <span>{t("updates.invalid")}</span>}
+                            {update.warnings.map((warning) => (
+                              <span key={warning}>{warning}</span>
+                            ))}
+                          </div>
+                        </div>
+                        <button
+                          className="dialog-button"
+                          type="button"
+                          disabled={updatesLoading || updatesBusy || runningUpdate !== null || printerStatus?.printing}
+                          title={printerStatus?.printing ? t("errors.updatePrinting") : t("actions.updateComponent")}
+                          onClick={() => void runUpdate(update)}
+                        >
+                          {runningUpdate === update.name ? t("actions.updating") : t("actions.updateComponent")}
+                        </button>
+                      </article>
+                    ))
+                  )}
+                </div>
+              </div>
+            </section>
+          </div>
+        )}
+
         {gcodesOpen && (
           <div className="modal-backdrop" role="presentation" onMouseDown={() => setGcodesOpen(false)}>
             <section
@@ -4338,7 +4572,10 @@ export default function Home() {
                 <div className="gcodes-browser">
                   <div className="gcodes-list">
                     {gcodesLoading ? (
-                      <p className="empty-note">{t("gcodes.loading")}</p>
+                      <div className="panel-loading-state" role="status" aria-live="polite">
+                        <span>{t("gcodes.loading")}</span>
+                        <div className="panel-loading-bar" />
+                      </div>
                     ) : gcodeModalTab === "files" ? (
                       filteredGcodeFiles.length === 0 ? (
                         <p className="empty-note">{t("gcodes.empty")}</p>

@@ -312,6 +312,12 @@ function normalizePrinterStatus(value: unknown, fallbackMessage: string): Printe
   };
 }
 
+function isPrinterInitializingStatus(status: PrinterStatus | null) {
+  if (!status || status.error) return false;
+  const state = status.webhooksState.toLowerCase();
+  return state !== "ready" && ["startup", "shutdown", "initializing", "connecting"].includes(state);
+}
+
 type HeaterStatus = {
   name: string;
   label: string;
@@ -441,6 +447,7 @@ const defaultMessages: Messages = {
   "status.reloadedOpenFilesPartial": "Archivos abiertos recargados; {count} con cambios locales no se tocaron",
   "status.firmwareRestarting": "Reiniciando firmware",
   "status.firmwareRestarted": "Reinicio de firmware solicitado",
+  "status.printerInitializing": "Inicializando",
   "status.terminalConnected": "Terminal conectada",
   "status.terminalDisconnected": "Terminal desconectada",
   "status.terminalRunning": "Ejecutando comando",
@@ -742,11 +749,11 @@ function shouldReloadOpenFilesAfterGcode(script: string) {
 }
 
 function formatPosition(value: number, digits = 2) {
-  return value.toFixed(digits).replace(".", ",");
+  return value.toFixed(digits).replace(/\.?0+$/, "").replace(".", ",");
 }
 
 function formatPositionInput(value: number, digits = 2) {
-  return value.toFixed(digits).replace(".", ",");
+  return formatPosition(value, digits);
 }
 
 function parsePositionInput(value: string) {
@@ -1314,6 +1321,7 @@ export default function Home() {
   const [dialogInputValue, setDialogInputValue] = useState("");
   const [message, setMessage] = useState(defaultLocaleMessages["status.ready"] ?? "Ready");
   const [printerStatus, setPrinterStatus] = useState<PrinterStatus | null>(null);
+  const [printerInitializing, setPrinterInitializing] = useState(false);
   const [restartingFirmware, setRestartingFirmware] = useState(false);
   const [emergencyStopping, setEmergencyStopping] = useState(false);
   const [runningQuickCommand, setRunningQuickCommand] = useState<QuickCommand | null>(null);
@@ -1577,7 +1585,11 @@ export default function Home() {
       const response = await fetch(apiPath("/api/printer/status"), { cache: "no-store" });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? t("errors.printerStatus"));
-      setPrinterStatus(normalizePrinterStatus(payload, t("errors.printerStatus")));
+      const nextStatus = normalizePrinterStatus(payload, t("errors.printerStatus"));
+      setPrinterStatus(nextStatus);
+      if (nextStatus.webhooksState.toLowerCase() === "ready" && !nextStatus.error) {
+        setPrinterInitializing(false);
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : t("errors.printerStatus");
       setPrinterStatus(normalizePrinterStatus({ error: message }, t("errors.printerStatus")));
@@ -1939,6 +1951,7 @@ export default function Home() {
     if (!(await confirmDialog(t("actions.restartFirmware"), t("confirm.restartFirmware")))) return;
 
     setRestartingFirmware(true);
+    setPrinterInitializing(true);
     setMessage(t("status.firmwareRestarting"));
 
     try {
@@ -1948,6 +1961,7 @@ export default function Home() {
       setMessage(t("status.firmwareRestarted"));
       await Promise.all([loadPrinterStatus(), loadTree(), reloadOpenTextFiles()]);
     } catch (error) {
+      setPrinterInitializing(false);
       setMessage(error instanceof Error ? error.message : t("errors.restartFirmware"));
     } finally {
       setRestartingFirmware(false);
@@ -2995,12 +3009,25 @@ export default function Home() {
     Boolean(printerStatus.error) ||
     printerStatus.printing ||
     !printerStatus.allAxesHomed;
+  const movementPanelDisabled = movingAction !== null || !printerStatus || Boolean(printerStatus.error) || printerStatus.printing;
   const machinePowerDisabled =
     runningMachinePowerAction !== null || !printerStatus || Boolean(printerStatus.error) || printerStatus.printing;
   const powerMenuDisabled = restartingFirmware || runningMachinePowerAction !== null || !printerStatus;
+  const showPrinterInitializing = printerInitializing || isPrinterInitializingStatus(printerStatus);
 
   return (
     <main className="workspace-shell" style={themeStyle}>
+      {showPrinterInitializing && (
+        <div className="printer-initializing-overlay" role="status" aria-live="polite">
+          <div className="printer-initializing-card">
+            <div className="printer-initializing-title">
+              <IoPower className="printer-initializing-icon" />
+              <span>{t("status.printerInitializing")}</span>
+            </div>
+            <div className="printer-initializing-bar" />
+          </div>
+        </div>
+      )}
       <aside className="sidebar">
         <div className="sidebar-header">
           <div className="sidebar-brand">
@@ -3207,11 +3234,9 @@ export default function Home() {
               <button
                 className="home-button move-open-button"
                 type="button"
-                disabled={movementDisabled}
+                disabled={movementPanelDisabled}
                 title={
-                  !printerStatus?.allAxesHomed
-                    ? t("errors.moveHoming")
-                    : printerStatus?.printing
+                  printerStatus?.printing
                       ? t("errors.restartPrinting")
                       : t("actions.move")
                 }

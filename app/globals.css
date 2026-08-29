@@ -52,6 +52,76 @@ button {
   background: var(--bg);
 }
 
+.printer-initializing-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  place-items: center;
+  background: rgba(10, 12, 15, 0.36);
+  backdrop-filter: blur(10px) saturate(1.25);
+  -webkit-backdrop-filter: blur(10px) saturate(1.25);
+}
+
+.printer-initializing-card {
+  width: min(400px, calc(100vw - 48px));
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--control-radius);
+  background: rgba(31, 35, 40, 0.74);
+  box-shadow: 0 28px 70px rgba(0, 0, 0, 0.52);
+}
+
+.printer-initializing-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 0 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  color: #ffffff;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.printer-initializing-icon {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  color: #ffffff;
+}
+
+.printer-initializing-bar {
+  position: relative;
+  height: 4px;
+  margin: 20px 16px 16px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.printer-initializing-bar::before {
+  position: absolute;
+  inset: 0;
+  width: 42%;
+  background: #ffffff;
+  content: "";
+  animation: printer-initializing-slide 1.15s ease-in-out infinite;
+}
+
+@keyframes printer-initializing-slide {
+  0% {
+    transform: translateX(-110%);
+  }
+
+  50% {
+    transform: translateX(90%);
+  }
+
+  100% {
+    transform: translateX(250%);
+  }
+}
+
 .sidebar {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
@@ -341,6 +411,15 @@ h1 {
   margin: 0;
   accent-color: var(--accent);
   cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.file-row:hover .tree-select-checkbox,
+.file-row:focus-within .tree-select-checkbox,
+.tree-select-checkbox:checked {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .tree-file-actions {

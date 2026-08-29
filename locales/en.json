@@ -107,6 +107,7 @@
     "status.reloadedOpenFilesPartial": "Open files reloaded; {count} files with local changes were left untouched",
     "status.firmwareRestarting": "Restarting firmware",
     "status.firmwareRestarted": "Firmware restart requested",
+    "status.printerInitializing": "Initializing",
     "status.terminalConnected": "Terminal connected",
     "status.terminalDisconnected": "Terminal disconnected",
     "status.terminalRunning": "Running terminal command",

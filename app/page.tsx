@@ -4423,6 +4423,7 @@ export default function Home() {
                     title={printerStatus?.printing ? t("errors.updatePrinting") : t("actions.updateAll")}
                     onClick={() => void runUpdate()}
                   >
+                    {runningUpdate === "all" && <span className="button-spinner" aria-hidden="true" />}
                     {runningUpdate === "all" ? t("actions.updating") : t("actions.updateAll")}
                   </button>
                 </div>
@@ -4437,7 +4438,7 @@ export default function Home() {
                     <p className="empty-note">{t("updates.empty")}</p>
                   ) : (
                     pendingUpdates.map((update) => (
-                      <article className="update-row" key={update.name}>
+                      <article className={runningUpdate === update.name ? "update-row updating" : "update-row"} key={update.name}>
                         <div className="update-row-main">
                           <div className="update-row-title">
                             <strong>{update.name}</strong>
@@ -4475,6 +4476,7 @@ export default function Home() {
                           title={printerStatus?.printing ? t("errors.updatePrinting") : t("actions.updateComponent")}
                           onClick={() => void runUpdate(update)}
                         >
+                          {runningUpdate === update.name && <span className="button-spinner" aria-hidden="true" />}
                           {runningUpdate === update.name ? t("actions.updating") : t("actions.updateComponent")}
                         </button>
                       </article>

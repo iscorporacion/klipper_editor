@@ -2386,6 +2386,22 @@ body.is-resizing-row {
   flex: 0 0 auto;
 }
 
+.button-spinner {
+  width: 13px;
+  height: 13px;
+  flex: 0 0 auto;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 999px;
+  animation: button-spin 0.72s linear infinite;
+}
+
+@keyframes button-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .macro-modal-body {
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr);
@@ -2580,6 +2596,10 @@ body.is-resizing-row {
 
 .update-row:last-child {
   border-bottom: 0;
+}
+
+.update-row.updating {
+  background: var(--accent-soft);
 }
 
 .update-row-main {

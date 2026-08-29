@@ -64,10 +64,21 @@ function folderIconFor(name: string, manifest: MaterialIconManifest, expanded: b
   return manifest.folderNames[lowerName] ?? manifest.folder;
 }
 
-async function readNode(manifest: MaterialIconManifest, relativePath = "", depth = 0): Promise<TreeNode[]> {
+async function readNode(
+  manifest: MaterialIconManifest,
+  relativePath = "",
+  depth = 0,
+  seenRealPaths = new Set<string>()
+): Promise<TreeNode[]> {
   if (depth > maxDepth) return [];
 
   const absolutePath = resolveWorkspacePath(relativePath);
+  const realDirectoryPath = await fs.realpath(absolutePath).catch(() => absolutePath);
+  if (seenRealPaths.has(realDirectoryPath)) return [];
+
+  const nextSeenRealPaths = new Set(seenRealPaths);
+  nextSeenRealPaths.add(realDirectoryPath);
+
   const dirents = await fs.readdir(absolutePath, { withFileTypes: true });
   const nodes: TreeNode[] = [];
 
@@ -75,16 +86,23 @@ async function readNode(manifest: MaterialIconManifest, relativePath = "", depth
     const childRelativePath = toRelativePath(path.posix.join(relativePath, dirent.name));
     if (isBlockedPath(childRelativePath)) continue;
 
-    if (dirent.isDirectory()) {
+    const childAbsolutePath = resolveWorkspacePath(childRelativePath);
+    const childStat = dirent.isSymbolicLink()
+      ? await fs.stat(childAbsolutePath).catch(() => undefined)
+      : undefined;
+    const isDirectory = dirent.isDirectory() || Boolean(childStat?.isDirectory());
+    const isFile = dirent.isFile() || Boolean(childStat?.isFile());
+
+    if (isDirectory) {
       nodes.push({
         name: dirent.name,
         path: childRelativePath,
         type: "directory",
         icon: folderIconFor(dirent.name, manifest, false),
         openIcon: folderIconFor(dirent.name, manifest, true),
-        children: await readNode(manifest, childRelativePath, depth + 1)
+        children: await readNode(manifest, childRelativePath, depth + 1, nextSeenRealPaths)
       });
-    } else if (dirent.isFile()) {
+    } else if (isFile) {
       nodes.push({
         name: dirent.name,
         path: childRelativePath,

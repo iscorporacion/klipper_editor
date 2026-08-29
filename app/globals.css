@@ -490,7 +490,9 @@ h1 {
 .tree-row:hover,
 .tree-row.active,
 .open-editor:hover,
-.open-editor.active {
+.open-editor.active,
+.open-editor-row:hover,
+.open-editor-row.active {
   background: var(--accent-soft);
 }
 
@@ -637,12 +639,59 @@ h1 {
   text-transform: uppercase;
 }
 
-.open-editor {
+.open-editor,
+.open-editor-row {
   gap: 7px;
   height: 26px;
   padding: 0 7px;
   border-radius: 4px;
   font-size: 12px;
+}
+
+.open-editor-row {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  padding-right: 2px;
+}
+
+.open-editor-row .open-editor {
+  flex: 1 1 auto;
+  height: 100%;
+  padding: 0;
+}
+
+.open-editor-download {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 25px;
+  height: 24px;
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.open-editor-row:hover .open-editor-download,
+.open-editor-row:focus-within .open-editor-download {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.open-editor-download:hover,
+.open-editor-download:focus-visible {
+  background: rgba(255, 255, 255, 0.09);
+  outline: 0;
+}
+
+.open-editor-action-icon {
+  width: 19px;
+  height: 19px;
 }
 
 .editor-area {
@@ -1968,6 +2017,79 @@ body.is-resizing-row {
   padding-top: 12px;
 }
 
+.movement-extrusion {
+  display: grid;
+  gap: 8px;
+  border-top: 1px solid var(--border-soft);
+  padding-top: 12px;
+}
+
+.extruder-selector,
+.extrusion-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(84px, 1fr));
+  gap: 7px;
+}
+
+.extruder-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 30px;
+  border: 1px solid var(--border);
+  border-radius: var(--control-radius);
+  background: var(--panel-strong);
+  color: var(--text);
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.extruder-tab.active {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+
+.extrusion-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.extrusion-fields label {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 76px auto;
+  align-items: center;
+  gap: 7px;
+  min-height: 36px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--control-radius);
+  background: var(--panel-soft);
+  color: var(--muted);
+  font-size: 12px;
+  padding: 4px 8px;
+}
+
+.extrusion-fields input {
+  width: 100%;
+  min-width: 0;
+  height: 26px;
+  border: 1px solid var(--border);
+  border-radius: var(--control-radius);
+  background: var(--panel);
+  color: var(--text);
+  font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+  font-size: 13px;
+  padding: 0 7px;
+  text-align: right;
+}
+
+.extrusion-fields input:focus-visible,
+.extruder-tab:focus-visible {
+  border-color: var(--accent);
+  outline: 0;
+}
+
 .offset-grid {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
@@ -2011,7 +2133,8 @@ body.is-resizing-row {
 
 .jog-button:disabled,
 .movement-action-button:disabled,
-.offset-button:disabled {
+.offset-button:disabled,
+.extruder-tab:disabled {
   cursor: default;
   opacity: 0.45;
 }
@@ -2351,6 +2474,10 @@ body.is-resizing-row {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
+}
+
+.dialog-actions.three-actions {
+  flex-wrap: wrap;
 }
 
 .dialog-button {

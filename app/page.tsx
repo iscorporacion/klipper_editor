@@ -127,6 +127,7 @@ type PrinterStatus = {
     y: AxisLimit;
     z: AxisLimit;
   };
+  extruders: ExtruderInfo[];
   zOffset: number;
   error?: string;
 };
@@ -134,9 +135,15 @@ type PrinterStatus = {
 type QuickCommand = "home-all" | "home-x" | "home-y" | "home-z" | "z-tilt";
 type JogAxis = "x" | "y" | "z";
 type MachinePowerAction = "shutdown" | "reboot";
+type UnsavedCloseChoice = "save" | "discard" | "cancel";
 type AxisLimit = {
   min: number;
   max: number;
+};
+
+type ExtruderInfo = {
+  name: string;
+  label: string;
 };
 
 type TerminalChunk = {
@@ -320,6 +327,18 @@ function normalizePrinterStatus(value: unknown, fallbackMessage: string): Printe
       y: axisLimitValue(positionLimits.y),
       z: axisLimitValue(positionLimits.z)
     },
+    extruders: Array.isArray(status.extruders)
+      ? status.extruders
+          .filter((extruder): extruder is ExtruderInfo => {
+            return (
+              Boolean(extruder) &&
+              typeof extruder === "object" &&
+              typeof (extruder as ExtruderInfo).name === "string" &&
+              typeof (extruder as ExtruderInfo).label === "string"
+            );
+          })
+          .map((extruder) => ({ name: extruder.name, label: extruder.label }))
+      : [],
     zOffset: numericValue(status.zOffset),
     error
   };
@@ -365,6 +384,12 @@ type AppDialog =
       title: string;
       defaultValue: string;
       resolve: (value: string | undefined) => void;
+    }
+  | {
+      type: "unsaved-close";
+      title: string;
+      message: string;
+      resolve: (value: UnsavedCloseChoice) => void;
     };
 
 type Messages = Record<string, string>;
@@ -379,6 +404,7 @@ const defaultMessages: Messages = {
   "actions.showBackupFiles": "Mostrar backups",
   "actions.downloadFile": "Descargar archivo",
   "actions.deleteFile": "Borrar archivo",
+  "actions.renameFile": "Renombrar archivo",
   "actions.selectFile": "Seleccionar archivo",
   "actions.downloadSelectedFiles": "Descargar seleccionados",
   "actions.deleteSelectedFiles": "Borrar seleccionados",
@@ -420,6 +446,8 @@ const defaultMessages: Messages = {
   "actions.zTilt": "Z Tilt",
   "actions.save": "Guardar",
   "actions.saving": "Guardando",
+  "actions.saveAndClose": "Guardar y cerrar",
+  "actions.closeWithoutSaving": "Cerrar sin guardar",
   "actions.options": "Opciones",
   "actions.terminal": "Terminal",
   "actions.openTerminal": "Abrir terminal",
@@ -438,6 +466,7 @@ const defaultMessages: Messages = {
   "status.uploaded": "Subido {path}",
   "status.deleted": "Borrado {path}",
   "status.deletedSelected": "{count} archivos borrados",
+  "status.renamed": "Renombrado {path} a {newPath}",
   "status.openingMacro": "Abriendo macro {name}",
   "status.executingMacro": "Ejecutando macro {name}",
   "status.executedMacro": "Macro ejecutada {name}",
@@ -452,6 +481,8 @@ const defaultMessages: Messages = {
   "status.heaterCooling": "{heater} enfriando",
   "status.moving": "Moviendo {move}",
   "status.moveDone": "Movimiento ejecutado",
+  "status.extruding": "Extruyendo {move}",
+  "status.extruded": "Extrusion ejecutada",
   "status.settingHeaters": "Aplicando temperaturas",
   "status.heatersSet": "Temperaturas aplicadas",
   "status.emergencyStopping": "Ejecutando parada de emergencia",
@@ -482,6 +513,7 @@ const defaultMessages: Messages = {
   "errors.createFile": "No se pudo crear el archivo",
   "errors.uploadFile": "No se pudo subir el archivo",
   "errors.deleteFile": "No se pudo borrar el archivo",
+  "errors.renameFile": "No se pudo renombrar el archivo",
   "errors.downloadSelectedFiles": "No se pudieron descargar los archivos seleccionados",
   "errors.loadMacros": "No se pudieron cargar las macros",
   "errors.executeMacro": "No se pudo ejecutar la macro",
@@ -494,6 +526,7 @@ const defaultMessages: Messages = {
   "errors.coolHeater": "No se pudo enfriar el calentador",
   "errors.setHeaters": "No se pudieron aplicar las temperaturas",
   "errors.movePrinter": "No se pudo mover la impresora",
+  "errors.extrudeFilament": "No se pudo extruir filamento",
   "errors.moveHoming": "Haz home de X/Y/Z antes de mover la impresora",
   "errors.movePosition": "Ingresa una posicion valida para {axis}",
   "errors.moveRange": "{axis} debe estar entre {min} y {max}",
@@ -523,6 +556,7 @@ const defaultMessages: Messages = {
   "confirm.updateAll": "Ejecutar todas las actualizaciones pendientes?",
   "confirm.updateComponent": "Actualizar {name}?",
   "prompt.newFilePath": "Ruta del nuevo archivo",
+  "prompt.renameFilePath": "Nueva ruta del archivo",
   "panels.openEditors": "Editores abiertos",
   "panels.terminal": "Terminal",
   "panels.klipperConsole": "Consola Klipper",
@@ -608,6 +642,13 @@ const defaultMessages: Messages = {
   "movement.title": "Movimiento",
   "movement.absolutePosition": "Posicion: absoluta",
   "movement.zOffset": "Z-Offset: {offset}",
+  "movement.extrusion": "Extrusion",
+  "movement.extruder": "Extrusor",
+  "movement.extrudeLength": "Filamento",
+  "movement.extrudeSpeed": "Velocidad",
+  "movement.extrude": "Extruir",
+  "movement.retract": "Retraer",
+  "movement.noExtruders": "Sin extrusores detectados.",
   "movement.distance": "Distancia {distance}",
   "movement.axisRange": "{min} - {max}",
   "movement.homeAll": "TODO",
@@ -796,6 +837,11 @@ function formatPositionInput(value: number, digits = 2) {
 function parsePositionInput(value: string) {
   const number = Number(value.trim().replace(",", "."));
   return Number.isFinite(number) ? number : undefined;
+}
+
+function parsePositiveInput(value: string) {
+  const number = Number(value.trim().replace(",", "."));
+  return Number.isFinite(number) && number > 0 ? number : undefined;
 }
 
 function formatSigned(value: number) {
@@ -1160,9 +1206,11 @@ function FileTree({
   onOpen,
   onDownload,
   onDelete,
+  onRename,
   onToggleSelected,
   downloadLabel,
   deleteLabel,
+  renameLabel,
   selectLabel
 }: {
   nodes: TreeNode[];
@@ -1172,9 +1220,11 @@ function FileTree({
   onOpen: (path: string) => void;
   onDownload: (path: string) => void;
   onDelete: (path: string) => void;
+  onRename: (path: string) => void;
   onToggleSelected: (path: string) => void;
   downloadLabel: string;
   deleteLabel: string;
+  renameLabel: string;
   selectLabel: string;
 }) {
   return (
@@ -1189,9 +1239,11 @@ function FileTree({
           onOpen={onOpen}
           onDownload={onDownload}
           onDelete={onDelete}
+          onRename={onRename}
           onToggleSelected={onToggleSelected}
           downloadLabel={downloadLabel}
           deleteLabel={deleteLabel}
+          renameLabel={renameLabel}
           selectLabel={selectLabel}
         />
       ))}
@@ -1207,9 +1259,11 @@ function TreeItem({
   onOpen,
   onDownload,
   onDelete,
+  onRename,
   onToggleSelected,
   downloadLabel,
   deleteLabel,
+  renameLabel,
   selectLabel
 }: {
   node: TreeNode;
@@ -1219,9 +1273,11 @@ function TreeItem({
   onOpen: (path: string) => void;
   onDownload: (path: string) => void;
   onDelete: (path: string) => void;
+  onRename: (path: string) => void;
   onToggleSelected: (path: string) => void;
   downloadLabel: string;
   deleteLabel: string;
+  renameLabel: string;
   selectLabel: string;
 }) {
   const defaultOpen = node.type === "directory" && (node.name === "RatOS" || node.name === "ratos_generated");
@@ -1250,9 +1306,11 @@ function TreeItem({
                 onOpen={onOpen}
                 onDownload={onDownload}
                 onDelete={onDelete}
+                onRename={onRename}
                 onToggleSelected={onToggleSelected}
                 downloadLabel={downloadLabel}
                 deleteLabel={deleteLabel}
+                renameLabel={renameLabel}
                 selectLabel={selectLabel}
               />
             ))}
@@ -1263,7 +1321,14 @@ function TreeItem({
   }
 
   return (
-    <div className={`tree-row file-row ${activePath === node.path ? "active" : ""}`} title={node.path}>
+    <div
+      className={`tree-row file-row ${activePath === node.path ? "active" : ""}`}
+      title={`${node.path}\n${renameLabel}`}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        onRename(node.path);
+      }}
+    >
       <input
         className="tree-select-checkbox"
         type="checkbox"
@@ -1326,6 +1391,9 @@ export default function Home() {
   const [movingAction, setMovingAction] = useState<string | null>(null);
   const [positionInputs, setPositionInputs] = useState<Record<JogAxis, string>>({ x: "", y: "", z: "" });
   const [editingPositionAxis, setEditingPositionAxis] = useState<JogAxis | null>(null);
+  const [selectedExtruder, setSelectedExtruder] = useState("");
+  const [extrudeLength, setExtrudeLength] = useState("10");
+  const [extrudeSpeed, setExtrudeSpeed] = useState("5");
   const [createBackupOnSave, setCreateBackupOnSave] = useState(true);
   const [heatersOpen, setHeatersOpen] = useState(false);
   const [heaters, setHeaters] = useState<HeaterStatus[]>([]);
@@ -1516,6 +1584,12 @@ export default function Home() {
     });
   }, []);
 
+  const closeUnsavedDialog = useCallback((title: string, message: string) => {
+    return new Promise<UnsavedCloseChoice>((resolve) => {
+      setDialog({ type: "unsaved-close", title, message, resolve });
+    });
+  }, []);
+
   const promptDialog = useCallback((title: string, defaultValue: string) => {
     return new Promise<string | undefined>((resolve) => {
       setDialogInputValue(defaultValue);
@@ -1527,6 +1601,8 @@ export default function Home() {
     if (!dialog) return;
     if (dialog.type === "confirm") {
       dialog.resolve(false);
+    } else if (dialog.type === "unsaved-close") {
+      dialog.resolve("cancel");
     } else {
       dialog.resolve(undefined);
     }
@@ -1547,6 +1623,8 @@ export default function Home() {
     if (!dialog) return;
     if (dialog.type === "confirm") {
       dialog.resolve(true);
+    } else if (dialog.type === "unsaved-close") {
+      dialog.resolve("save");
     } else {
       dialog.resolve(dialogInputValue);
     }
@@ -2176,6 +2254,57 @@ export default function Home() {
     [loadPrinterStatus, movingAction, printerStatus, t]
   );
 
+  const runExtrusion = useCallback(
+    async (direction: "extrude" | "retract") => {
+      if (movingAction) return;
+      if (!printerStatus || printerStatus.error) {
+        setMessage(printerStatus?.error ?? t("errors.printerStatus"));
+        return;
+      }
+
+      if (printerStatus.printing) {
+        setMessage(t("errors.restartPrinting"));
+        return;
+      }
+
+      const length = parsePositiveInput(extrudeLength);
+      const speed = parsePositiveInput(extrudeSpeed);
+      const extruder = printerStatus.extruders.find((item) => item.name === selectedExtruder);
+
+      if (!extruder || length === undefined || speed === undefined) {
+        setMessage(t("errors.extrudeFilament"));
+        return;
+      }
+
+      const distance = direction === "extrude" ? length : -length;
+      const label = `${extruder.label} ${formatSigned(distance)}`;
+      setMovingAction(label);
+      setMessage(t("status.extruding", { move: label }));
+
+      try {
+        const response = await fetch(apiPath("/api/printer/extrude"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ extruder: extruder.name, distance, speed })
+        });
+        const body = await response.json();
+        if (!response.ok) throw new Error(body.error ?? t("errors.extrudeFilament"));
+
+        if (body.status) {
+          setPrinterStatus(body.status);
+        } else {
+          await loadPrinterStatus();
+        }
+        setMessage(t("status.extruded"));
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : t("errors.extrudeFilament"));
+      } finally {
+        setMovingAction(null);
+      }
+    },
+    [extrudeLength, extrudeSpeed, loadPrinterStatus, movingAction, printerStatus, selectedExtruder, t]
+  );
+
   const runAbsoluteMove = useCallback(
     async (axis: JogAxis) => {
       if (!printerStatus) return;
@@ -2328,7 +2457,6 @@ export default function Home() {
         const nextHeaters = (payload.heaters ?? []) as HeaterStatus[];
         cacheAndSetHeaters(nextHeaters);
         setHeaterTargetInputs(nextHeaters);
-        setHeatersOpen(false);
         setMessage(t("status.heatersSet"));
       } catch (error) {
         setMessage(error instanceof Error ? error.message : t("errors.setHeaters"));
@@ -2400,50 +2528,60 @@ export default function Home() {
     [openFiles, t]
   );
 
+  const saveFile = useCallback(
+    async (fileToSave: OpenFile) => {
+      if (fileToSave.kind === "image" || fileToSave.saving || fileToSave.loading) return false;
+
+      setOpenFiles((files) => files.map((file) => (file.path === fileToSave.path ? { ...file, saving: true } : file)));
+      setMessage(t("status.saving", { path: fileToSave.path }));
+
+      try {
+        const response = await fetch(apiPath("/api/file"), {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ path: fileToSave.path, content: fileToSave.content, createBackup: createBackupOnSave })
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error ?? t("errors.saveFile"));
+
+        setOpenFiles((files) =>
+          files.map((file) =>
+            file.path === fileToSave.path
+              ? {
+                  ...file,
+                  savedContent: file.content,
+                  modifiedAt: payload.modifiedAt,
+                  saving: false,
+                  error: undefined
+                }
+              : file
+          )
+        );
+        setMessage(
+          payload.backupPath
+            ? t("status.savedWithBackup", { path: fileToSave.path, backupPath: payload.backupPath })
+            : t("status.saved", { path: fileToSave.path })
+        );
+        return true;
+      } catch (error) {
+        setOpenFiles((files) =>
+          files.map((file) =>
+            file.path === fileToSave.path
+              ? { ...file, saving: false, error: error instanceof Error ? error.message : t("errors.saveGeneric") }
+              : file
+          )
+        );
+        setMessage(error instanceof Error ? error.message : t("errors.saveGeneric"));
+        return false;
+      }
+    },
+    [createBackupOnSave, t]
+  );
+
   const saveActiveFile = useCallback(async () => {
-    if (!activeFile || activeFile.saving || activeFile.loading) return;
-
-    setOpenFiles((files) => files.map((file) => (file.path === activeFile.path ? { ...file, saving: true } : file)));
-    setMessage(t("status.saving", { path: activeFile.path }));
-
-    try {
-      const response = await fetch(apiPath("/api/file"), {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path: activeFile.path, content: activeFile.content, createBackup: createBackupOnSave })
-      });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error ?? t("errors.saveFile"));
-
-      setOpenFiles((files) =>
-        files.map((file) =>
-          file.path === activeFile.path
-            ? {
-                ...file,
-                savedContent: file.content,
-                modifiedAt: payload.modifiedAt,
-                saving: false,
-                error: undefined
-              }
-            : file
-        )
-      );
-      setMessage(
-        payload.backupPath
-          ? t("status.savedWithBackup", { path: activeFile.path, backupPath: payload.backupPath })
-          : t("status.saved", { path: activeFile.path })
-      );
-    } catch (error) {
-      setOpenFiles((files) =>
-        files.map((file) =>
-          file.path === activeFile.path
-            ? { ...file, saving: false, error: error instanceof Error ? error.message : t("errors.saveGeneric") }
-            : file
-        )
-      );
-      setMessage(error instanceof Error ? error.message : t("errors.saveGeneric"));
-    }
-  }, [activeFile, createBackupOnSave, t]);
+    if (!activeFile) return;
+    await saveFile(activeFile);
+  }, [activeFile, saveFile]);
 
   const closeFile = useCallback(
     async (path: string) => {
@@ -2451,10 +2589,11 @@ export default function Home() {
       if (
         file &&
         file.kind !== "image" &&
-        file.content !== file.savedContent &&
-        !(await confirmDialog(t("actions.close"), t("confirm.closeUnsaved", { path })))
+        file.content !== file.savedContent
       ) {
-        return;
+        const choice = await closeUnsavedDialog(t("actions.close"), t("confirm.closeUnsaved", { path }));
+        if (choice === "cancel") return;
+        if (choice === "save" && !(await saveFile(file))) return;
       }
 
       const nextFiles = openFiles.filter((item) => item.path !== path);
@@ -2463,7 +2602,7 @@ export default function Home() {
         setActivePath(nextFiles.at(-1)?.path);
       }
     },
-    [activePath, confirmDialog, openFiles, t]
+    [activePath, closeUnsavedDialog, openFiles, saveFile, t]
   );
 
   const createBlankFile = useCallback(async () => {
@@ -2563,6 +2702,53 @@ export default function Home() {
       }
     },
     [activePath, confirmDialog, loadTree, openFiles, t]
+  );
+
+  const renameFile = useCallback(
+    async (path: string) => {
+      const requestedPath = await promptDialog(t("prompt.renameFilePath"), path);
+      if (!requestedPath) return;
+
+      const newPath = requestedPath.trim().replaceAll("\\", "/").replace(/^\/+/, "");
+      if (!newPath || newPath === path) return;
+
+      try {
+        const response = await fetch(apiPath("/api/file"), {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ path, newPath })
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error ?? t("errors.renameFile"));
+
+        setOpenFiles((files) =>
+          files.map((file) =>
+            file.path === path
+              ? {
+                  ...file,
+                  path: payload.newPath ?? newPath,
+                  modifiedAt: payload.modifiedAt ?? file.modifiedAt
+                }
+              : file
+          )
+        );
+        if (activePath === path) {
+          setActivePath(payload.newPath ?? newPath);
+        }
+        setSelectedTreeFiles((current) => {
+          if (!current.has(path)) return current;
+          const next = new Set(current);
+          next.delete(path);
+          next.add(payload.newPath ?? newPath);
+          return next;
+        });
+        await loadTree();
+        setMessage(t("status.renamed", { path, newPath: payload.newPath ?? newPath }));
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : t("errors.renameFile"));
+      }
+    },
+    [activePath, loadTree, promptDialog, t]
   );
 
   const deleteSelectedFiles = useCallback(async () => {
@@ -3025,6 +3211,19 @@ export default function Home() {
     });
   }, [editingPositionAxis, printerStatus]);
 
+  const extruderListKey = printerStatus?.extruders.map((extruder) => extruder.name).join("|") ?? "";
+
+  useEffect(() => {
+    if (!printerStatus?.extruders.length) {
+      setSelectedExtruder("");
+      return;
+    }
+
+    setSelectedExtruder((current) =>
+      printerStatus.extruders.some((extruder) => extruder.name === current) ? current : printerStatus.extruders[0].name
+    );
+  }, [extruderListKey, printerStatus]);
+
   useEffect(() => {
     void loadHeaters();
     const interval = window.setInterval(() => void loadHeaters(), 3000);
@@ -3112,15 +3311,17 @@ export default function Home() {
     return () => window.clearTimeout(timer);
   }, [activeFile, activePath, jumpToLine, pendingJump]);
 
+  const activeFilePath = activeFile?.path;
+
   const editorExtensions = useMemo(() => {
-    if (!activeFile) return [];
-    const extensions = [fileLanguage(activeFile.path), ...editorLinkExtension(activeFile.path, resolveAndOpenInclude)];
-    if (isCfgPath(activeFile.path)) {
+    if (!activeFilePath) return [];
+    const extensions = [fileLanguage(activeFilePath), ...editorLinkExtension(activeFilePath, resolveAndOpenInclude)];
+    if (isCfgPath(activeFilePath)) {
       extensions.push(syntaxHighlighting(klipperHighlightStyle));
     }
 
     return extensions;
-  }, [activeFile, resolveAndOpenInclude]);
+  }, [activeFilePath, resolveAndOpenInclude]);
 
   const quickCommandDisabled =
     runningQuickCommand !== null || !printerStatus || Boolean(printerStatus.error) || printerStatus.printing;
@@ -3131,6 +3332,13 @@ export default function Home() {
     printerStatus.printing ||
     !printerStatus.allAxesHomed;
   const movementPanelDisabled = movingAction !== null || !printerStatus || Boolean(printerStatus.error) || printerStatus.printing;
+  const extrusionDisabled =
+    movingAction !== null ||
+    !printerStatus ||
+    Boolean(printerStatus.error) ||
+    printerStatus.printing ||
+    printerStatus.extruders.length === 0 ||
+    !selectedExtruder;
   const machinePowerDisabled =
     runningMachinePowerAction !== null || !printerStatus || Boolean(printerStatus.error) || printerStatus.printing;
   const powerMenuDisabled = restartingFirmware || runningMachinePowerAction !== null || !printerStatus;
@@ -3217,9 +3425,11 @@ export default function Home() {
           onOpen={openFile}
           onDownload={downloadFile}
           onDelete={deleteFile}
+          onRename={renameFile}
           onToggleSelected={toggleSelectedTreeFile}
           downloadLabel={t("actions.downloadFile")}
           deleteLabel={t("actions.deleteFile")}
+          renameLabel={t("actions.renameFile")}
           selectLabel={t("actions.selectFile")}
         />
         <div className="open-editors">
@@ -3262,17 +3472,26 @@ export default function Home() {
             <p className="empty-note">{t("empty.openFile")}</p>
           ) : (
             openFiles.map((file) => (
-              <button
+              <div
                 key={file.path}
-                className={`open-editor ${file.path === activePath ? "active" : ""}`}
-                type="button"
-                onClick={() => setActivePath(file.path)}
+                className={`open-editor-row ${file.path === activePath ? "active" : ""}`}
                 title={file.path}
               >
-                <FileIcon path={file.path} icon={iconByPath.get(file.path)} />
-                <span>{basename(file.path)}</span>
-                {file.kind !== "image" && file.content !== file.savedContent && <Icon className="open-dot">*</Icon>}
-              </button>
+                <button className="open-editor" type="button" onClick={() => setActivePath(file.path)}>
+                  <FileIcon path={file.path} icon={iconByPath.get(file.path)} />
+                  <span>{basename(file.path)}</span>
+                  {file.kind !== "image" && file.content !== file.savedContent && <Icon className="open-dot">*</Icon>}
+                </button>
+                <button
+                  className="open-editor-download"
+                  type="button"
+                  title={t("actions.downloadFile")}
+                  aria-label={t("actions.downloadFile")}
+                  onClick={() => downloadFile(file.path)}
+                >
+                  <FcDownload className="open-editor-action-icon" />
+                </button>
+              </div>
             ))
           )}
         </div>
@@ -3868,6 +4087,28 @@ export default function Home() {
                     </button>
                   </div>
                 </div>
+              ) : dialog.type === "unsaved-close" ? (
+                <div className="dialog-body">
+                  <p>{dialog.message}</p>
+                  <div className="dialog-actions three-actions">
+                    <button className="dialog-button" type="button" onClick={closeDialog}>
+                      {t("actions.cancel")}
+                    </button>
+                    <button
+                      className="dialog-button"
+                      type="button"
+                      onClick={() => {
+                        dialog.resolve("discard");
+                        setDialog(null);
+                      }}
+                    >
+                      {t("actions.closeWithoutSaving")}
+                    </button>
+                    <button className="dialog-button primary" type="button" onClick={acceptDialog}>
+                      {t("actions.saveAndClose")}
+                    </button>
+                  </div>
+                </div>
               ) : (
                 <form className="dialog-body" onSubmit={submitDialogInput}>
                   <label className="dialog-field">
@@ -4076,6 +4317,77 @@ export default function Home() {
                     </button>
                   ))}
                 </div>
+                <div className="movement-extrusion">
+                  <div className="movement-offset-title">{t("movement.extrusion")}</div>
+                  {printerStatus.extruders.length === 0 ? (
+                    <p className="empty-note">{t("movement.noExtruders")}</p>
+                  ) : (
+                    <>
+                      <div className="extruder-selector" role="group" aria-label={t("movement.extruder")}>
+                        {printerStatus.extruders.map((extruder) => (
+                          <button
+                            key={extruder.name}
+                            className={selectedExtruder === extruder.name ? "extruder-tab active" : "extruder-tab"}
+                            type="button"
+                            onClick={() => setSelectedExtruder(extruder.name)}
+                          >
+                            {extruder.label}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="extrusion-fields">
+                        <label>
+                          <span>{t("movement.extrudeLength")}</span>
+                          <input
+                            type="number"
+                            min="0.1"
+                            max="200"
+                            step="0.1"
+                            value={extrudeLength}
+                            onFocus={(event) => event.currentTarget.select()}
+                            onClick={(event) => event.currentTarget.select()}
+                            onChange={(event) => setExtrudeLength(event.target.value)}
+                          />
+                          <span>mm</span>
+                        </label>
+                        <label>
+                          <span>{t("movement.extrudeSpeed")}</span>
+                          <input
+                            type="number"
+                            min="0.1"
+                            max="100"
+                            step="0.1"
+                            value={extrudeSpeed}
+                            onFocus={(event) => event.currentTarget.select()}
+                            onClick={(event) => event.currentTarget.select()}
+                            onChange={(event) => setExtrudeSpeed(event.target.value)}
+                          />
+                          <span>mm/s</span>
+                        </label>
+                      </div>
+                      <div className="extrusion-actions">
+                        <button
+                          className="offset-button"
+                          type="button"
+                          disabled={extrusionDisabled}
+                          onClick={() => void runExtrusion("retract")}
+                        >
+                          <MdKeyboardArrowDown className="offset-icon" />
+                          {t("movement.retract")}
+                        </button>
+                        <button
+                          className="offset-button"
+                          type="button"
+                          disabled={extrusionDisabled}
+                          onClick={() => void runExtrusion("extrude")}
+                        >
+                          <MdKeyboardArrowUp className="offset-icon" />
+                          {t("movement.extrude")}
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
                 <div className="movement-offset">
                   <div className="movement-offset-title">
                     {t("movement.zOffset", { offset: formatOffset(printerStatus.zOffset) })}
@@ -4170,6 +4482,8 @@ export default function Home() {
                             max="350"
                             step="1"
                             value={heaterTargets[heater.name] ?? ""}
+                            onFocus={(event) => event.currentTarget.select()}
+                            onClick={(event) => event.currentTarget.select()}
                             onChange={(event) => setHeaterTargetValue(heater.name, event.target.value)}
                           />
                         </span>

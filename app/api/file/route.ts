@@ -137,6 +137,55 @@ export async function POST(request: NextRequest) {
   }
 }
 
+export async function PATCH(request: NextRequest) {
+  try {
+    const body = (await request.json()) as { path?: string; newPath?: string };
+    const relativePath = toRelativePath(body.path ?? "");
+    const newRelativePath = toRelativePath(body.newPath ?? "");
+
+    if (
+      !relativePath ||
+      !newRelativePath ||
+      isBlockedPath(relativePath) ||
+      isBlockedPath(newRelativePath) ||
+      relativePath === newRelativePath
+    ) {
+      return NextResponse.json({ error: "Invalid rename request" }, { status: 400 });
+    }
+
+    const absolutePath = resolveWorkspacePath(relativePath);
+    const newAbsolutePath = resolveWorkspacePath(newRelativePath);
+    const stat = await fs.stat(absolutePath);
+    if (!stat.isFile()) {
+      return NextResponse.json({ error: "Path is not a file" }, { status: 400 });
+    }
+
+    try {
+      await fs.stat(newAbsolutePath);
+      return NextResponse.json({ error: "Target file already exists" }, { status: 409 });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+        throw error;
+      }
+    }
+
+    await fs.mkdir(path.dirname(newAbsolutePath), { recursive: true });
+    await fs.rename(absolutePath, newAbsolutePath);
+    const updatedStat = await fs.stat(newAbsolutePath);
+
+    return NextResponse.json({
+      path: relativePath,
+      newPath: newRelativePath,
+      modifiedAt: updatedStat.mtime.toISOString()
+    });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Unable to rename file" },
+      { status: 500 }
+    );
+  }
+}
+
 export async function DELETE(request: NextRequest) {
   try {
     const relativePath = toRelativePath(request.nextUrl.searchParams.get("path") ?? "");

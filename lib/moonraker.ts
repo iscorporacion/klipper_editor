@@ -26,12 +26,18 @@ export type MoonrakerStatus = {
     y: AxisLimit;
     z: AxisLimit;
   };
+  extruders: ExtruderInfo[];
   zOffset: number;
 };
 
 export type AxisLimit = {
   min: number;
   max: number;
+};
+
+export type ExtruderInfo = {
+  name: string;
+  label: string;
 };
 
 export type HeaterStatus = {
@@ -171,6 +177,7 @@ export async function getMoonrakerStatus(): Promise<MoonrakerStatus> {
       z: toNumber(position[2])
     },
     positionLimits,
+    extruders: listExtruders(configSettings),
     zOffset: toNumber(homingOrigin[2])
   };
 }
@@ -401,6 +408,22 @@ function heaterLabel(name: string) {
   return name.replace(/^heater_generic\s+/i, "").toUpperCase();
 }
 
+function extruderIndex(name: string) {
+  if (name === "extruder") return 0;
+  const match = name.match(/^extruder(\d+)$/);
+  return match ? Number(match[1]) : Number.MAX_SAFE_INTEGER;
+}
+
+function listExtruders(configSettings: Record<string, unknown>): ExtruderInfo[] {
+  return Object.keys(configSettings)
+    .filter((name) => /^extruder\d*$/.test(name))
+    .sort((a, b) => extruderIndex(a) - extruderIndex(b))
+    .map((name) => ({
+      name,
+      label: `T${extruderIndex(name)}`
+    }));
+}
+
 function toNumber(value: unknown) {
   const number = Number(value);
   return Number.isFinite(number) ? number : 0;
@@ -471,4 +494,24 @@ export async function setHeaterTarget(name: string, target: number) {
   const safeName = name.replace(/"/g, "");
   const safeTarget = Math.max(0, target);
   return runGcodeScript(`SET_HEATER_TEMPERATURE HEATER="${safeName}" TARGET=${safeTarget}`);
+}
+
+export async function extrudeFilament(extruder: string, distance: number, speed: number) {
+  const safeExtruder = extruder.replace(/"/g, "");
+  const safeDistance = formatGcodeNumber(distance);
+  const safeFeedrate = formatGcodeNumber(Math.max(0.1, speed) * 60);
+
+  return runGcodeScript(
+    [
+      "SAVE_GCODE_STATE NAME=klipper_editor_extrude",
+      `ACTIVATE_EXTRUDER EXTRUDER="${safeExtruder}"`,
+      "M83",
+      `G1 E${safeDistance} F${safeFeedrate}`,
+      "RESTORE_GCODE_STATE NAME=klipper_editor_extrude"
+    ].join("\n")
+  );
+}
+
+function formatGcodeNumber(value: number) {
+  return value.toFixed(3).replace(/\.?0+$/, "");
 }

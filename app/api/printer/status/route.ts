@@ -26,6 +26,7 @@ export async function GET() {
         y: { min: 0, max: 0 },
         z: { min: 0, max: 0 }
       },
+      extruders: [],
       zOffset: 0,
       error: error instanceof Error ? error.message : "Unable to query Moonraker"
     });

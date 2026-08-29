@@ -4667,9 +4667,21 @@ export default function Home() {
                 <FcNext className="action-icon" />
               </button>
             </div>
-            <pre className="section-preview-body">
-              {sectionPreview.section.content || t("empty.sectionContent")}
-            </pre>
+            <div className="section-preview-body">
+              <CodeMirror
+                value={sectionPreview.section.content || t("empty.sectionContent")}
+                height="100%"
+                maxHeight="100%"
+                theme={vscodeDark}
+                extensions={[cfgLanguage, syntaxHighlighting(klipperHighlightStyle), EditorView.editable.of(false)]}
+                basicSetup={{
+                  lineNumbers: false,
+                  foldGutter: false,
+                  highlightActiveLine: false,
+                  highlightSelectionMatches: false
+                }}
+              />
+            </div>
           </div>
         )}
 

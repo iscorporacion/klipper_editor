@@ -1636,15 +1636,24 @@ body.is-resizing-row {
 }
 
 .section-preview-body {
+  height: 318px;
   max-height: 318px;
-  margin: 0;
-  overflow: auto;
-  padding: 12px;
-  color: var(--text);
-  font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+  overflow: hidden;
+}
+
+.section-preview-body .cm-editor {
+  height: 100%;
+  background: #10151c;
   font-size: 12px;
-  line-height: 1.55;
-  white-space: pre-wrap;
+}
+
+.section-preview-body .cm-scroller {
+  overflow: auto !important;
+  font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+}
+
+.section-preview-body .cm-content {
+  padding: 12px;
 }
 
 .modal-backdrop {

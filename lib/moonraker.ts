@@ -49,8 +49,46 @@ export type MainsailUiSettings = {
   primary: string;
 };
 
+export type GcodeThumbnail = {
+  width: number;
+  height: number;
+  size?: number;
+  relativePath: string;
+};
+
+export type GcodeFileEntry = {
+  path: string;
+  name: string;
+  size: number;
+  modified: number;
+  permissions?: string;
+  estimatedTime?: number;
+  filamentTotal?: number;
+  layerHeight?: number;
+  objectHeight?: number;
+  thumbnails: GcodeThumbnail[];
+};
+
+export type GcodeHistoryEntry = {
+  id: string;
+  filename: string;
+  status: string;
+  startTime: number;
+  endTime: number;
+  printDuration: number;
+  totalDuration: number;
+  filamentUsed: number;
+  metadata?: Partial<GcodeFileEntry>;
+};
+
 function moonrakerPath(path: string) {
   return `${moonrakerUrl}${path}`;
+}
+
+export function moonrakerFilePath(root: string, filePath: string) {
+  const cleanRoot = root.replace(/^\/+|\/+$/g, "");
+  const cleanPath = filePath.split("/").map(encodeURIComponent).join("/");
+  return moonrakerPath(`/server/files/${cleanRoot}/${cleanPath}`);
 }
 
 async function moonrakerFetch(path: string, init?: RequestInit) {
@@ -154,6 +192,125 @@ export async function runGcodeScript(script: string) {
     body: JSON.stringify({ script })
   });
   return payload?.result ?? payload;
+}
+
+export async function startPrint(filename: string) {
+  const payload = await moonrakerFetch("/printer/print/start", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ filename })
+  });
+  return payload?.result ?? payload;
+}
+
+export async function pausePrint() {
+  const payload = await moonrakerFetch("/printer/print/pause", { method: "POST" });
+  return payload?.result ?? payload;
+}
+
+export async function resumePrint() {
+  const payload = await moonrakerFetch("/printer/print/resume", { method: "POST" });
+  return payload?.result ?? payload;
+}
+
+export async function cancelPrint() {
+  const payload = await moonrakerFetch("/printer/print/cancel", { method: "POST" });
+  return payload?.result ?? payload;
+}
+
+function normalizeThumbnail(value: unknown): GcodeThumbnail | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const thumbnail = value as Record<string, unknown>;
+  const relativePath = typeof thumbnail.relative_path === "string" ? thumbnail.relative_path : "";
+  if (!relativePath) return undefined;
+
+  return {
+    width: toNumber(thumbnail.width),
+    height: toNumber(thumbnail.height),
+    size: thumbnail.size === undefined ? undefined : toNumber(thumbnail.size),
+    relativePath
+  };
+}
+
+function normalizeMetadata(value: unknown): Partial<GcodeFileEntry> {
+  const metadata = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  const filament = metadata.filament_total ?? metadata.filament_used;
+
+  return {
+    estimatedTime: metadata.estimated_time === undefined ? undefined : toNumber(metadata.estimated_time),
+    filamentTotal: filament === undefined ? undefined : toNumber(filament),
+    layerHeight: metadata.layer_height === undefined ? undefined : toNumber(metadata.layer_height),
+    objectHeight: metadata.object_height === undefined ? undefined : toNumber(metadata.object_height),
+    thumbnails: Array.isArray(metadata.thumbnails)
+      ? metadata.thumbnails.map(normalizeThumbnail).filter((thumbnail): thumbnail is GcodeThumbnail => Boolean(thumbnail))
+      : []
+  };
+}
+
+export async function getGcodeMetadata(filename: string): Promise<Partial<GcodeFileEntry>> {
+  const payload = await moonrakerFetch(`/server/files/metadata?filename=${encodeURIComponent(filename)}`);
+  return normalizeMetadata(payload?.result ?? payload);
+}
+
+export async function listGcodeFiles(): Promise<GcodeFileEntry[]> {
+  const payload = await moonrakerFetch("/server/files/list?root=gcodes");
+  const files = payload?.result ?? payload;
+  if (!Array.isArray(files)) return [];
+
+  const gcodeFiles = files
+    .filter((file): file is Record<string, unknown> => Boolean(file) && typeof file === "object")
+    .filter((file) => String(file.type ?? "file") === "file")
+    .filter((file) => String(file.path ?? file.filename ?? "").toLowerCase().endsWith(".gcode"));
+
+  return Promise.all(
+    gcodeFiles.map(async (file) => {
+      const path = String(file.path ?? file.filename ?? "");
+      let metadata: Partial<GcodeFileEntry> = { thumbnails: [] };
+
+      try {
+        metadata = await getGcodeMetadata(path);
+      } catch {
+        metadata = { thumbnails: [] };
+      }
+
+      return {
+        path,
+        name: path.split("/").at(-1) ?? path,
+        size: toNumber(file.size),
+        modified: toNumber(file.modified),
+        permissions: typeof file.permissions === "string" ? file.permissions : undefined,
+        estimatedTime: metadata.estimatedTime,
+        filamentTotal: metadata.filamentTotal,
+        layerHeight: metadata.layerHeight,
+        objectHeight: metadata.objectHeight,
+        thumbnails: metadata.thumbnails ?? []
+      };
+    })
+  );
+}
+
+export async function listPrintHistory(limit = 50): Promise<GcodeHistoryEntry[]> {
+  const payload = await moonrakerFetch(`/server/history/list?limit=${limit}&order=desc`);
+  const jobs = payload?.result?.jobs ?? payload?.jobs ?? [];
+  if (!Array.isArray(jobs)) return [];
+
+  return jobs
+    .filter((job): job is Record<string, unknown> => Boolean(job) && typeof job === "object")
+    .map((job) => {
+      const metadata = normalizeMetadata(job.metadata);
+
+      return {
+        id: String(job.job_id ?? `${job.filename ?? "job"}-${job.start_time ?? ""}`),
+        filename: String(job.filename ?? ""),
+        status: String(job.status ?? "unknown"),
+        startTime: toNumber(job.start_time),
+        endTime: toNumber(job.end_time),
+        printDuration: toNumber(job.print_duration),
+        totalDuration: toNumber(job.total_duration),
+        filamentUsed: toNumber(job.filament_used),
+        metadata
+      };
+    });
 }
 
 function heaterLabel(name: string) {

@@ -14,9 +14,9 @@ import { json } from "@codemirror/lang-json";
 import { javascript } from "@codemirror/lang-javascript";
 import { tags } from "@lezer/highlight";
 import { vscodeDark } from "@uiw/codemirror-theme-vscode";
-import { BsArrowsMove, BsSignStopFill } from "react-icons/bs";
+import { BsArrowsMove, BsPrinterFill, BsSignStopFill } from "react-icons/bs";
 import { FaHotjar } from "react-icons/fa";
-import { FaFloppyDisk, FaPlay } from "react-icons/fa6";
+import { FaFloppyDisk, FaPause, FaPlay, FaPrint, FaStop } from "react-icons/fa6";
 import {
   FcAcceptDatabase,
   FcDeleteDatabase,
@@ -159,6 +159,41 @@ type KlipperConsoleEntry = {
   message: string;
   timestamp: string;
 };
+
+type GcodeThumbnail = {
+  width: number;
+  height: number;
+  size?: number;
+  relativePath: string;
+};
+
+type GcodeFileEntry = {
+  path: string;
+  name: string;
+  size: number;
+  modified: number;
+  estimatedTime?: number;
+  filamentTotal?: number;
+  layerHeight?: number;
+  objectHeight?: number;
+  thumbnails: GcodeThumbnail[];
+};
+
+type GcodeHistoryEntry = {
+  id: string;
+  filename: string;
+  status: string;
+  startTime: number;
+  endTime: number;
+  printDuration: number;
+  totalDuration: number;
+  filamentUsed: number;
+  metadata?: Partial<GcodeFileEntry>;
+};
+
+type GcodeModalTab = "files" | "history";
+type SelectedGcodeItem = { type: "file"; item: GcodeFileEntry } | { type: "history"; item: GcodeHistoryEntry };
+type PrintControlAction = "pause" | "resume" | "cancel";
 
 const fallbackMainsailTheme: MainsailVisualTheme = {
   mode: "dark",
@@ -323,6 +358,12 @@ const defaultMessages: Messages = {
   "actions.klipperConsole": "Consola Klipper",
   "actions.sendGcode": "Enviar",
   "actions.sendingGcode": "Enviando",
+  "actions.printedFiles": "Archivos impresos",
+  "actions.printFile": "Imprimir",
+  "actions.printingFile": "Enviando impresion",
+  "actions.pausePrint": "Pausar",
+  "actions.resumePrint": "Continuar",
+  "actions.cancelPrint": "Cancelar impresion",
   "actions.hot": "Hot",
   "actions.help": "Ayuda",
   "actions.coolHeater": "Enfriar {heater}",
@@ -361,6 +402,10 @@ const defaultMessages: Messages = {
   "status.executingMacro": "Ejecutando macro {name}",
   "status.executedMacro": "Macro ejecutada {name}",
   "status.gcodeSent": "G-code enviado",
+  "status.printStarted": "Impresion iniciada",
+  "status.printPaused": "Impresion pausada",
+  "status.printResumed": "Impresion reanudada",
+  "status.printCancelled": "Impresion cancelada",
   "status.loadingHeaters": "Cargando temperaturas",
   "status.heatersRefreshed": "Calentadores actualizados",
   "status.coolingHeater": "Enfriando {heater}",
@@ -394,6 +439,9 @@ const defaultMessages: Messages = {
   "errors.loadMacros": "No se pudieron cargar las macros",
   "errors.executeMacro": "No se pudo ejecutar la macro",
   "errors.gcodeCommand": "No se pudo enviar el G-code",
+  "errors.loadGcodes": "No se pudieron cargar los archivos impresos",
+  "errors.startPrint": "No se pudo iniciar la impresion",
+  "errors.printControl": "No se pudo controlar la impresion",
   "errors.loadHeaters": "No se pudieron cargar los calentadores",
   "errors.coolHeater": "No se pudo enfriar el calentador",
   "errors.setHeaters": "No se pudieron aplicar las temperaturas",
@@ -418,10 +466,13 @@ const defaultMessages: Messages = {
   "confirm.deleteFile": "Borrar {path}? Esta accion no se puede deshacer.",
   "confirm.restartFirmware": "Reiniciar firmware ahora?",
   "confirm.executeMacro": "Ejecutar macro {name} en la impresora?",
+  "confirm.printFile": "Imprimir {name} ahora?",
+  "confirm.cancelPrint": "Cancelar la impresion actual?",
   "prompt.newFilePath": "Ruta del nuevo archivo",
   "panels.openEditors": "Editores abiertos",
   "panels.terminal": "Terminal",
   "panels.klipperConsole": "Consola Klipper",
+  "panels.printedFiles": "Archivos impresos",
   "panels.includes": "Includes",
   "panels.sections": "Sesiones",
   "empty.openFile": "Abre un archivo del arbol.",
@@ -458,6 +509,25 @@ const defaultMessages: Messages = {
   "klipperConsole.empty": "Sin comandos enviados en esta sesion.",
   "klipperConsole.sent": "Enviado",
   "klipperConsole.error": "Error",
+  "gcodes.files": "Archivos",
+  "gcodes.history": "Historial",
+  "gcodes.loading": "Cargando archivos.",
+  "gcodes.empty": "Sin archivos G-code.",
+  "gcodes.historyEmpty": "Sin historial de impresiones.",
+  "gcodes.noSelection": "Selecciona un archivo para ver sus detalles.",
+  "gcodes.noThumbnail": "Sin miniatura",
+  "gcodes.search": "Buscar archivo",
+  "gcodes.fileSize": "Tamano",
+  "gcodes.modified": "Modificado",
+  "gcodes.estimatedTime": "Tiempo estimado",
+  "gcodes.printDuration": "Tiempo de impresion",
+  "gcodes.totalDuration": "Tiempo total",
+  "gcodes.filament": "Filamento",
+  "gcodes.layerHeight": "Altura de capa",
+  "gcodes.objectHeight": "Altura objeto",
+  "gcodes.status": "Estado",
+  "gcodes.started": "Inicio",
+  "gcodes.finished": "Fin",
   "sections.search": "Buscar sesion",
   "heaters.title": "Calentadores",
   "heaters.empty": "Sin calentadores detectados.",
@@ -568,6 +638,57 @@ function dirname(path: string) {
 
 function formatTemperature(value: number) {
   return `${Math.round(value)} °C`;
+}
+
+function formatBytes(value: number) {
+  if (!Number.isFinite(value) || value <= 0) return "-";
+  const units = ["B", "KB", "MB", "GB"];
+  let size = value;
+  let unitIndex = 0;
+
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024;
+    unitIndex += 1;
+  }
+
+  return `${size >= 10 || unitIndex === 0 ? size.toFixed(0) : size.toFixed(1)} ${units[unitIndex]}`;
+}
+
+function formatDuration(seconds: number) {
+  if (!Number.isFinite(seconds) || seconds <= 0) return "-";
+  const totalSeconds = Math.round(seconds);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const remainingSeconds = totalSeconds % 60;
+
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  if (minutes > 0) return `${minutes}m ${remainingSeconds}s`;
+  return `${remainingSeconds}s`;
+}
+
+function formatTimestamp(seconds: number) {
+  if (!Number.isFinite(seconds) || seconds <= 0) return "-";
+  return new Date(seconds * 1000).toLocaleString();
+}
+
+function formatMillimeters(value: number | undefined) {
+  return Number.isFinite(Number(value)) && Number(value) > 0 ? `${Number(value).toFixed(2)} mm` : "-";
+}
+
+function bestThumbnail(thumbnails: GcodeThumbnail[] = []) {
+  return [...thumbnails].sort((a, b) => b.width * b.height - a.width * a.height)[0];
+}
+
+function selectedGcodeName(selection: SelectedGcodeItem) {
+  return selection.type === "file" ? selection.item.name : basename(selection.item.filename);
+}
+
+function selectedGcodePath(selection: SelectedGcodeItem) {
+  return selection.type === "file" ? selection.item.path : selection.item.filename;
+}
+
+function selectedGcodeThumbnails(selection: SelectedGcodeItem) {
+  return selection.type === "file" ? selection.item.thumbnails : selection.item.metadata?.thumbnails ?? [];
 }
 
 function formatPosition(value: number, digits = 2) {
@@ -1098,6 +1219,15 @@ export default function Home() {
   const [klipperConsoleInput, setKlipperConsoleInput] = useState("");
   const [klipperConsoleLog, setKlipperConsoleLog] = useState<KlipperConsoleEntry[]>([]);
   const [sendingKlipperCommand, setSendingKlipperCommand] = useState(false);
+  const [gcodesOpen, setGcodesOpen] = useState(false);
+  const [gcodeModalTab, setGcodeModalTab] = useState<GcodeModalTab>("files");
+  const [gcodeSearch, setGcodeSearch] = useState("");
+  const [gcodeFiles, setGcodeFiles] = useState<GcodeFileEntry[]>([]);
+  const [gcodeHistory, setGcodeHistory] = useState<GcodeHistoryEntry[]>([]);
+  const [selectedGcodeItem, setSelectedGcodeItem] = useState<SelectedGcodeItem | null>(null);
+  const [gcodesLoading, setGcodesLoading] = useState(false);
+  const [startingPrint, setStartingPrint] = useState(false);
+  const [runningPrintAction, setRunningPrintAction] = useState<PrintControlAction | null>(null);
   const [dialog, setDialog] = useState<AppDialog | null>(null);
   const [dialogInputValue, setDialogInputValue] = useState("");
   const [message, setMessage] = useState(defaultLocaleMessages["status.ready"] ?? "Ready");
@@ -1162,6 +1292,16 @@ export default function Home() {
     );
   }, [macroSearch, macros]);
   const anyHeaterActive = heaters.some((heater) => heater.target > 0);
+  const filteredGcodeFiles = useMemo(() => {
+    const query = gcodeSearch.trim().toLowerCase();
+    if (!query) return gcodeFiles;
+    return gcodeFiles.filter((file) => `${file.name} ${file.path}`.toLowerCase().includes(query));
+  }, [gcodeFiles, gcodeSearch]);
+  const filteredGcodeHistory = useMemo(() => {
+    const query = gcodeSearch.trim().toLowerCase();
+    if (!query) return gcodeHistory;
+    return gcodeHistory.filter((job) => `${job.filename} ${job.status}`.toLowerCase().includes(query));
+  }, [gcodeHistory, gcodeSearch]);
   const themeStyle = useMemo<ThemeVariables>(() => {
     const primary = normalizeCssColor(mainsailTheme.primary, fallbackMainsailTheme.primary);
     const logo = normalizeCssColor(mainsailTheme.logo, fallbackMainsailTheme.logo);
@@ -1317,6 +1457,36 @@ export default function Home() {
     setMacroSearch("");
     void loadMacros();
   }, [loadMacros]);
+
+  const loadGcodes = useCallback(async () => {
+    setGcodesLoading(true);
+
+    try {
+      const response = await fetch(apiPath("/api/printer/gcodes"), { cache: "no-store" });
+      const payload = (await response.json()) as {
+        files?: GcodeFileEntry[];
+        history?: GcodeHistoryEntry[];
+        error?: string;
+      };
+      if (!response.ok) throw new Error(payload.error ?? t("errors.loadGcodes"));
+
+      setGcodeFiles(payload.files ?? []);
+      setGcodeHistory(payload.history ?? []);
+      setSelectedGcodeItem(null);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : t("errors.loadGcodes"));
+    } finally {
+      setGcodesLoading(false);
+    }
+  }, [t]);
+
+  const openGcodesModal = useCallback(() => {
+    setGcodesOpen(true);
+    setGcodeModalTab("files");
+    setGcodeSearch("");
+    setSelectedGcodeItem(null);
+    void loadGcodes();
+  }, [loadGcodes]);
 
   const loadPrinterStatus = useCallback(async () => {
     try {
@@ -2153,6 +2323,62 @@ export default function Home() {
     [confirmDialog, executingMacro, loadPrinterStatus, t]
   );
 
+  const startSelectedPrint = useCallback(async () => {
+    if (!selectedGcodeItem || startingPrint) return;
+
+    const filename = selectedGcodePath(selectedGcodeItem);
+    const name = selectedGcodeName(selectedGcodeItem);
+    if (!(await confirmDialog(t("actions.printFile"), t("confirm.printFile", { name })))) return;
+
+    setStartingPrint(true);
+
+    try {
+      const response = await fetch(apiPath("/api/printer/print-start"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ filename })
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? t("errors.startPrint"));
+
+      setMessage(t("status.printStarted"));
+      await loadPrinterStatus();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : t("errors.startPrint"));
+    } finally {
+      setStartingPrint(false);
+    }
+  }, [confirmDialog, loadPrinterStatus, selectedGcodeItem, startingPrint, t]);
+
+  const runPrintControl = useCallback(
+    async (action: PrintControlAction) => {
+      if (runningPrintAction) return;
+      if (action === "cancel" && !(await confirmDialog(t("actions.cancelPrint"), t("confirm.cancelPrint")))) return;
+
+      setRunningPrintAction(action);
+
+      try {
+        const response = await fetch(apiPath("/api/printer/print-control"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action })
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error ?? t("errors.printControl"));
+
+        const statusKey =
+          action === "pause" ? "status.printPaused" : action === "resume" ? "status.printResumed" : "status.printCancelled";
+        setMessage(t(statusKey));
+        await loadPrinterStatus();
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : t("errors.printControl"));
+      } finally {
+        setRunningPrintAction(null);
+      }
+    },
+    [confirmDialog, loadPrinterStatus, runningPrintAction, t]
+  );
+
   const resolveAndOpenInclude = useCallback(
     async (includePath: string, fromPath: string) => {
       setMessage(t("status.resolvingInclude", { include: includePath }));
@@ -2622,6 +2848,15 @@ export default function Home() {
               {t("actions.macros")}
             </button>
             <button
+              className="icon-button printed-files-button"
+              type="button"
+              onClick={openGcodesModal}
+              title={t("actions.printedFiles")}
+              aria-label={t("actions.printedFiles")}
+            >
+              <BsPrinterFill className="action-icon plain-action-icon" />
+            </button>
+            <button
               className="icon-button klipper-console-button"
               type="button"
               onClick={() => setKlipperConsoleOpen(true)}
@@ -2724,6 +2959,34 @@ export default function Home() {
                 ))}
               </div>
             </div>
+            {printerStatus?.printing && (
+              <div className="print-control-actions">
+                <button
+                  className="print-control-button"
+                  type="button"
+                  disabled={runningPrintAction !== null}
+                  title={printerStatus.printState === "paused" ? t("actions.resumePrint") : t("actions.pausePrint")}
+                  onClick={() => void runPrintControl(printerStatus.printState === "paused" ? "resume" : "pause")}
+                >
+                  {printerStatus.printState === "paused" ? (
+                    <FaPlay className="print-control-icon" />
+                  ) : (
+                    <FaPause className="print-control-icon" />
+                  )}
+                  {printerStatus.printState === "paused" ? t("actions.resumePrint") : t("actions.pausePrint")}
+                </button>
+                <button
+                  className="print-control-button danger"
+                  type="button"
+                  disabled={runningPrintAction !== null}
+                  title={t("actions.cancelPrint")}
+                  onClick={() => void runPrintControl("cancel")}
+                >
+                  <FaStop className="print-control-icon" />
+                  {t("actions.cancelPrint")}
+                </button>
+              </div>
+            )}
             <button
               className="emergency-button"
               type="button"
@@ -3579,6 +3842,258 @@ export default function Home() {
                       </div>
                     ))
                   )}
+                </div>
+              </div>
+            </section>
+          </div>
+        )}
+
+        {gcodesOpen && (
+          <div className="modal-backdrop" role="presentation" onMouseDown={() => setGcodesOpen(false)}>
+            <section
+              className="options-modal gcodes-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="gcodes-title"
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <div className="modal-header">
+                <h2 id="gcodes-title">{t("panels.printedFiles")}</h2>
+                <div className="modal-header-actions">
+                  <button
+                    className="modal-icon-button"
+                    type="button"
+                    title={t("actions.refreshTree")}
+                    aria-label={t("actions.refreshTree")}
+                    onClick={() => void loadGcodes()}
+                  >
+                    <FcRefresh className="action-icon" />
+                  </button>
+                  <button
+                    className="modal-close"
+                    type="button"
+                    title={t("actions.close")}
+                    aria-label={t("actions.close")}
+                    onClick={() => setGcodesOpen(false)}
+                  >
+                    x
+                  </button>
+                </div>
+              </div>
+              <div className="gcodes-modal-body">
+                <div className="gcodes-tabs" role="tablist">
+                  <button
+                    className={gcodeModalTab === "files" ? "gcodes-tab active" : "gcodes-tab"}
+                    type="button"
+                    role="tab"
+                    aria-selected={gcodeModalTab === "files"}
+                    onClick={() => {
+                      setGcodeModalTab("files");
+                      setSelectedGcodeItem(null);
+                    }}
+                  >
+                    {t("gcodes.files")}
+                  </button>
+                  <button
+                    className={gcodeModalTab === "history" ? "gcodes-tab active" : "gcodes-tab"}
+                    type="button"
+                    role="tab"
+                    aria-selected={gcodeModalTab === "history"}
+                    onClick={() => {
+                      setGcodeModalTab("history");
+                      setSelectedGcodeItem(null);
+                    }}
+                  >
+                    {t("gcodes.history")}
+                  </button>
+                </div>
+                <label className="gcode-search-field">
+                  <FcSearch className="action-icon" />
+                  <input
+                    value={gcodeSearch}
+                    placeholder={t("gcodes.search")}
+                    onChange={(event) => setGcodeSearch(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Escape") {
+                        setGcodeSearch("");
+                      }
+                    }}
+                  />
+                  {gcodeSearch && (
+                    <button
+                      className="search-clear-button"
+                      type="button"
+                      title={t("actions.clearSearch")}
+                      aria-label={t("actions.clearSearch")}
+                      onClick={() => setGcodeSearch("")}
+                    >
+                      <IoClose className="search-clear-icon" />
+                    </button>
+                  )}
+                </label>
+                <div className="gcodes-browser">
+                  <div className="gcodes-list">
+                    {gcodesLoading ? (
+                      <p className="empty-note">{t("gcodes.loading")}</p>
+                    ) : gcodeModalTab === "files" ? (
+                      filteredGcodeFiles.length === 0 ? (
+                        <p className="empty-note">{t("gcodes.empty")}</p>
+                      ) : (
+                        filteredGcodeFiles.map((file) => (
+                          <button
+                            key={file.path}
+                            className={
+                              selectedGcodeItem?.type === "file" && selectedGcodeItem.item.path === file.path
+                                ? "gcode-row active"
+                                : "gcode-row"
+                            }
+                            type="button"
+                            onClick={() => setSelectedGcodeItem({ type: "file", item: file })}
+                            title={file.path}
+                          >
+                            <BsPrinterFill className="gcode-row-icon" />
+                            <span>
+                              <strong>{file.name}</strong>
+                              <small>{formatTimestamp(file.modified)}</small>
+                            </span>
+                          </button>
+                        ))
+                      )
+                    ) : filteredGcodeHistory.length === 0 ? (
+                      <p className="empty-note">{t("gcodes.historyEmpty")}</p>
+                    ) : (
+                      filteredGcodeHistory.map((job) => (
+                        <button
+                          key={job.id}
+                          className={
+                            selectedGcodeItem?.type === "history" && selectedGcodeItem.item.id === job.id
+                              ? "gcode-row active"
+                              : "gcode-row"
+                          }
+                          type="button"
+                          onClick={() => setSelectedGcodeItem({ type: "history", item: job })}
+                          title={job.filename}
+                        >
+                          <BsPrinterFill className="gcode-row-icon" />
+                          <span>
+                            <strong>{basename(job.filename)}</strong>
+                            <small>
+                              {job.status} · {formatTimestamp(job.startTime)}
+                            </small>
+                          </span>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                  <aside className={selectedGcodeItem ? "gcode-detail-panel open" : "gcode-detail-panel"}>
+                    {selectedGcodeItem ? (
+                      <>
+                        <div className="gcode-detail-header">
+                          <div>
+                            <h3>{selectedGcodeName(selectedGcodeItem)}</h3>
+                            <p>{selectedGcodePath(selectedGcodeItem)}</p>
+                          </div>
+                          <div className="gcode-detail-actions">
+                            <button
+                              className="dialog-button primary"
+                              type="button"
+                              disabled={startingPrint || printerStatus?.printing}
+                              title={printerStatus?.printing ? t("errors.restartPrinting") : t("actions.printFile")}
+                              onClick={() => void startSelectedPrint()}
+                            >
+                              <FaPrint className="dialog-button-icon" />
+                              {startingPrint ? t("actions.printingFile") : t("actions.printFile")}
+                            </button>
+                            <button
+                              className="modal-close"
+                              type="button"
+                              title={t("actions.close")}
+                              aria-label={t("actions.close")}
+                              onClick={() => setSelectedGcodeItem(null)}
+                            >
+                              x
+                            </button>
+                          </div>
+                        </div>
+                        {bestThumbnail(selectedGcodeThumbnails(selectedGcodeItem)) ? (
+                          <img
+                            className="gcode-thumbnail"
+                            src={apiPath(
+                              `/api/printer/gcode-thumbnail?path=${encodeURIComponent(
+                                bestThumbnail(selectedGcodeThumbnails(selectedGcodeItem))?.relativePath ?? ""
+                              )}`
+                            )}
+                            alt=""
+                          />
+                        ) : (
+                          <div className="gcode-thumbnail empty">{t("gcodes.noThumbnail")}</div>
+                        )}
+                        <dl className="gcode-detail-list">
+                          {selectedGcodeItem.type === "file" ? (
+                            <>
+                              <div>
+                                <dt>{t("gcodes.fileSize")}</dt>
+                                <dd>{formatBytes(selectedGcodeItem.item.size)}</dd>
+                              </div>
+                              <div>
+                                <dt>{t("gcodes.modified")}</dt>
+                                <dd>{formatTimestamp(selectedGcodeItem.item.modified)}</dd>
+                              </div>
+                              <div>
+                                <dt>{t("gcodes.estimatedTime")}</dt>
+                                <dd>{formatDuration(selectedGcodeItem.item.estimatedTime ?? 0)}</dd>
+                              </div>
+                              <div>
+                                <dt>{t("gcodes.filament")}</dt>
+                                <dd>{formatMillimeters(selectedGcodeItem.item.filamentTotal)}</dd>
+                              </div>
+                              <div>
+                                <dt>{t("gcodes.layerHeight")}</dt>
+                                <dd>{formatMillimeters(selectedGcodeItem.item.layerHeight)}</dd>
+                              </div>
+                              <div>
+                                <dt>{t("gcodes.objectHeight")}</dt>
+                                <dd>{formatMillimeters(selectedGcodeItem.item.objectHeight)}</dd>
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <div>
+                                <dt>{t("gcodes.status")}</dt>
+                                <dd>{selectedGcodeItem.item.status}</dd>
+                              </div>
+                              <div>
+                                <dt>{t("gcodes.started")}</dt>
+                                <dd>{formatTimestamp(selectedGcodeItem.item.startTime)}</dd>
+                              </div>
+                              <div>
+                                <dt>{t("gcodes.finished")}</dt>
+                                <dd>{formatTimestamp(selectedGcodeItem.item.endTime)}</dd>
+                              </div>
+                              <div>
+                                <dt>{t("gcodes.printDuration")}</dt>
+                                <dd>{formatDuration(selectedGcodeItem.item.printDuration)}</dd>
+                              </div>
+                              <div>
+                                <dt>{t("gcodes.totalDuration")}</dt>
+                                <dd>{formatDuration(selectedGcodeItem.item.totalDuration)}</dd>
+                              </div>
+                              <div>
+                                <dt>{t("gcodes.filament")}</dt>
+                                <dd>
+                                  {formatMillimeters(
+                                    selectedGcodeItem.item.filamentUsed || selectedGcodeItem.item.metadata?.filamentTotal
+                                  )}
+                                </dd>
+                              </div>
+                            </>
+                          )}
+                        </dl>
+                      </>
+                    ) : (
+                      <p className="empty-note">{t("gcodes.noSelection")}</p>
+                    )}
+                  </aside>
                 </div>
               </div>
             </section>

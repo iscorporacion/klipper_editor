@@ -196,6 +196,12 @@ type GcodeModalTab = "files" | "history";
 type SelectedGcodeItem = { type: "file"; item: GcodeFileEntry } | { type: "history"; item: GcodeHistoryEntry };
 type PrintControlAction = "pause" | "resume" | "cancel";
 
+type SearchResult = {
+  path: string;
+  line: number;
+  text: string;
+};
+
 const fallbackMainsailTheme: MainsailVisualTheme = {
   mode: "dark",
   theme: "mainsail",
@@ -361,6 +367,9 @@ const defaultMessages: Messages = {
   "actions.sendGcode": "Enviar",
   "actions.sendingGcode": "Enviando",
   "actions.printedFiles": "Archivos impresos",
+  "actions.globalSearch": "Buscar en configuracion",
+  "actions.search": "Buscar",
+  "actions.searching": "Buscando",
   "actions.printFile": "Imprimir",
   "actions.printingFile": "Enviando impresion",
   "actions.pausePrint": "Pausar",
@@ -390,7 +399,7 @@ const defaultMessages: Messages = {
   "actions.connectTerminal": "Conectar terminal",
   "actions.disconnectTerminal": "Desconectar terminal",
   "actions.runTerminalCommand": "Ejecutar",
-  "actions.restartFirmware": "Reiniciar firmware",
+  "actions.restartFirmware": "Restar",
   "actions.restartingFirmware": "Reiniciando",
   "status.ready": "Listo",
   "status.opening": "Abriendo {path}",
@@ -444,6 +453,7 @@ const defaultMessages: Messages = {
   "errors.executeMacro": "No se pudo ejecutar la macro",
   "errors.gcodeCommand": "No se pudo enviar el G-code",
   "errors.loadGcodes": "No se pudieron cargar los archivos impresos",
+  "errors.globalSearch": "No se pudo buscar en la configuracion",
   "errors.startPrint": "No se pudo iniciar la impresion",
   "errors.printControl": "No se pudo controlar la impresion",
   "errors.loadHeaters": "No se pudieron cargar los calentadores",
@@ -477,6 +487,7 @@ const defaultMessages: Messages = {
   "panels.terminal": "Terminal",
   "panels.klipperConsole": "Consola Klipper",
   "panels.printedFiles": "Archivos impresos",
+  "panels.globalSearch": "Busqueda global",
   "panels.includes": "Includes",
   "panels.sections": "Sesiones",
   "empty.openFile": "Abre un archivo del arbol.",
@@ -532,6 +543,10 @@ const defaultMessages: Messages = {
   "gcodes.status": "Estado",
   "gcodes.started": "Inicio",
   "gcodes.finished": "Fin",
+  "globalSearch.placeholder": "Buscar en toda la configuracion",
+  "globalSearch.empty": "Ingresa al menos 2 caracteres.",
+  "globalSearch.noResults": "Sin resultados.",
+  "globalSearch.count": "{count} resultados",
   "sections.search": "Buscar sesion",
   "heaters.title": "Calentadores",
   "heaters.empty": "Sin calentadores detectados.",
@@ -1242,6 +1257,10 @@ export default function Home() {
   const [sectionSearch, setSectionSearch] = useState("");
   const [macrosLoading, setMacrosLoading] = useState(false);
   const [executingMacro, setExecutingMacro] = useState<string | null>(null);
+  const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
+  const [globalSearchQuery, setGlobalSearchQuery] = useState("");
+  const [globalSearchResults, setGlobalSearchResults] = useState<SearchResult[]>([]);
+  const [globalSearchLoading, setGlobalSearchLoading] = useState(false);
   const [klipperConsoleOpen, setKlipperConsoleOpen] = useState(false);
   const [klipperConsoleInput, setKlipperConsoleInput] = useState("");
   const [klipperConsoleLog, setKlipperConsoleLog] = useState<KlipperConsoleEntry[]>([]);
@@ -2378,6 +2397,42 @@ export default function Home() {
     [openFile, t]
   );
 
+  const runGlobalSearch = useCallback(
+    async (event?: FormEvent<HTMLFormElement>) => {
+      event?.preventDefault();
+      const query = globalSearchQuery.trim();
+
+      if (query.length < 2) {
+        setGlobalSearchResults([]);
+        return;
+      }
+
+      setGlobalSearchLoading(true);
+      try {
+        const response = await fetch(apiPath(`/api/search?q=${encodeURIComponent(query)}`), { cache: "no-store" });
+        const payload = (await response.json()) as { results?: SearchResult[]; error?: string };
+        if (!response.ok) throw new Error(payload.error ?? t("errors.globalSearch"));
+
+        setGlobalSearchResults(payload.results ?? []);
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : t("errors.globalSearch"));
+      } finally {
+        setGlobalSearchLoading(false);
+      }
+    },
+    [globalSearchQuery, t]
+  );
+
+  const openSearchResult = useCallback(
+    async (result: SearchResult) => {
+      setGlobalSearchOpen(false);
+      setMessage(t("status.opening", { path: result.path }));
+      setPendingJump({ path: result.path, line: result.line });
+      await openFile(result.path);
+    },
+    [openFile, t]
+  );
+
   const executeMacro = useCallback(
     async (macro: MacroEntry) => {
       if (executingMacro) return;
@@ -3105,6 +3160,15 @@ export default function Home() {
               aria-pressed={terminalOpen}
             >
               <MdTerminal className="action-icon plain-action-icon" />
+            </button>
+            <button
+              className="icon-button"
+              type="button"
+              onClick={() => setGlobalSearchOpen(true)}
+              title={t("actions.globalSearch")}
+              aria-label={t("actions.globalSearch")}
+            >
+              <FcSearch className="action-icon" />
             </button>
             <button
               className="restart-button"
@@ -3925,6 +3989,93 @@ export default function Home() {
                   )}
                 </div>
               </div>
+            </section>
+          </div>
+        )}
+
+        {globalSearchOpen && (
+          <div className="modal-backdrop" role="presentation" onMouseDown={() => setGlobalSearchOpen(false)}>
+            <section
+              className="options-modal global-search-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="global-search-title"
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <div className="modal-header">
+                <h2 id="global-search-title">{t("panels.globalSearch")}</h2>
+                <button
+                  className="modal-close"
+                  type="button"
+                  title={t("options.close")}
+                  aria-label={t("options.close")}
+                  onClick={() => setGlobalSearchOpen(false)}
+                >
+                  x
+                </button>
+              </div>
+              <form className="global-search-body" onSubmit={(event) => void runGlobalSearch(event)}>
+                <label className="macro-search-field">
+                  <FcSearch className="action-icon" />
+                  <input
+                    autoFocus
+                    value={globalSearchQuery}
+                    placeholder={t("globalSearch.placeholder")}
+                    onChange={(event) => setGlobalSearchQuery(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Escape") {
+                        setGlobalSearchQuery("");
+                        setGlobalSearchResults([]);
+                      }
+                    }}
+                  />
+                  {globalSearchQuery && (
+                    <button
+                      className="search-clear-button"
+                      type="button"
+                      title={t("actions.clearSearch")}
+                      aria-label={t("actions.clearSearch")}
+                      onClick={() => {
+                        setGlobalSearchQuery("");
+                        setGlobalSearchResults([]);
+                      }}
+                    >
+                      <IoClose className="search-clear-icon" />
+                    </button>
+                  )}
+                </label>
+                <div className="global-search-actions">
+                  <span className="macro-count">{t("globalSearch.count", { count: globalSearchResults.length })}</span>
+                  <button className="dialog-button primary" type="submit" disabled={globalSearchLoading}>
+                    {globalSearchLoading ? t("actions.searching") : t("actions.search")}
+                  </button>
+                </div>
+                <div className="global-search-list">
+                  {globalSearchLoading ? (
+                    <p className="empty-note">{t("actions.searching")}</p>
+                  ) : globalSearchQuery.trim().length < 2 ? (
+                    <p className="empty-note">{t("globalSearch.empty")}</p>
+                  ) : globalSearchResults.length === 0 ? (
+                    <p className="empty-note">{t("globalSearch.noResults")}</p>
+                  ) : (
+                    globalSearchResults.map((result) => (
+                      <button
+                        key={`${result.path}-${result.line}-${result.text}`}
+                        className="global-search-row"
+                        type="button"
+                        onClick={() => void openSearchResult(result)}
+                      >
+                        <span className="global-search-row-title">
+                          <IoDocumentTextOutline className="global-search-row-icon" />
+                          <span>{result.path}</span>
+                          <strong>{result.line}</strong>
+                        </span>
+                        <span className="global-search-row-preview">{result.text || t("empty.sectionContent")}</span>
+                      </button>
+                    ))
+                  )}
+                </div>
+              </form>
             </section>
           </div>
         )}

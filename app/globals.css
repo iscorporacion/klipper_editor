@@ -144,6 +144,8 @@ h1 {
 .format-button,
 .emergency-button,
 .restart-button,
+.machine-power-primary,
+.machine-power-trigger,
 .machine-power-option {
   display: inline-flex;
   align-items: center;
@@ -276,6 +278,7 @@ h1 {
 .format-button:disabled,
 .emergency-button:disabled,
 .restart-button:disabled,
+.machine-power-primary:disabled,
 .machine-power-trigger:disabled,
 .machine-power-option:disabled {
   cursor: default;
@@ -329,6 +332,15 @@ h1 {
   padding: 0;
   border: 0;
   background: transparent;
+}
+
+.tree-select-checkbox {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
 }
 
 .tree-file-actions {
@@ -480,6 +492,62 @@ h1 {
   padding: 10px 8px;
   border-top: 1px solid var(--border-soft);
   background: var(--panel-soft);
+}
+
+.selected-files-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 34px;
+  margin-bottom: 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--control-radius);
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 12px;
+  padding: 4px 5px 4px 9px;
+}
+
+.selected-files-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+.tree-selection-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 24px;
+  border: 0;
+  border-radius: var(--control-radius);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.tree-selection-action:hover,
+.tree-selection-action:focus-visible {
+  background: var(--accent-soft);
+  color: var(--text);
+  outline: 0;
+}
+
+.tree-selection-action.danger:hover,
+.tree-selection-action.danger:focus-visible {
+  color: var(--danger);
+}
+
+.tree-selection-action.danger .tree-selection-icon {
+  color: var(--danger);
+}
+
+.tree-selection-icon {
+  width: 19px;
+  height: 19px;
 }
 
 .panel-title {
@@ -753,17 +821,49 @@ h1 {
   margin-left: 4px;
 }
 
+.machine-power-primary {
+  min-width: 82px;
+  height: 34px;
+  padding: 0 11px;
+  border-color: #d13b3b;
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+  background: #c92f2f;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .machine-power-trigger {
-  width: 42px;
-  gap: 4px;
-  padding: 0 7px;
+  width: 31px;
+  height: 34px;
+  padding: 0;
+  border-color: #d13b3b;
+  border-left-color: rgba(0, 0, 0, 0.18);
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  background: #b92828;
+  color: #ffffff;
+}
+
+.machine-power-primary:hover,
+.machine-power-primary:focus-visible,
+.machine-power-trigger:hover,
+.machine-power-trigger:focus-visible {
+  border-color: #ef5555;
+  background: #df3d3d;
+  outline: 0;
+}
+
+.machine-power-primary .power-icon {
+  color: #ffffff;
 }
 
 .power-menu-chevron {
   width: 14px;
   height: 14px;
   flex: 0 0 auto;
-  color: var(--muted);
+  color: #ffffff;
 }
 
 .machine-power-popover {

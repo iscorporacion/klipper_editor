@@ -360,6 +360,10 @@ const defaultMessages: Messages = {
   "actions.showBackupFiles": "Mostrar backups",
   "actions.downloadFile": "Descargar archivo",
   "actions.deleteFile": "Borrar archivo",
+  "actions.selectFile": "Seleccionar archivo",
+  "actions.downloadSelectedFiles": "Descargar seleccionados",
+  "actions.deleteSelectedFiles": "Borrar seleccionados",
+  "actions.clearSelection": "Limpiar seleccion",
   "actions.downloadOnlyFile": "Descargar archivo",
   "actions.macros": "Macros",
   "actions.executeMacro": "Ejecutar macro",
@@ -409,6 +413,7 @@ const defaultMessages: Messages = {
   "status.uploading": "Subiendo {path}",
   "status.uploaded": "Subido {path}",
   "status.deleted": "Borrado {path}",
+  "status.deletedSelected": "{count} archivos borrados",
   "status.openingMacro": "Abriendo macro {name}",
   "status.executingMacro": "Ejecutando macro {name}",
   "status.executedMacro": "Macro ejecutada {name}",
@@ -449,6 +454,7 @@ const defaultMessages: Messages = {
   "errors.createFile": "No se pudo crear el archivo",
   "errors.uploadFile": "No se pudo subir el archivo",
   "errors.deleteFile": "No se pudo borrar el archivo",
+  "errors.downloadSelectedFiles": "No se pudieron descargar los archivos seleccionados",
   "errors.loadMacros": "No se pudieron cargar las macros",
   "errors.executeMacro": "No se pudo ejecutar la macro",
   "errors.gcodeCommand": "No se pudo enviar el G-code",
@@ -478,6 +484,7 @@ const defaultMessages: Messages = {
   "errors.includeOpen": "No se pudo abrir el include",
   "confirm.closeUnsaved": "{path} tiene cambios sin guardar. Cerrar?",
   "confirm.deleteFile": "Borrar {path}? Esta accion no se puede deshacer.",
+  "confirm.deleteSelectedFiles": "Borrar {count} archivos seleccionados? Esta accion no se puede deshacer.",
   "confirm.restartFirmware": "Reiniciar firmware ahora?",
   "confirm.executeMacro": "Ejecutar macro {name} en la impresora?",
   "confirm.printFile": "Imprimir {name} ahora?",
@@ -502,6 +509,7 @@ const defaultMessages: Messages = {
   "error.title": "Error",
   "tabs.closeLabel": "Cerrar {path}",
   "line.label": "Linea {line}",
+  "selection.count": "{count} seleccionados",
   "preview.show": "Vista previa",
   "resize.width": "Cambiar ancho del panel",
   "resize.height": "Cambiar alto de includes y sesiones",
@@ -1104,20 +1112,26 @@ function FileTree({
   nodes,
   activePath,
   openPaths,
+  selectedPaths,
   onOpen,
   onDownload,
   onDelete,
+  onToggleSelected,
   downloadLabel,
-  deleteLabel
+  deleteLabel,
+  selectLabel
 }: {
   nodes: TreeNode[];
   activePath?: string;
   openPaths: Set<string>;
+  selectedPaths: Set<string>;
   onOpen: (path: string) => void;
   onDownload: (path: string) => void;
   onDelete: (path: string) => void;
+  onToggleSelected: (path: string) => void;
   downloadLabel: string;
   deleteLabel: string;
+  selectLabel: string;
 }) {
   return (
     <div className="tree">
@@ -1127,11 +1141,14 @@ function FileTree({
           node={node}
           activePath={activePath}
           openPaths={openPaths}
+          selectedPaths={selectedPaths}
           onOpen={onOpen}
           onDownload={onDownload}
           onDelete={onDelete}
+          onToggleSelected={onToggleSelected}
           downloadLabel={downloadLabel}
           deleteLabel={deleteLabel}
+          selectLabel={selectLabel}
         />
       ))}
     </div>
@@ -1142,20 +1159,26 @@ function TreeItem({
   node,
   activePath,
   openPaths,
+  selectedPaths,
   onOpen,
   onDownload,
   onDelete,
+  onToggleSelected,
   downloadLabel,
-  deleteLabel
+  deleteLabel,
+  selectLabel
 }: {
   node: TreeNode;
   activePath?: string;
   openPaths: Set<string>;
+  selectedPaths: Set<string>;
   onOpen: (path: string) => void;
   onDownload: (path: string) => void;
   onDelete: (path: string) => void;
+  onToggleSelected: (path: string) => void;
   downloadLabel: string;
   deleteLabel: string;
+  selectLabel: string;
 }) {
   const defaultOpen = node.type === "directory" && (node.name === "RatOS" || node.name === "ratos_generated");
   const [expanded, setExpanded] = useState(defaultOpen);
@@ -1179,11 +1202,14 @@ function TreeItem({
                 node={child}
                 activePath={activePath}
                 openPaths={openPaths}
+                selectedPaths={selectedPaths}
                 onOpen={onOpen}
                 onDownload={onDownload}
                 onDelete={onDelete}
+                onToggleSelected={onToggleSelected}
                 downloadLabel={downloadLabel}
                 deleteLabel={deleteLabel}
+                selectLabel={selectLabel}
               />
             ))}
           </div>
@@ -1194,6 +1220,15 @@ function TreeItem({
 
   return (
     <div className={`tree-row file-row ${activePath === node.path ? "active" : ""}`} title={node.path}>
+      <input
+        className="tree-select-checkbox"
+        type="checkbox"
+        checked={selectedPaths.has(node.path)}
+        title={selectLabel}
+        aria-label={selectLabel}
+        onChange={() => onToggleSelected(node.path)}
+        onClick={(event) => event.stopPropagation()}
+      />
       <button
         className="tree-open-button"
         type="button"
@@ -1232,6 +1267,7 @@ function TreeItem({
 export default function Home() {
   const [tree, setTree] = useState<TreeNode[]>([]);
   const [hideBackupFiles, setHideBackupFiles] = useState(true);
+  const [selectedTreeFiles, setSelectedTreeFiles] = useState<Set<string>>(() => new Set());
   const [openFiles, setOpenFiles] = useState<OpenFile[]>([]);
   const [activePath, setActivePath] = useState<string>();
   const [messages, setMessages] = useState<Messages>(defaultLocaleMessages);
@@ -1311,6 +1347,7 @@ export default function Home() {
 
   const activeFile = openFiles.find((file) => file.path === activePath);
   const openPathSet = useMemo(() => new Set(openFiles.map((file) => file.path)), [openFiles]);
+  const selectedTreeFileList = useMemo(() => Array.from(selectedTreeFiles).sort(), [selectedTreeFiles]);
   const visibleTree = useMemo(() => filterBackupFiles(tree, hideBackupFiles), [hideBackupFiles, tree]);
   const iconByPath = useMemo(() => collectIconMap(tree), [tree]);
   const activeIncludes = useMemo(
@@ -2325,6 +2362,51 @@ export default function Home() {
     window.open(apiPath(`/api/download?path=${encodeURIComponent(path)}`), "_blank", "noopener,noreferrer");
   }, []);
 
+  const toggleSelectedTreeFile = useCallback((path: string) => {
+    setSelectedTreeFiles((current) => {
+      const next = new Set(current);
+      if (next.has(path)) {
+        next.delete(path);
+      } else {
+        next.add(path);
+      }
+      return next;
+    });
+  }, []);
+
+  const downloadSelectedFiles = useCallback(async () => {
+    if (selectedTreeFileList.length === 0) return;
+
+    if (selectedTreeFileList.length === 1) {
+      downloadFile(selectedTreeFileList[0]);
+      return;
+    }
+
+    try {
+      const response = await fetch(apiPath("/api/download-selected"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paths: selectedTreeFileList })
+      });
+      if (!response.ok) {
+        const payload = await response.json();
+        throw new Error(payload.error ?? t("errors.downloadSelectedFiles"));
+      }
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "klipper-editor-selected-files.zip";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : t("errors.downloadSelectedFiles"));
+    }
+  }, [downloadFile, selectedTreeFileList, t]);
+
   const deleteFile = useCallback(
     async (path: string) => {
       if (!(await confirmDialog(t("actions.deleteFile"), t("confirm.deleteFile", { path })))) return;
@@ -2347,6 +2429,38 @@ export default function Home() {
     },
     [activePath, confirmDialog, loadTree, openFiles, t]
   );
+
+  const deleteSelectedFiles = useCallback(async () => {
+    if (selectedTreeFileList.length === 0) return;
+    if (
+      !(await confirmDialog(
+        t("actions.deleteSelectedFiles"),
+        t("confirm.deleteSelectedFiles", { count: selectedTreeFileList.length })
+      ))
+    ) {
+      return;
+    }
+
+    try {
+      for (const path of selectedTreeFileList) {
+        const response = await fetch(apiPath(`/api/file?path=${encodeURIComponent(path)}`), { method: "DELETE" });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error ?? t("errors.deleteFile"));
+      }
+
+      const selected = new Set(selectedTreeFileList);
+      const nextFiles = openFiles.filter((file) => !selected.has(file.path));
+      setOpenFiles(nextFiles);
+      if (activePath && selected.has(activePath)) {
+        setActivePath(nextFiles.at(-1)?.path);
+      }
+      setSelectedTreeFiles(new Set());
+      await loadTree();
+      setMessage(t("status.deletedSelected", { count: selectedTreeFileList.length }));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : t("errors.deleteFile"));
+    }
+  }, [activePath, confirmDialog, loadTree, openFiles, selectedTreeFileList, t]);
 
   const uploadFiles = useCallback(
     async (event: ChangeEvent<HTMLInputElement>) => {
@@ -2883,6 +2997,7 @@ export default function Home() {
     !printerStatus.allAxesHomed;
   const machinePowerDisabled =
     runningMachinePowerAction !== null || !printerStatus || Boolean(printerStatus.error) || printerStatus.printing;
+  const powerMenuDisabled = restartingFirmware || runningMachinePowerAction !== null || !printerStatus;
 
   return (
     <main className="workspace-shell" style={themeStyle}>
@@ -2950,13 +3065,50 @@ export default function Home() {
           nodes={visibleTree}
           activePath={activePath}
           openPaths={openPathSet}
+          selectedPaths={selectedTreeFiles}
           onOpen={openFile}
           onDownload={downloadFile}
           onDelete={deleteFile}
+          onToggleSelected={toggleSelectedTreeFile}
           downloadLabel={t("actions.downloadFile")}
           deleteLabel={t("actions.deleteFile")}
+          selectLabel={t("actions.selectFile")}
         />
         <div className="open-editors">
+          {selectedTreeFileList.length > 0 && (
+            <div className="selected-files-bar">
+              <span>{t("selection.count", { count: selectedTreeFileList.length })}</span>
+              <div className="selected-files-actions">
+                <button
+                  className="tree-selection-action"
+                  type="button"
+                  title={t("actions.downloadSelectedFiles")}
+                  aria-label={t("actions.downloadSelectedFiles")}
+                  onClick={() => void downloadSelectedFiles()}
+                >
+                  <FcDownload className="tree-selection-icon" />
+                </button>
+                <button
+                  className="tree-selection-action danger"
+                  type="button"
+                  title={t("actions.deleteSelectedFiles")}
+                  aria-label={t("actions.deleteSelectedFiles")}
+                  onClick={() => void deleteSelectedFiles()}
+                >
+                  <MdDelete className="tree-selection-icon" />
+                </button>
+                <button
+                  className="tree-selection-action"
+                  type="button"
+                  title={t("actions.clearSelection")}
+                  aria-label={t("actions.clearSelection")}
+                  onClick={() => setSelectedTreeFiles(new Set())}
+                >
+                  <IoClose className="tree-selection-icon" />
+                </button>
+              </div>
+            </div>
+          )}
           <div className="panel-title">{t("panels.openEditors")}</div>
           {openFiles.length === 0 ? (
             <p className="empty-note">{t("empty.openFile")}</p>
@@ -3171,20 +3323,6 @@ export default function Home() {
               <FcSearch className="action-icon" />
             </button>
             <button
-              className="restart-button"
-              type="button"
-              onClick={() => void restartFirmware()}
-              disabled={restartingFirmware || !printerStatus || printerStatus.printing}
-              title={
-                printerStatus?.printing
-                  ? t("errors.restartPrinting")
-                  : t("actions.restartFirmware")
-              }
-            >
-              <IoPower className="power-icon" />
-              {restartingFirmware ? t("actions.restartingFirmware") : t("actions.restartFirmware")}
-            </button>
-            <button
               className="save-button"
               type="button"
               onClick={() => void saveActiveFile()}
@@ -3200,14 +3338,24 @@ export default function Home() {
             </button>
             <div className="machine-power-menu" ref={machinePowerMenuRef}>
               <button
-                className="icon-button machine-power-trigger"
+                className="machine-power-primary"
                 type="button"
-                disabled={machinePowerDisabled}
+                disabled={restartingFirmware || !printerStatus || printerStatus.printing}
+                title={printerStatus?.printing ? t("errors.restartPrinting") : t("actions.restartFirmware")}
+                onClick={() => void restartFirmware()}
+              >
+                <IoPower className="power-icon" />
+                {restartingFirmware ? t("actions.restartingFirmware") : t("actions.restartFirmware")}
+              </button>
+              <button
+                className="machine-power-trigger"
+                type="button"
+                disabled={powerMenuDisabled}
                 title={
                   printerStatus?.printing
-                    ? t("errors.machinePowerPrinting")
+                    ? t("actions.machinePower")
                     : printerStatus?.error
-                      ? printerStatus.error
+                      ? t("actions.machinePower")
                       : t("actions.machinePower")
                 }
                 aria-label={t("actions.machinePower")}
@@ -3215,7 +3363,6 @@ export default function Home() {
                 aria-expanded={machinePowerMenuOpen}
                 onClick={() => setMachinePowerMenuOpen((open) => !open)}
               >
-                <IoPower className="power-icon" />
                 <MdKeyboardArrowDown className="power-menu-chevron" />
               </button>
               {machinePowerMenuOpen && (
@@ -3224,7 +3371,7 @@ export default function Home() {
                     className="machine-power-option danger"
                     type="button"
                     role="menuitem"
-                    disabled={runningMachinePowerAction !== null}
+                    disabled={runningMachinePowerAction !== null || machinePowerDisabled}
                     onClick={() => void runMachinePowerAction("shutdown")}
                   >
                     <IoPower className="machine-power-option-icon" />
@@ -3236,7 +3383,7 @@ export default function Home() {
                     className="machine-power-option"
                     type="button"
                     role="menuitem"
-                    disabled={runningMachinePowerAction !== null}
+                    disabled={runningMachinePowerAction !== null || machinePowerDisabled}
                     onClick={() => void runMachinePowerAction("reboot")}
                   >
                     <FcRefresh className="machine-power-option-icon" />

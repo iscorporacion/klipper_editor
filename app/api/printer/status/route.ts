@@ -11,6 +11,7 @@ export async function GET() {
       webhooksMessage: error instanceof Error ? error.message : "Unable to query Moonraker",
       printState: "unknown",
       filename: "",
+      progress: 0,
       printing: false,
       zTiltAvailable: false,
       homedAxes: "",

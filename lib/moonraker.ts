@@ -11,6 +11,7 @@ export type MoonrakerStatus = {
   webhooksMessage: string;
   printState: string;
   filename: string;
+  progress: number;
   printing: boolean;
   zTiltAvailable: boolean;
   homedAxes: string;
@@ -112,11 +113,12 @@ async function moonrakerFetch(path: string, init?: RequestInit) {
 
 export async function getMoonrakerStatus(): Promise<MoonrakerStatus> {
   const payload = await moonrakerFetch(
-    "/printer/objects/query?webhooks=state,state_message&print_stats=state,filename&configfile=settings&toolhead=homed_axes,position&gcode_move=gcode_position,homing_origin"
+    "/printer/objects/query?webhooks=state,state_message&print_stats=state,filename&virtual_sdcard=progress&configfile=settings&toolhead=homed_axes,position&gcode_move=gcode_position,homing_origin"
   );
   const status = payload?.result?.status ?? payload?.status ?? {};
   const webhooks = status.webhooks ?? {};
   const printStats = status.print_stats ?? {};
+  const virtualSdcard = status.virtual_sdcard ?? {};
   const configSettings = status.configfile?.settings ?? {};
   const toolhead = status.toolhead ?? {};
   const gcodeMove = status.gcode_move ?? {};
@@ -139,6 +141,7 @@ export async function getMoonrakerStatus(): Promise<MoonrakerStatus> {
     webhooksMessage: String(webhooks.message ?? ""),
     printState,
     filename: String(printStats.filename ?? ""),
+    progress: Math.min(Math.max(toNumber(virtualSdcard.progress), 0), 1),
     printing: printState === "printing" || printState === "paused",
     zTiltAvailable: Boolean(configSettings.z_tilt),
     homedAxes,

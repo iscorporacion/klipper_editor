@@ -112,6 +112,7 @@ type PrinterStatus = {
   webhooksMessage: string;
   printState: string;
   filename: string;
+  progress: number;
   printing: boolean;
   zTiltAvailable: boolean;
   homedAxes: string;
@@ -285,6 +286,7 @@ function normalizePrinterStatus(value: unknown, fallbackMessage: string): Printe
     webhooksMessage: String(status.webhooksMessage ?? error ?? fallbackMessage),
     printState,
     filename: String(status.filename ?? ""),
+    progress: Math.min(Math.max(numericValue(status.progress), 0), 1),
     printing: Boolean(status.printing),
     zTiltAvailable: Boolean(status.zTiltAvailable),
     homedAxes: String(status.homedAxes ?? ""),
@@ -421,6 +423,8 @@ const defaultMessages: Messages = {
   "status.saving": "Guardando {path}",
   "status.saved": "Guardado {path}",
   "status.savedWithBackup": "Guardado {path}; copia creada en {backupPath}",
+  "status.reloadedOpenFiles": "Archivos abiertos recargados",
+  "status.reloadedOpenFilesPartial": "Archivos abiertos recargados; {count} con cambios locales no se tocaron",
   "status.firmwareRestarting": "Reiniciando firmware",
   "status.firmwareRestarted": "Reinicio de firmware solicitado",
   "status.terminalConnected": "Terminal conectada",
@@ -640,6 +644,10 @@ function formatTemperature(value: number) {
   return `${Math.round(value)} °C`;
 }
 
+function formatProgress(value: number) {
+  return `${Math.round(Math.min(Math.max(value, 0), 1) * 100)}%`;
+}
+
 function formatBytes(value: number) {
   if (!Number.isFinite(value) || value <= 0) return "-";
   const units = ["B", "KB", "MB", "GB"];
@@ -689,6 +697,25 @@ function selectedGcodePath(selection: SelectedGcodeItem) {
 
 function selectedGcodeThumbnails(selection: SelectedGcodeItem) {
   return selection.type === "file" ? selection.item.thumbnails : selection.item.metadata?.thumbnails ?? [];
+}
+
+function GcodeListPreview({ thumbnails }: { thumbnails: GcodeThumbnail[] }) {
+  const thumbnail = bestThumbnail(thumbnails);
+  if (!thumbnail) {
+    return <BsPrinterFill className="gcode-row-icon" />;
+  }
+
+  return (
+    <img
+      className="gcode-row-thumbnail"
+      src={apiPath(`/api/printer/gcode-thumbnail?path=${encodeURIComponent(thumbnail.relativePath)}`)}
+      alt=""
+    />
+  );
+}
+
+function shouldReloadOpenFilesAfterGcode(script: string) {
+  return /(^|\n)\s*(SAVE_CONFIG|RESTART|FIRMWARE_RESTART)\b/i.test(script);
 }
 
 function formatPosition(value: number, digits = 2) {
@@ -1261,6 +1288,7 @@ export default function Home() {
   const heatersRef = useRef<HeaterStatus[]>([]);
   const machinePowerMenuRef = useRef<HTMLDivElement | null>(null);
   const terminalOutputRef = useRef<HTMLPreElement | null>(null);
+  const reloadOpenTextFilesRef = useRef<(() => Promise<void>) | null>(null);
 
   const activeFile = openFiles.find((file) => file.path === activePath);
   const openPathSet = useMemo(() => new Set(openFiles.map((file) => file.path)), [openFiles]);
@@ -1706,6 +1734,9 @@ export default function Home() {
         setKlipperConsoleInput("");
         setMessage(t("status.gcodeSent"));
         await loadPrinterStatus();
+        if (shouldReloadOpenFilesAfterGcode(script)) {
+          await Promise.all([loadTree(), reloadOpenTextFilesRef.current?.()]);
+        }
       } catch (error) {
         const nextError = error instanceof Error ? error.message : t("errors.gcodeCommand");
         setKlipperConsoleLog((current) => [createConsoleEntry(script, "error", nextError), ...current].slice(0, 80));
@@ -1714,7 +1745,7 @@ export default function Home() {
         setSendingKlipperCommand(false);
       }
     },
-    [klipperConsoleInput, loadPrinterStatus, sendingKlipperCommand, t]
+    [klipperConsoleInput, loadPrinterStatus, loadTree, sendingKlipperCommand, t]
   );
 
   const loadHeaters = useCallback(
@@ -1785,14 +1816,66 @@ export default function Home() {
     await refreshHeaterCatalog();
   }, [cacheAndSetHeaters, refreshHeaterCatalog, setHeaterTargetInputs]);
 
-  const restartFirmware = useCallback(async () => {
-    if (restartingFirmware) return;
-    if (!printerStatus || printerStatus.error) {
-      setMessage(printerStatus?.error ?? t("errors.printerStatus"));
+  const reloadOpenTextFiles = useCallback(async () => {
+    const reloadableFiles = openFiles.filter(
+      (file) => file.kind !== "image" && !file.loading && !file.saving && file.content === file.savedContent
+    );
+    const skippedCount = openFiles.filter(
+      (file) => file.kind !== "image" && file.content !== file.savedContent
+    ).length;
+
+    if (reloadableFiles.length === 0) {
+      if (skippedCount > 0) {
+        setMessage(t("status.reloadedOpenFilesPartial", { count: skippedCount }));
+      }
       return;
     }
 
-    if (printerStatus?.printing) {
+    const loadedFiles = await Promise.all(
+      reloadableFiles.map(async (file) => {
+        const response = await fetch(apiPath(`/api/file?path=${encodeURIComponent(file.path)}`), { cache: "no-store" });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error ?? t("errors.openFile"));
+
+        return {
+          path: file.path,
+          content: String(payload.content ?? ""),
+          modifiedAt: typeof payload.modifiedAt === "string" ? payload.modifiedAt : undefined
+        };
+      })
+    );
+    const loadedByPath = new Map(loadedFiles.map((file) => [file.path, file]));
+
+    setOpenFiles((files) =>
+      files.map((file) => {
+        const loaded = loadedByPath.get(file.path);
+        if (!loaded || file.content !== file.savedContent) return file;
+
+        return {
+          ...file,
+          content: loaded.content,
+          savedContent: loaded.content,
+          modifiedAt: loaded.modifiedAt,
+          error: undefined
+        };
+      })
+    );
+    setMessage(
+      skippedCount > 0
+        ? t("status.reloadedOpenFilesPartial", { count: skippedCount })
+        : t("status.reloadedOpenFiles")
+    );
+  }, [openFiles, t]);
+  reloadOpenTextFilesRef.current = reloadOpenTextFiles;
+
+  const restartFirmware = useCallback(async () => {
+    if (restartingFirmware) return;
+    if (!printerStatus) {
+      setMessage(t("errors.printerStatus"));
+      return;
+    }
+
+    if (printerStatus.printing) {
       setMessage(t("errors.restartPrinting"));
       return;
     }
@@ -1807,13 +1890,13 @@ export default function Home() {
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? t("errors.restartFirmware"));
       setMessage(t("status.firmwareRestarted"));
-      await loadPrinterStatus();
+      await Promise.all([loadPrinterStatus(), loadTree(), reloadOpenTextFiles()]);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : t("errors.restartFirmware"));
     } finally {
       setRestartingFirmware(false);
     }
-  }, [confirmDialog, loadPrinterStatus, printerStatus, restartingFirmware, t]);
+  }, [confirmDialog, loadPrinterStatus, loadTree, printerStatus, reloadOpenTextFiles, restartingFirmware, t]);
 
   const runQuickCommand = useCallback(
     async (command: QuickCommand, label: string) => {
@@ -2966,6 +3049,7 @@ export default function Home() {
                   type="button"
                   disabled={runningPrintAction !== null}
                   title={printerStatus.printState === "paused" ? t("actions.resumePrint") : t("actions.pausePrint")}
+                  aria-label={printerStatus.printState === "paused" ? t("actions.resumePrint") : t("actions.pausePrint")}
                   onClick={() => void runPrintControl(printerStatus.printState === "paused" ? "resume" : "pause")}
                 >
                   {printerStatus.printState === "paused" ? (
@@ -2973,17 +3057,16 @@ export default function Home() {
                   ) : (
                     <FaPause className="print-control-icon" />
                   )}
-                  {printerStatus.printState === "paused" ? t("actions.resumePrint") : t("actions.pausePrint")}
                 </button>
                 <button
                   className="print-control-button danger"
                   type="button"
                   disabled={runningPrintAction !== null}
                   title={t("actions.cancelPrint")}
+                  aria-label={t("actions.cancelPrint")}
                   onClick={() => void runPrintControl("cancel")}
                 >
                   <FaStop className="print-control-icon" />
-                  {t("actions.cancelPrint")}
                 </button>
               </div>
             )}
@@ -3027,13 +3110,11 @@ export default function Home() {
               className="restart-button"
               type="button"
               onClick={() => void restartFirmware()}
-              disabled={restartingFirmware || !printerStatus || Boolean(printerStatus.error) || printerStatus.printing}
+              disabled={restartingFirmware || !printerStatus || printerStatus.printing}
               title={
                 printerStatus?.printing
                   ? t("errors.restartPrinting")
-                  : printerStatus?.error
-                    ? printerStatus.error
-                    : t("actions.restartFirmware")
+                  : t("actions.restartFirmware")
               }
             >
               <IoPower className="power-icon" />
@@ -3951,7 +4032,7 @@ export default function Home() {
                             onClick={() => setSelectedGcodeItem({ type: "file", item: file })}
                             title={file.path}
                           >
-                            <BsPrinterFill className="gcode-row-icon" />
+                            <GcodeListPreview thumbnails={file.thumbnails} />
                             <span>
                               <strong>{file.name}</strong>
                               <small>{formatTimestamp(file.modified)}</small>
@@ -3974,7 +4055,7 @@ export default function Home() {
                           onClick={() => setSelectedGcodeItem({ type: "history", item: job })}
                           title={job.filename}
                         >
-                          <BsPrinterFill className="gcode-row-icon" />
+                          <GcodeListPreview thumbnails={job.metadata?.thumbnails ?? []} />
                           <span>
                             <strong>{basename(job.filename)}</strong>
                             <small>
@@ -3995,7 +4076,7 @@ export default function Home() {
                           </div>
                           <div className="gcode-detail-actions">
                             <button
-                              className="dialog-button primary"
+                              className="dialog-button primary gcode-print-button"
                               type="button"
                               disabled={startingPrint || printerStatus?.printing}
                               title={printerStatus?.printing ? t("errors.restartPrinting") : t("actions.printFile")}
@@ -4275,6 +4356,7 @@ export default function Home() {
             <span title={printerStatus.webhooksMessage || printerStatus.error}>
               {t("status.printerState", { state: printerStatus.printState })}
               {printerStatus.filename ? ` - ${printerStatus.filename}` : ""}
+              {printerStatus.printing ? ` - ${formatProgress(printerStatus.progress)}` : ""}
             </span>
           )}
           {activeFile && (

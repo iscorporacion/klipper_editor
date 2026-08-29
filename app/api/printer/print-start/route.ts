@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { startPrint } from "@/lib/moonraker";
+import { getMoonrakerStatus, startPrint } from "@/lib/moonraker";
 
 export async function POST(request: NextRequest) {
   try {
@@ -8,6 +8,11 @@ export async function POST(request: NextRequest) {
 
     if (!filename) {
       return NextResponse.json({ error: "Filename is required" }, { status: 400 });
+    }
+
+    const status = await getMoonrakerStatus();
+    if (status.printing) {
+      return NextResponse.json({ error: "A print is currently active", status }, { status: 409 });
     }
 
     const result = await startPrint(filename);

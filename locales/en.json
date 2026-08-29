@@ -95,6 +95,8 @@
     "status.saving": "Saving {path}",
     "status.saved": "Saved {path}",
     "status.savedWithBackup": "Saved {path}; backup created at {backupPath}",
+    "status.reloadedOpenFiles": "Open files reloaded",
+    "status.reloadedOpenFilesPartial": "Open files reloaded; {count} files with local changes were left untouched",
     "status.firmwareRestarting": "Restarting firmware",
     "status.firmwareRestarted": "Firmware restart requested",
     "status.terminalConnected": "Terminal connected",

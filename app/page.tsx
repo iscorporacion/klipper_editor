@@ -170,6 +170,7 @@ type KlipperConsoleEntry = {
   status: "sent" | "error";
   message: string;
   timestamp: string;
+  createdAt: number;
 };
 
 type KlipperGcodeStoreEntry = {
@@ -184,6 +185,20 @@ type KlipperConsoleFavorite = {
 };
 
 type KlipperConsoleTab = "console" | "favorites";
+
+type KlipperConsoleTimelineEntry =
+  | {
+      kind: "store";
+      id: string;
+      sortTime: number;
+      entry: KlipperGcodeStoreEntry;
+    }
+  | {
+      kind: "history";
+      id: string;
+      sortTime: number;
+      entry: KlipperConsoleEntry;
+    };
 
 type GcodeThumbnail = {
   width: number;
@@ -736,17 +751,19 @@ function unsupportedTerminalCommand(command: string) {
 }
 
 function createConsoleEntry(script: string, status: KlipperConsoleEntry["status"], message: string): KlipperConsoleEntry {
+  const now = Date.now();
   const id =
     typeof crypto !== "undefined" && "randomUUID" in crypto
       ? crypto.randomUUID()
-      : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      : `${now}-${Math.random().toString(16).slice(2)}`;
 
   return {
     id,
     script,
     status,
     message,
-    timestamp: new Date().toLocaleString()
+    timestamp: new Date(now).toLocaleString(),
+    createdAt: now
   };
 }
 
@@ -1585,6 +1602,22 @@ export default function Home() {
 
     return favorites.filter((favorite) => favorite.script.toLowerCase().includes(query));
   }, [klipperConsoleFavorites, klipperFavoriteSearch]);
+  const klipperConsoleTimeline = useMemo<KlipperConsoleTimelineEntry[]>(() => {
+    return [
+      ...klipperGcodeStore.map((entry, index) => ({
+        kind: "store" as const,
+        id: `store-${entry.time}-${index}`,
+        sortTime: entry.time > 0 ? entry.time * 1000 : 0,
+        entry
+      })),
+      ...klipperConsoleLog.map((entry) => ({
+        kind: "history" as const,
+        id: `history-${entry.id}`,
+        sortTime: entry.createdAt,
+        entry
+      }))
+    ].sort((a, b) => b.sortTime - a.sortTime);
+  }, [klipperConsoleLog, klipperGcodeStore]);
   const themeStyle = useMemo<ThemeVariables>(() => {
     const primary = normalizeCssColor(mainsailTheme.primary, fallbackMainsailTheme.primary);
     const logo = normalizeCssColor(mainsailTheme.logo, fallbackMainsailTheme.logo);
@@ -5267,47 +5300,39 @@ export default function Home() {
                   </button>
                 </div>
                 {klipperConsoleTab === "console" ? (
-                  <div className="klipper-console-split">
-                    <section className="klipper-console-panel" aria-label={t("klipperConsole.output")}>
-                      <div className="klipper-console-panel-title">{t("klipperConsole.output")}</div>
-                      <div className="klipper-gcode-store">
-                        {klipperGcodeStoreLoading && klipperGcodeStore.length === 0 ? (
-                          <div className="panel-loading-state" role="status" aria-live="polite">
-                            <span>{t("loading.title")}</span>
-                            <div className="panel-loading-bar" />
-                          </div>
-                        ) : klipperGcodeStore.length === 0 ? (
-                          <p className="empty-note">{t("klipperConsole.noOutput")}</p>
-                        ) : (
-                          klipperGcodeStore.map((entry, index) => (
-                            <article key={`${entry.time}-${index}`} className={`klipper-store-entry ${entry.type}`}>
-                              <time>{formatTimestamp(entry.time)}</time>
-                              <pre>{entry.message}</pre>
+                  <section className="klipper-console-panel" aria-label={t("klipperConsole.output")}>
+                    <div className="klipper-console-panel-title">{t("klipperConsole.output")}</div>
+                    <div className="klipper-console-timeline">
+                      {klipperGcodeStoreLoading && klipperConsoleTimeline.length === 0 ? (
+                        <div className="panel-loading-state" role="status" aria-live="polite">
+                          <span>{t("loading.title")}</span>
+                          <div className="panel-loading-bar" />
+                        </div>
+                      ) : klipperConsoleTimeline.length === 0 ? (
+                        <p className="empty-note">{t("klipperConsole.noOutput")}</p>
+                      ) : (
+                        klipperConsoleTimeline.map((item) =>
+                          item.kind === "store" ? (
+                            <article key={item.id} className={`klipper-store-entry ${item.entry.type}`}>
+                              <time>{formatTimestamp(item.entry.time)}</time>
+                              <pre>{item.entry.message}</pre>
                             </article>
-                          ))
-                        )}
-                      </div>
-                    </section>
-                    <section className="klipper-console-panel" aria-label={t("klipperConsole.history")}>
-                      <div className="klipper-console-panel-title">{t("klipperConsole.history")}</div>
-                      <div className="klipper-console-log">
-                        {klipperConsoleLog.length === 0 ? (
-                          <p className="empty-note">{t("klipperConsole.empty")}</p>
-                        ) : (
-                          klipperConsoleLog.map((entry) => (
-                            <article key={entry.id} className={`klipper-console-entry ${entry.status}`}>
+                          ) : (
+                            <article key={item.id} className={`klipper-console-entry ${item.entry.status}`}>
                               <div className="klipper-console-entry-header">
-                                <span>{entry.status === "sent" ? t("klipperConsole.sent") : t("klipperConsole.error")}</span>
-                                <time>{entry.timestamp}</time>
+                                <span>
+                                  {item.entry.status === "sent" ? t("klipperConsole.sent") : t("klipperConsole.error")}
+                                </span>
+                                <time>{item.entry.timestamp}</time>
                               </div>
-                              <pre>{entry.script}</pre>
-                              <p>{entry.message}</p>
+                              <pre>{item.entry.script}</pre>
+                              <p>{item.entry.message}</p>
                               <div className="klipper-command-actions">
                                 <button
                                   type="button"
                                   title={t("actions.editCommand")}
                                   aria-label={t("actions.editCommand")}
-                                  onClick={() => editKlipperConsoleCommand(entry.script)}
+                                  onClick={() => editKlipperConsoleCommand(item.entry.script)}
                                 >
                                   <MdEdit className="klipper-command-icon" />
                                 </button>
@@ -5316,25 +5341,25 @@ export default function Home() {
                                   title={t("actions.runCommand")}
                                   aria-label={t("actions.runCommand")}
                                   disabled={sendingKlipperCommand}
-                                  onClick={() => void sendKlipperScript(entry.script)}
+                                  onClick={() => void sendKlipperScript(item.entry.script)}
                                 >
                                   <FaPlay className="klipper-command-icon accent" />
                                 </button>
                                 <button
                                   type="button"
                                   title={
-                                    favoriteScriptSet.has(entry.script)
+                                    favoriteScriptSet.has(item.entry.script)
                                       ? t("actions.removeFavoriteCommand")
                                       : t("actions.favoriteCommand")
                                   }
                                   aria-label={
-                                    favoriteScriptSet.has(entry.script)
+                                    favoriteScriptSet.has(item.entry.script)
                                       ? t("actions.removeFavoriteCommand")
                                       : t("actions.favoriteCommand")
                                   }
-                                  onClick={() => toggleKlipperFavorite(entry.script)}
+                                  onClick={() => toggleKlipperFavorite(item.entry.script)}
                                 >
-                                  {favoriteScriptSet.has(entry.script) ? (
+                                  {favoriteScriptSet.has(item.entry.script) ? (
                                     <MdStar className="klipper-command-icon favorite" />
                                   ) : (
                                     <MdStarBorder className="klipper-command-icon" />
@@ -5342,11 +5367,11 @@ export default function Home() {
                                 </button>
                               </div>
                             </article>
-                          ))
-                        )}
-                      </div>
-                    </section>
-                  </div>
+                          )
+                        )
+                      )}
+                    </div>
+                  </section>
                 ) : (
                   <div className="klipper-console-favorites">
                     <label className="macro-search-field">

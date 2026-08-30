@@ -2976,13 +2976,6 @@ body.is-resizing-row {
   outline: 0;
 }
 
-.klipper-console-split {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 10px;
-  min-height: 0;
-}
-
 .klipper-console-panel,
 .klipper-console-favorites {
   display: grid;
@@ -2999,7 +2992,8 @@ body.is-resizing-row {
 }
 
 .klipper-console-log,
-.klipper-gcode-store {
+.klipper-gcode-store,
+.klipper-console-timeline {
   display: grid;
   align-content: start;
   gap: 8px;
@@ -3010,7 +3004,8 @@ body.is-resizing-row {
   padding: 8px;
 }
 
-.klipper-gcode-store {
+.klipper-gcode-store,
+.klipper-console-timeline {
   font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
 }
 
@@ -3055,6 +3050,11 @@ body.is-resizing-row {
   border-left: 3px solid var(--accent);
   background: rgba(255, 255, 255, 0.03);
   padding: 8px 10px;
+}
+
+.klipper-console-timeline .klipper-console-entry {
+  margin: 2px 8px 2px 0;
+  background: rgba(255, 255, 255, 0.055);
 }
 
 .klipper-console-entry.error {

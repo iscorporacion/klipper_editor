@@ -57,6 +57,7 @@ const hideBackupFilesKey = "klipper-editor-hide-backup-files";
 const terminalHeightKey = "klipper-editor-terminal-height";
 const terminalHistoryKey = "klipper-editor-terminal-history";
 const klipperConsoleFavoritesKey = "klipper-editor-klipper-console-favorites";
+const macroFavoritesKey = "klipper-editor-macro-favorites";
 
 function apiPath(path: string) {
   return `${appBasePath}${path}`;
@@ -399,6 +400,8 @@ type MacroEntry = {
   description?: string;
 };
 
+type MacroTab = "favorites" | "all";
+
 type PendingJump = {
   path: string;
   line: number;
@@ -444,9 +447,12 @@ const defaultMessages: Messages = {
   "actions.downloadOnlyFile": "Descargar archivo",
   "actions.macros": "Macros",
   "actions.executeMacro": "Ejecutar macro",
+  "actions.favoriteMacro": "Agregar macro a favoritos",
+  "actions.removeFavoriteMacro": "Quitar macro de favoritos",
   "actions.klipperConsole": "Consola Klipper",
   "actions.sendGcode": "Enviar",
   "actions.sendingGcode": "Enviando",
+  "actions.clearConsoleHistory": "Borrar historial",
   "actions.editCommand": "Editar comando",
   "actions.favoriteCommand": "Agregar favorito",
   "actions.removeFavoriteCommand": "Quitar favorito",
@@ -631,6 +637,9 @@ const defaultMessages: Messages = {
   "macros.search": "Buscar macro",
   "macros.loading": "Cargando macros.",
   "macros.empty": "Sin macros detectadas.",
+  "macros.emptyFavorites": "Sin macros favoritas.",
+  "macros.favorites": "Favoritos",
+  "macros.all": "Todas",
   "macros.count": "{count} macros",
   "klipperConsole.placeholder": "Escribe G-code o una macro. Ctrl+Enter envia.\n\nEjemplos:\nG28\nBED_MESH_CALIBRATE",
   "klipperConsole.help": "Los comandos se envian a Moonraker como script G-code. Puedes enviar varias lineas.",
@@ -670,6 +679,8 @@ const defaultMessages: Messages = {
   "updates.loading": "Revisando actualizaciones.",
   "updates.empty": "No hay actualizaciones pendientes.",
   "updates.count": "{count} pendientes",
+  "updates.allCount": "{count} componentes",
+  "updates.upToDate": "Al dia",
   "updates.current": "Actual",
   "updates.available": "Disponible",
   "updates.channel": "Canal",
@@ -790,6 +801,22 @@ function writeKlipperConsoleFavorites(favorites: KlipperConsoleFavorite[]) {
   window.localStorage.setItem(klipperConsoleFavoritesKey, JSON.stringify(favorites.slice(0, 100)));
 }
 
+function readMacroFavorites() {
+  try {
+    const cached = JSON.parse(window.localStorage.getItem(macroFavoritesKey) ?? "[]") as unknown;
+    if (!Array.isArray(cached)) return [];
+
+    return cached.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0).slice(0, 100);
+  } catch {
+    window.localStorage.removeItem(macroFavoritesKey);
+    return [];
+  }
+}
+
+function writeMacroFavorites(favorites: string[]) {
+  window.localStorage.setItem(macroFavoritesKey, JSON.stringify(favorites.slice(0, 100)));
+}
+
 function isHtmlLikeMessage(message: string) {
   return /<\/?[a-z][\s\S]*>/i.test(message);
 }
@@ -825,6 +852,16 @@ function KlipperStoreMessage({ message }: { message: string }) {
   }
 
   return <div className="klipper-store-html" dangerouslySetInnerHTML={{ __html: sanitizeKlipperHtml(message) }} />;
+}
+
+function hasPendingUpdate(update: UpdateApp) {
+  return (
+    update.commitsBehind > 0 ||
+    Boolean(update.remoteVersion && update.version && update.remoteVersion !== update.version) ||
+    update.isDirty ||
+    update.detached ||
+    !update.isValid
+  );
 }
 
 function translate(messages: Messages, key: string, values: Record<string, string | number> = {}) {
@@ -1507,6 +1544,8 @@ export default function Home() {
   const [heatersLoading, setHeatersLoading] = useState(false);
   const [settingHeaters, setSettingHeaters] = useState(false);
   const [macros, setMacros] = useState<MacroEntry[]>([]);
+  const [macroTab, setMacroTab] = useState<MacroTab>("favorites");
+  const [macroFavorites, setMacroFavorites] = useState<string[]>([]);
   const [macroSearch, setMacroSearch] = useState("");
   const [sectionSearch, setSectionSearch] = useState("");
   const [macrosLoading, setMacrosLoading] = useState(false);
@@ -1524,6 +1563,7 @@ export default function Home() {
   const [klipperConsoleInput, setKlipperConsoleInput] = useState("");
   const [klipperConsoleLog, setKlipperConsoleLog] = useState<KlipperConsoleEntry[]>([]);
   const [klipperGcodeStore, setKlipperGcodeStore] = useState<KlipperGcodeStoreEntry[]>([]);
+  const [klipperConsoleClearedAt, setKlipperConsoleClearedAt] = useState(0);
   const [klipperGcodeStoreLoading, setKlipperGcodeStoreLoading] = useState(false);
   const [klipperConsoleTab, setKlipperConsoleTab] = useState<KlipperConsoleTab>("console");
   const [klipperConsoleFavorites, setKlipperConsoleFavorites] = useState<KlipperConsoleFavorite[]>([]);
@@ -1605,16 +1645,22 @@ export default function Home() {
       `${macro.name} ${macro.path} ${macro.title} ${macro.description ?? ""}`.toLowerCase().includes(query)
     );
   }, [macroSearch, macros]);
+  const macroFavoriteSet = useMemo(() => new Set(macroFavorites), [macroFavorites]);
+  const favoriteMacros = useMemo(() => {
+    const macroByName = new Map(macros.map((macro) => [macro.name, macro]));
+    return macroFavorites.map((name) => macroByName.get(name)).filter((macro): macro is MacroEntry => Boolean(macro));
+  }, [macroFavorites, macros]);
+  const filteredFavoriteMacros = useMemo(() => {
+    const query = macroSearch.trim().toLowerCase();
+    if (!query) return favoriteMacros;
+
+    return favoriteMacros.filter((macro) =>
+      `${macro.name} ${macro.path} ${macro.title} ${macro.description ?? ""}`.toLowerCase().includes(query)
+    );
+  }, [favoriteMacros, macroSearch]);
+  const visibleMacros = macroTab === "favorites" ? filteredFavoriteMacros : filteredMacros;
   const pendingUpdates = useMemo(
-    () =>
-      updates.filter(
-        (update) =>
-          update.commitsBehind > 0 ||
-          (update.remoteVersion && update.version && update.remoteVersion !== update.version) ||
-          update.isDirty ||
-          update.detached ||
-          !update.isValid
-      ),
+    () => updates.filter((update) => hasPendingUpdate(update)),
     [updates]
   );
   const anyHeaterActive = heaters.some((heater) => heater.target > 0);
@@ -1641,20 +1687,24 @@ export default function Home() {
   }, [klipperConsoleFavorites, klipperFavoriteSearch]);
   const klipperConsoleTimeline = useMemo<KlipperConsoleTimelineEntry[]>(() => {
     return [
-      ...klipperGcodeStore.map((entry, index) => ({
-        kind: "store" as const,
-        id: `store-${entry.time}-${index}`,
-        sortTime: entry.time > 0 ? entry.time * 1000 : 0,
-        entry
-      })),
-      ...klipperConsoleLog.map((entry) => ({
-        kind: "history" as const,
-        id: `history-${entry.id}`,
-        sortTime: entry.createdAt,
-        entry
-      }))
+      ...klipperGcodeStore
+        .map((entry, index) => ({
+          kind: "store" as const,
+          id: `store-${entry.time}-${index}`,
+          sortTime: entry.time > 0 ? entry.time * 1000 : 0,
+          entry
+        }))
+        .filter((entry) => entry.sortTime > klipperConsoleClearedAt),
+      ...klipperConsoleLog
+        .map((entry) => ({
+          kind: "history" as const,
+          id: `history-${entry.id}`,
+          sortTime: entry.createdAt,
+          entry
+        }))
+        .filter((entry) => entry.sortTime > klipperConsoleClearedAt)
     ].sort((a, b) => b.sortTime - a.sortTime);
-  }, [klipperConsoleLog, klipperGcodeStore]);
+  }, [klipperConsoleClearedAt, klipperConsoleLog, klipperGcodeStore]);
   const themeStyle = useMemo<ThemeVariables>(() => {
     const primary = normalizeCssColor(mainsailTheme.primary, fallbackMainsailTheme.primary);
     const logo = normalizeCssColor(mainsailTheme.logo, fallbackMainsailTheme.logo);
@@ -1817,6 +1867,7 @@ export default function Home() {
 
   const openMacrosModal = useCallback(() => {
     setMacrosOpen(true);
+    setMacroTab("favorites");
     setMacroSearch("");
     void loadMacros();
   }, [loadMacros]);
@@ -3086,6 +3137,15 @@ export default function Home() {
     [confirmDialog, executingMacro, loadPrinterStatus, t]
   );
 
+  const toggleMacroFavorite = useCallback((macro: MacroEntry) => {
+    setMacroFavorites((current) => {
+      const exists = current.includes(macro.name);
+      const next = exists ? current.filter((name) => name !== macro.name) : [macro.name, ...current.filter((name) => name !== macro.name)];
+      writeMacroFavorites(next);
+      return next;
+    });
+  }, []);
+
   const startSelectedPrint = useCallback(async () => {
     if (!selectedGcodeItem || startingPrint) return;
 
@@ -3317,6 +3377,7 @@ export default function Home() {
     }
 
     setKlipperConsoleFavorites(readKlipperConsoleFavorites());
+    setMacroFavorites(readMacroFavorites());
 
     async function loadLocales() {
       try {
@@ -4737,6 +4798,26 @@ export default function Home() {
                 </div>
               </div>
               <div className="macro-modal-body">
+                <div className="klipper-console-tabs macro-tabs" role="tablist">
+                  <button
+                    className={macroTab === "favorites" ? "klipper-console-tab active" : "klipper-console-tab"}
+                    type="button"
+                    role="tab"
+                    aria-selected={macroTab === "favorites"}
+                    onClick={() => setMacroTab("favorites")}
+                  >
+                    {t("macros.favorites")}
+                  </button>
+                  <button
+                    className={macroTab === "all" ? "klipper-console-tab active" : "klipper-console-tab"}
+                    type="button"
+                    role="tab"
+                    aria-selected={macroTab === "all"}
+                    onClick={() => setMacroTab("all")}
+                  >
+                    {t("macros.all")}
+                  </button>
+                </div>
                 <label className="macro-search-field">
                   <FcSearch className="action-icon" />
                   <input
@@ -4762,17 +4843,17 @@ export default function Home() {
                     </button>
                   )}
                 </label>
-                <div className="macro-count">{t("macros.count", { count: filteredMacros.length })}</div>
+                <div className="macro-count">{t("macros.count", { count: visibleMacros.length })}</div>
                 <div className="macro-list">
                   {macrosLoading ? (
                     <div className="panel-loading-state" role="status" aria-live="polite">
                       <span>{t("macros.loading")}</span>
                       <div className="panel-loading-bar" />
                     </div>
-                  ) : filteredMacros.length === 0 ? (
-                    <p className="empty-note">{t("macros.empty")}</p>
+                  ) : visibleMacros.length === 0 ? (
+                    <p className="empty-note">{macroTab === "favorites" ? t("macros.emptyFavorites") : t("macros.empty")}</p>
                   ) : (
-                    filteredMacros.map((macro) => (
+                    visibleMacros.map((macro) => (
                       <div
                         key={`${macro.path}-${macro.line}-${macro.name}`}
                         className="macro-row"
@@ -4787,6 +4868,19 @@ export default function Home() {
                               {macro.path}:{macro.line}
                             </span>
                           </span>
+                        </button>
+                        <button
+                          className="macro-start-button"
+                          type="button"
+                          title={macroFavoriteSet.has(macro.name) ? t("actions.removeFavoriteMacro") : t("actions.favoriteMacro")}
+                          aria-label={macroFavoriteSet.has(macro.name) ? t("actions.removeFavoriteMacro") : t("actions.favoriteMacro")}
+                          onClick={() => toggleMacroFavorite(macro)}
+                        >
+                          {macroFavoriteSet.has(macro.name) ? (
+                            <MdStar className="macro-start-icon favorite" />
+                          ) : (
+                            <MdStarBorder className="macro-start-icon" />
+                          )}
                         </button>
                         <button
                           className="macro-start-button"
@@ -4929,7 +5023,9 @@ export default function Home() {
               </div>
               <div className="updates-modal-body">
                 <div className="updates-summary">
-                  <span>{t("updates.count", { count: pendingUpdates.length })}</span>
+                  <span>
+                    {t("updates.allCount", { count: updates.length })} - {t("updates.count", { count: pendingUpdates.length })}
+                  </span>
                   <button
                     className="dialog-button primary"
                     type="button"
@@ -4948,53 +5044,63 @@ export default function Home() {
                       <span>{t("updates.loading")}</span>
                       <div className="panel-loading-bar" />
                     </div>
-                  ) : pendingUpdates.length === 0 ? (
+                  ) : updates.length === 0 ? (
                     <p className="empty-note">{t("updates.empty")}</p>
                   ) : (
-                    pendingUpdates.map((update) => (
-                      <article className={runningUpdate === update.name ? "update-row updating" : "update-row"} key={update.name}>
-                        <div className="update-row-main">
-                          <div className="update-row-title">
-                            <strong>{update.name}</strong>
-                            {update.configuredType && <span>{update.configuredType}</span>}
-                          </div>
-                          <dl className="update-meta">
-                            <div>
-                              <dt>{t("updates.current")}</dt>
-                              <dd>{update.version || "-"}</dd>
+                    updates.map((update) => {
+                      const pending = hasPendingUpdate(update);
+
+                      return (
+                        <article className={runningUpdate === update.name ? "update-row updating" : "update-row"} key={update.name}>
+                          <div className="update-row-main">
+                            <div className="update-row-title">
+                              <strong>{update.name}</strong>
+                              {update.configuredType && <span>{update.configuredType}</span>}
                             </div>
-                            <div>
-                              <dt>{t("updates.available")}</dt>
-                              <dd>{update.remoteVersion || update.commitsBehind || "-"}</dd>
-                            </div>
-                            {update.channel && (
+                            <dl className="update-meta">
                               <div>
-                                <dt>{t("updates.channel")}</dt>
-                                <dd>{update.channel}</dd>
+                                <dt>{t("updates.current")}</dt>
+                                <dd>{update.version || "-"}</dd>
                               </div>
-                            )}
-                          </dl>
-                          <div className="update-badges">
-                            {update.isDirty && <span>{t("updates.dirty")}</span>}
-                            {update.detached && <span>{t("updates.detached")}</span>}
-                            {!update.isValid && <span>{t("updates.invalid")}</span>}
-                            {update.warnings.map((warning) => (
-                              <span key={warning}>{warning}</span>
-                            ))}
+                              {pending && (
+                                <div>
+                                  <dt>{t("updates.available")}</dt>
+                                  <dd>{update.remoteVersion || update.commitsBehind || "-"}</dd>
+                                </div>
+                              )}
+                              {update.channel && (
+                                <div>
+                                  <dt>{t("updates.channel")}</dt>
+                                  <dd>{update.channel}</dd>
+                                </div>
+                              )}
+                            </dl>
+                            <div className="update-badges">
+                              {update.isDirty && <span>{t("updates.dirty")}</span>}
+                              {update.detached && <span>{t("updates.detached")}</span>}
+                              {!update.isValid && <span>{t("updates.invalid")}</span>}
+                              {update.warnings.map((warning) => (
+                                <span key={warning}>{warning}</span>
+                              ))}
+                            </div>
                           </div>
-                        </div>
-                        <button
-                          className="dialog-button"
-                          type="button"
-                          disabled={updatesLoading || updatesBusy || runningUpdate !== null || printerStatus?.printing}
-                          title={printerStatus?.printing ? t("errors.updatePrinting") : t("actions.updateComponent")}
-                          onClick={() => void runUpdate(update)}
-                        >
-                          {runningUpdate === update.name && <span className="button-spinner" aria-hidden="true" />}
-                          {runningUpdate === update.name ? t("actions.updating") : t("actions.updateComponent")}
-                        </button>
-                      </article>
-                    ))
+                          {pending ? (
+                            <button
+                              className="dialog-button"
+                              type="button"
+                              disabled={updatesLoading || updatesBusy || runningUpdate !== null || printerStatus?.printing}
+                              title={printerStatus?.printing ? t("errors.updatePrinting") : t("actions.updateComponent")}
+                              onClick={() => void runUpdate(update)}
+                            >
+                              {runningUpdate === update.name && <span className="button-spinner" aria-hidden="true" />}
+                              {runningUpdate === update.name ? t("actions.updating") : t("actions.updateComponent")}
+                            </button>
+                          ) : (
+                            <span className="update-up-to-date">{t("updates.upToDate")}</span>
+                          )}
+                        </article>
+                      );
+                    })
                   )}
                 </div>
               </div>
@@ -5268,15 +5374,30 @@ export default function Home() {
             >
               <div className="modal-header">
                 <h2 id="klipper-console-title">{t("panels.klipperConsole")}</h2>
-                <button
-                  className="modal-close"
-                  type="button"
-                  title={t("actions.close")}
-                  aria-label={t("actions.close")}
-                  onClick={() => setKlipperConsoleOpen(false)}
-                >
-                  x
-                </button>
+                <div className="modal-header-actions">
+                  <button
+                    className="modal-icon-button"
+                    type="button"
+                    title={t("actions.clearConsoleHistory")}
+                    aria-label={t("actions.clearConsoleHistory")}
+                    disabled={klipperConsoleTimeline.length === 0}
+                    onClick={() => {
+                      setKlipperConsoleLog([]);
+                      setKlipperConsoleClearedAt(Date.now());
+                    }}
+                  >
+                    <MdDelete className="action-icon plain-action-icon danger-action-icon" />
+                  </button>
+                  <button
+                    className="modal-close"
+                    type="button"
+                    title={t("actions.close")}
+                    aria-label={t("actions.close")}
+                    onClick={() => setKlipperConsoleOpen(false)}
+                  >
+                    x
+                  </button>
+                </div>
               </div>
               <form className="klipper-console-body" onSubmit={sendKlipperConsoleCommand}>
                 <p className="setting-help">{t("klipperConsole.help")}</p>

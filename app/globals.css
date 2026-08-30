@@ -509,6 +509,10 @@ h1 {
   color: var(--file);
 }
 
+.danger-action-icon {
+  color: var(--danger);
+}
+
 .tree-children {
   margin-left: 15px;
 }
@@ -2531,11 +2535,15 @@ body.is-resizing-row {
 
 .macro-modal-body {
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto auto minmax(0, 1fr);
   gap: 10px;
   height: min(620px, calc(100vh - 140px));
   min-height: 0;
   padding: 14px 12px 16px;
+}
+
+.macro-tabs {
+  margin-bottom: 2px;
 }
 
 .macro-search-field {
@@ -2683,6 +2691,20 @@ body.is-resizing-row {
   overflow: auto;
   border: 1px solid var(--border-soft);
   background: var(--panel-soft);
+}
+
+.update-up-to-date {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 82px;
+  min-height: 28px;
+  border: 1px solid rgba(76, 175, 80, 0.5);
+  border-radius: var(--control-radius);
+  color: #73c777;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
 }
 
 .panel-loading-state {
@@ -2901,6 +2923,10 @@ body.is-resizing-row {
   color: var(--accent);
 }
 
+.macro-start-icon.favorite {
+  color: #f1c94b;
+}
+
 .macro-row-path {
   overflow: hidden;
   color: var(--muted);
@@ -3011,7 +3037,7 @@ body.is-resizing-row {
 
 .klipper-store-entry {
   display: grid;
-  grid-template-columns: 120px minmax(0, 1fr);
+  grid-template-columns: 168px minmax(0, 1fr);
   gap: 10px;
   border-bottom: 1px solid var(--border-soft);
   padding: 6px 2px 8px;
@@ -3026,6 +3052,7 @@ body.is-resizing-row {
   font-size: 11px;
   line-height: 1.35;
   overflow-wrap: normal;
+  white-space: nowrap;
 }
 
 .klipper-store-entry pre,

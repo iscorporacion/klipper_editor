@@ -107,6 +107,12 @@ export type UpdateManagerStatus = {
   raw: unknown;
 };
 
+export type GcodeStoreEntry = {
+  message: string;
+  time: number;
+  type: "command" | "response";
+};
+
 function moonrakerPath(path: string) {
   return `${moonrakerUrl}${path}`;
 }
@@ -277,6 +283,22 @@ export async function runGcodeScript(script: string) {
     body: JSON.stringify({ script })
   });
   return payload?.result ?? payload;
+}
+
+export async function getGcodeStore(count = 100): Promise<GcodeStoreEntry[]> {
+  const safeCount = Math.min(Math.max(Math.round(count), 1), 1000);
+  const payload = await moonrakerFetch(`/server/gcode_store?count=${safeCount}`);
+  const entries = payload?.result?.gcode_store ?? payload?.gcode_store ?? [];
+  if (!Array.isArray(entries)) return [];
+
+  return entries
+    .filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === "object")
+    .map<GcodeStoreEntry>((entry) => ({
+      message: String(entry.message ?? ""),
+      time: toNumber(entry.time),
+      type: entry.type === "command" ? "command" : "response"
+    }))
+    .filter((entry) => entry.message.trim());
 }
 
 export async function startPrint(filename: string) {

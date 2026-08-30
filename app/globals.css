@@ -2912,7 +2912,7 @@ body.is-resizing-row {
 
 .klipper-console-body {
   display: grid;
-  grid-template-rows: auto auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto auto auto minmax(0, 1fr);
   gap: 12px;
   height: min(680px, calc(100vh - 120px));
   min-height: 0;
@@ -2946,7 +2946,60 @@ body.is-resizing-row {
   box-shadow: 0 0 0 2px var(--accent-soft);
 }
 
-.klipper-console-log {
+.klipper-console-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border: 1px solid var(--border);
+  border-radius: var(--control-radius);
+  overflow: hidden;
+}
+
+.klipper-console-tab {
+  min-height: 32px;
+  border: 0;
+  border-right: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--muted);
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.klipper-console-tab:last-child {
+  border-right: 0;
+}
+
+.klipper-console-tab.active,
+.klipper-console-tab:hover,
+.klipper-console-tab:focus-visible {
+  background: var(--accent);
+  color: var(--accent-contrast);
+  outline: 0;
+}
+
+.klipper-console-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+  min-height: 0;
+}
+
+.klipper-console-panel,
+.klipper-console-favorites {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 8px;
+  min-height: 0;
+}
+
+.klipper-console-panel-title {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.klipper-console-log,
+.klipper-gcode-store {
   display: grid;
   align-content: start;
   gap: 8px;
@@ -2955,6 +3008,45 @@ body.is-resizing-row {
   border: 1px solid var(--border-soft);
   background: var(--panel-soft);
   padding: 8px;
+}
+
+.klipper-gcode-store {
+  font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+}
+
+.klipper-store-entry {
+  display: grid;
+  grid-template-columns: 82px minmax(0, 1fr);
+  gap: 10px;
+  border-bottom: 1px solid var(--border-soft);
+  padding: 6px 2px 8px;
+}
+
+.klipper-store-entry:last-child {
+  border-bottom: 0;
+}
+
+.klipper-store-entry time {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.klipper-store-entry pre {
+  margin: 0;
+  overflow: auto;
+  color: #d4d4d4;
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.klipper-store-entry.command pre {
+  color: var(--accent);
+  font-weight: 800;
+}
+
+.klipper-store-entry.response pre {
+  color: #f1c94b;
 }
 
 .klipper-console-entry {
@@ -3000,6 +3092,52 @@ body.is-resizing-row {
 .klipper-console-entry p {
   color: var(--muted);
   font-size: 12px;
+}
+
+.klipper-command-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.klipper-command-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 27px;
+  height: 26px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--control-radius);
+  background: var(--panel);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.klipper-command-actions button:hover,
+.klipper-command-actions button:focus-visible {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--text);
+  outline: 0;
+}
+
+.klipper-command-actions button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.klipper-command-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.klipper-command-icon.accent {
+  color: var(--accent);
+}
+
+.klipper-command-icon.favorite {
+  color: #f1c94b;
 }
 
 .gcodes-modal-body {

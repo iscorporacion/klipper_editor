@@ -30,6 +30,7 @@ import {
 } from "react-icons/fc";
 import {
   MdDelete,
+  MdEdit,
   MdFunctions,
   MdHome,
   MdKeyboardArrowDown,
@@ -37,6 +38,8 @@ import {
   MdKeyboardArrowRight,
   MdKeyboardArrowUp,
   MdSend,
+  MdStar,
+  MdStarBorder,
   MdTerminal
 } from "react-icons/md";
 import { TbActivityHeartbeat } from "react-icons/tb";
@@ -53,6 +56,7 @@ const heaterColorCacheKey = "klipper-editor-heater-colors";
 const hideBackupFilesKey = "klipper-editor-hide-backup-files";
 const terminalHeightKey = "klipper-editor-terminal-height";
 const terminalHistoryKey = "klipper-editor-terminal-history";
+const klipperConsoleFavoritesKey = "klipper-editor-klipper-console-favorites";
 
 function apiPath(path: string) {
   return `${appBasePath}${path}`;
@@ -167,6 +171,19 @@ type KlipperConsoleEntry = {
   message: string;
   timestamp: string;
 };
+
+type KlipperGcodeStoreEntry = {
+  message: string;
+  time: number;
+  type: "command" | "response";
+};
+
+type KlipperConsoleFavorite = {
+  script: string;
+  updatedAt: number;
+};
+
+type KlipperConsoleTab = "console" | "favorites";
 
 type GcodeThumbnail = {
   width: number;
@@ -415,6 +432,10 @@ const defaultMessages: Messages = {
   "actions.klipperConsole": "Consola Klipper",
   "actions.sendGcode": "Enviar",
   "actions.sendingGcode": "Enviando",
+  "actions.editCommand": "Editar comando",
+  "actions.favoriteCommand": "Agregar favorito",
+  "actions.removeFavoriteCommand": "Quitar favorito",
+  "actions.runCommand": "Ejecutar comando",
   "actions.printedFiles": "Archivos impresos",
   "actions.globalSearch": "Buscar en configuracion",
   "actions.search": "Buscar",
@@ -518,6 +539,7 @@ const defaultMessages: Messages = {
   "errors.loadMacros": "No se pudieron cargar las macros",
   "errors.executeMacro": "No se pudo ejecutar la macro",
   "errors.gcodeCommand": "No se pudo enviar el G-code",
+  "errors.gcodeStore": "No se pudo cargar la consola Klipper",
   "errors.loadGcodes": "No se pudieron cargar los archivos impresos",
   "errors.globalSearch": "No se pudo buscar en la configuracion",
   "errors.startPrint": "No se pudo iniciar la impresion",
@@ -598,6 +620,13 @@ const defaultMessages: Messages = {
   "klipperConsole.placeholder": "Escribe G-code o una macro. Ctrl+Enter envia.\n\nEjemplos:\nG28\nBED_MESH_CALIBRATE",
   "klipperConsole.help": "Los comandos se envian a Moonraker como script G-code. Puedes enviar varias lineas.",
   "klipperConsole.empty": "Sin comandos enviados en esta sesion.",
+  "klipperConsole.console": "Consola",
+  "klipperConsole.favorites": "Favoritos",
+  "klipperConsole.history": "Historial",
+  "klipperConsole.output": "Salida Klipper",
+  "klipperConsole.favoriteSearch": "Buscar favorito",
+  "klipperConsole.noOutput": "Sin mensajes de Klipper.",
+  "klipperConsole.noFavorites": "Sin favoritos.",
   "klipperConsole.sent": "Enviado",
   "klipperConsole.error": "Error",
   "gcodes.files": "Archivos",
@@ -719,6 +748,29 @@ function createConsoleEntry(script: string, status: KlipperConsoleEntry["status"
     message,
     timestamp: new Date().toLocaleString()
   };
+}
+
+function readKlipperConsoleFavorites() {
+  try {
+    const cached = JSON.parse(window.localStorage.getItem(klipperConsoleFavoritesKey) ?? "[]") as unknown;
+    if (!Array.isArray(cached)) return [];
+
+    return cached
+      .filter((entry): entry is Partial<KlipperConsoleFavorite> => Boolean(entry) && typeof entry === "object")
+      .map((entry) => ({
+        script: typeof entry.script === "string" ? entry.script : "",
+        updatedAt: numericValue(entry.updatedAt)
+      }))
+      .filter((entry) => entry.script.trim())
+      .slice(0, 100);
+  } catch {
+    window.localStorage.removeItem(klipperConsoleFavoritesKey);
+    return [];
+  }
+}
+
+function writeKlipperConsoleFavorites(favorites: KlipperConsoleFavorite[]) {
+  window.localStorage.setItem(klipperConsoleFavoritesKey, JSON.stringify(favorites.slice(0, 100)));
 }
 
 function translate(messages: Messages, key: string, values: Record<string, string | number> = {}) {
@@ -1417,6 +1469,11 @@ export default function Home() {
   const [klipperConsoleOpen, setKlipperConsoleOpen] = useState(false);
   const [klipperConsoleInput, setKlipperConsoleInput] = useState("");
   const [klipperConsoleLog, setKlipperConsoleLog] = useState<KlipperConsoleEntry[]>([]);
+  const [klipperGcodeStore, setKlipperGcodeStore] = useState<KlipperGcodeStoreEntry[]>([]);
+  const [klipperGcodeStoreLoading, setKlipperGcodeStoreLoading] = useState(false);
+  const [klipperConsoleTab, setKlipperConsoleTab] = useState<KlipperConsoleTab>("console");
+  const [klipperConsoleFavorites, setKlipperConsoleFavorites] = useState<KlipperConsoleFavorite[]>([]);
+  const [klipperFavoriteSearch, setKlipperFavoriteSearch] = useState("");
   const [sendingKlipperCommand, setSendingKlipperCommand] = useState(false);
   const [gcodesOpen, setGcodesOpen] = useState(false);
   const [gcodeModalTab, setGcodeModalTab] = useState<GcodeModalTab>("files");
@@ -1461,6 +1518,7 @@ export default function Home() {
   const heatersRef = useRef<HeaterStatus[]>([]);
   const machinePowerMenuRef = useRef<HTMLDivElement | null>(null);
   const terminalOutputRef = useRef<HTMLPreElement | null>(null);
+  const klipperConsoleInputRef = useRef<HTMLTextAreaElement | null>(null);
   const reloadOpenTextFilesRef = useRef<(() => Promise<void>) | null>(null);
 
   const activeFile = openFiles.find((file) => file.path === activePath);
@@ -1516,6 +1574,17 @@ export default function Home() {
     if (!query) return gcodeHistory;
     return gcodeHistory.filter((job) => `${job.filename} ${job.status}`.toLowerCase().includes(query));
   }, [gcodeHistory, gcodeSearch]);
+  const favoriteScriptSet = useMemo(
+    () => new Set(klipperConsoleFavorites.map((favorite) => favorite.script)),
+    [klipperConsoleFavorites]
+  );
+  const filteredKlipperFavorites = useMemo(() => {
+    const query = klipperFavoriteSearch.trim().toLowerCase();
+    const favorites = [...klipperConsoleFavorites].sort((a, b) => b.updatedAt - a.updatedAt);
+    if (!query) return favorites;
+
+    return favorites.filter((favorite) => favorite.script.toLowerCase().includes(query));
+  }, [klipperConsoleFavorites, klipperFavoriteSearch]);
   const themeStyle = useMemo<ThemeVariables>(() => {
     const primary = normalizeCssColor(mainsailTheme.primary, fallbackMainsailTheme.primary);
     const logo = normalizeCssColor(mainsailTheme.logo, fallbackMainsailTheme.logo);
@@ -1976,11 +2045,51 @@ export default function Home() {
     ]
   );
 
-  const sendKlipperConsoleCommand = useCallback(
-    async (event?: FormEvent<HTMLFormElement>) => {
-      event?.preventDefault();
+  const loadKlipperGcodeStore = useCallback(
+    async (showError = false) => {
+      setKlipperGcodeStoreLoading((current) => current || klipperGcodeStore.length === 0);
 
-      const script = klipperConsoleInput.trim();
+      try {
+        const response = await fetch(apiPath("/api/printer/gcode-store?count=120"), { cache: "no-store" });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error ?? t("errors.gcodeStore"));
+        setKlipperGcodeStore(((payload.entries ?? []) as KlipperGcodeStoreEntry[]).slice().reverse());
+      } catch (error) {
+        if (showError) {
+          setMessage(error instanceof Error ? error.message : t("errors.gcodeStore"));
+        }
+      } finally {
+        setKlipperGcodeStoreLoading(false);
+      }
+    },
+    [klipperGcodeStore.length, t]
+  );
+
+  const editKlipperConsoleCommand = useCallback((script: string) => {
+    setKlipperConsoleInput(script);
+    window.setTimeout(() => {
+      klipperConsoleInputRef.current?.focus();
+      klipperConsoleInputRef.current?.select();
+    }, 0);
+  }, []);
+
+  const toggleKlipperFavorite = useCallback((script: string) => {
+    const normalizedScript = script.trim();
+    if (!normalizedScript) return;
+
+    setKlipperConsoleFavorites((current) => {
+      const exists = current.some((favorite) => favorite.script === normalizedScript);
+      const next = exists
+        ? current.filter((favorite) => favorite.script !== normalizedScript)
+        : [{ script: normalizedScript, updatedAt: Date.now() }, ...current.filter((favorite) => favorite.script !== normalizedScript)];
+      writeKlipperConsoleFavorites(next);
+      return next;
+    });
+  }, []);
+
+  const sendKlipperScript = useCallback(
+    async (scriptInput: string, clearInput = false) => {
+      const script = scriptInput.trim();
       if (!script || sendingKlipperCommand) return;
 
       setSendingKlipperCommand(true);
@@ -1996,10 +2105,13 @@ export default function Home() {
         if (!response.ok) throw new Error(payload.error ?? t("errors.gcodeCommand"));
 
         setKlipperConsoleLog((current) =>
-          [createConsoleEntry(script, "sent", t("status.gcodeSent")), ...current].slice(0, 80)
+          [createConsoleEntry(script, "sent", String(payload.result ?? t("status.gcodeSent"))), ...current].slice(0, 80)
         );
-        setKlipperConsoleInput("");
+        if (clearInput) {
+          setKlipperConsoleInput("");
+        }
         setMessage(t("status.gcodeSent"));
+        await loadKlipperGcodeStore();
         await loadPrinterStatus();
         if (shouldReloadOpenFilesAfterGcode(script)) {
           await Promise.all([loadTree(), reloadOpenTextFilesRef.current?.()]);
@@ -2012,7 +2124,15 @@ export default function Home() {
         setSendingKlipperCommand(false);
       }
     },
-    [klipperConsoleInput, loadPrinterStatus, loadTree, sendingKlipperCommand, t]
+    [loadKlipperGcodeStore, loadPrinterStatus, loadTree, sendingKlipperCommand, t]
+  );
+
+  const sendKlipperConsoleCommand = useCallback(
+    async (event?: FormEvent<HTMLFormElement>) => {
+      event?.preventDefault();
+      await sendKlipperScript(klipperConsoleInput, true);
+    },
+    [klipperConsoleInput, sendKlipperScript]
   );
 
   const loadHeaters = useCallback(
@@ -3126,6 +3246,8 @@ export default function Home() {
       window.localStorage.removeItem(terminalHistoryKey);
     }
 
+    setKlipperConsoleFavorites(readKlipperConsoleFavorites());
+
     async function loadLocales() {
       try {
         const response = await fetch(apiPath("/api/locales"), { cache: "no-store" });
@@ -3171,6 +3293,14 @@ export default function Home() {
       cancelled = true;
     };
   }, [loadLocale]);
+
+  useEffect(() => {
+    if (!klipperConsoleOpen) return;
+
+    void loadKlipperGcodeStore(true);
+    const interval = window.setInterval(() => void loadKlipperGcodeStore(), 2000);
+    return () => window.clearInterval(interval);
+  }, [klipperConsoleOpen, loadKlipperGcodeStore]);
 
   useEffect(() => {
     loadTree().catch((error) => setMessage(error instanceof Error ? error.message : t("errors.loadTree")));
@@ -5083,6 +5213,7 @@ export default function Home() {
                 <label className="klipper-console-field">
                   <span>{t("panels.klipperConsole")}</span>
                   <textarea
+                    ref={klipperConsoleInputRef}
                     autoFocus
                     value={klipperConsoleInput}
                     placeholder={t("klipperConsole.placeholder")}
@@ -5115,22 +5246,177 @@ export default function Home() {
                     {sendingKlipperCommand ? t("actions.sendingGcode") : t("actions.sendGcode")}
                   </button>
                 </div>
-                <div className="klipper-console-log" aria-label={t("panels.klipperConsole")}>
-                  {klipperConsoleLog.length === 0 ? (
-                    <p className="empty-note">{t("klipperConsole.empty")}</p>
-                  ) : (
-                    klipperConsoleLog.map((entry) => (
-                      <article key={entry.id} className={`klipper-console-entry ${entry.status}`}>
-                        <div className="klipper-console-entry-header">
-                          <span>{entry.status === "sent" ? t("klipperConsole.sent") : t("klipperConsole.error")}</span>
-                          <time>{entry.timestamp}</time>
-                        </div>
-                        <pre>{entry.script}</pre>
-                        <p>{entry.message}</p>
-                      </article>
-                    ))
-                  )}
+                <div className="klipper-console-tabs" role="tablist">
+                  <button
+                    className={klipperConsoleTab === "console" ? "klipper-console-tab active" : "klipper-console-tab"}
+                    type="button"
+                    role="tab"
+                    aria-selected={klipperConsoleTab === "console"}
+                    onClick={() => setKlipperConsoleTab("console")}
+                  >
+                    {t("klipperConsole.console")}
+                  </button>
+                  <button
+                    className={klipperConsoleTab === "favorites" ? "klipper-console-tab active" : "klipper-console-tab"}
+                    type="button"
+                    role="tab"
+                    aria-selected={klipperConsoleTab === "favorites"}
+                    onClick={() => setKlipperConsoleTab("favorites")}
+                  >
+                    {t("klipperConsole.favorites")}
+                  </button>
                 </div>
+                {klipperConsoleTab === "console" ? (
+                  <div className="klipper-console-split">
+                    <section className="klipper-console-panel" aria-label={t("klipperConsole.output")}>
+                      <div className="klipper-console-panel-title">{t("klipperConsole.output")}</div>
+                      <div className="klipper-gcode-store">
+                        {klipperGcodeStoreLoading && klipperGcodeStore.length === 0 ? (
+                          <div className="panel-loading-state" role="status" aria-live="polite">
+                            <span>{t("loading.title")}</span>
+                            <div className="panel-loading-bar" />
+                          </div>
+                        ) : klipperGcodeStore.length === 0 ? (
+                          <p className="empty-note">{t("klipperConsole.noOutput")}</p>
+                        ) : (
+                          klipperGcodeStore.map((entry, index) => (
+                            <article key={`${entry.time}-${index}`} className={`klipper-store-entry ${entry.type}`}>
+                              <time>{formatTimestamp(entry.time)}</time>
+                              <pre>{entry.message}</pre>
+                            </article>
+                          ))
+                        )}
+                      </div>
+                    </section>
+                    <section className="klipper-console-panel" aria-label={t("klipperConsole.history")}>
+                      <div className="klipper-console-panel-title">{t("klipperConsole.history")}</div>
+                      <div className="klipper-console-log">
+                        {klipperConsoleLog.length === 0 ? (
+                          <p className="empty-note">{t("klipperConsole.empty")}</p>
+                        ) : (
+                          klipperConsoleLog.map((entry) => (
+                            <article key={entry.id} className={`klipper-console-entry ${entry.status}`}>
+                              <div className="klipper-console-entry-header">
+                                <span>{entry.status === "sent" ? t("klipperConsole.sent") : t("klipperConsole.error")}</span>
+                                <time>{entry.timestamp}</time>
+                              </div>
+                              <pre>{entry.script}</pre>
+                              <p>{entry.message}</p>
+                              <div className="klipper-command-actions">
+                                <button
+                                  type="button"
+                                  title={t("actions.editCommand")}
+                                  aria-label={t("actions.editCommand")}
+                                  onClick={() => editKlipperConsoleCommand(entry.script)}
+                                >
+                                  <MdEdit className="klipper-command-icon" />
+                                </button>
+                                <button
+                                  type="button"
+                                  title={t("actions.runCommand")}
+                                  aria-label={t("actions.runCommand")}
+                                  disabled={sendingKlipperCommand}
+                                  onClick={() => void sendKlipperScript(entry.script)}
+                                >
+                                  <FaPlay className="klipper-command-icon accent" />
+                                </button>
+                                <button
+                                  type="button"
+                                  title={
+                                    favoriteScriptSet.has(entry.script)
+                                      ? t("actions.removeFavoriteCommand")
+                                      : t("actions.favoriteCommand")
+                                  }
+                                  aria-label={
+                                    favoriteScriptSet.has(entry.script)
+                                      ? t("actions.removeFavoriteCommand")
+                                      : t("actions.favoriteCommand")
+                                  }
+                                  onClick={() => toggleKlipperFavorite(entry.script)}
+                                >
+                                  {favoriteScriptSet.has(entry.script) ? (
+                                    <MdStar className="klipper-command-icon favorite" />
+                                  ) : (
+                                    <MdStarBorder className="klipper-command-icon" />
+                                  )}
+                                </button>
+                              </div>
+                            </article>
+                          ))
+                        )}
+                      </div>
+                    </section>
+                  </div>
+                ) : (
+                  <div className="klipper-console-favorites">
+                    <label className="macro-search-field">
+                      <FcSearch className="action-icon" />
+                      <input
+                        value={klipperFavoriteSearch}
+                        placeholder={t("klipperConsole.favoriteSearch")}
+                        onChange={(event) => setKlipperFavoriteSearch(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Escape") {
+                            setKlipperFavoriteSearch("");
+                          }
+                        }}
+                      />
+                      {klipperFavoriteSearch && (
+                        <button
+                          className="search-clear-button"
+                          type="button"
+                          title={t("actions.clearSearch")}
+                          aria-label={t("actions.clearSearch")}
+                          onClick={() => setKlipperFavoriteSearch("")}
+                        >
+                          <IoClose className="search-clear-icon" />
+                        </button>
+                      )}
+                    </label>
+                    <div className="klipper-console-log">
+                      {filteredKlipperFavorites.length === 0 ? (
+                        <p className="empty-note">{t("klipperConsole.noFavorites")}</p>
+                      ) : (
+                        filteredKlipperFavorites.map((favorite) => (
+                          <article key={favorite.script} className="klipper-console-entry favorite-entry">
+                            <div className="klipper-console-entry-header">
+                              <span>{t("klipperConsole.favorites")}</span>
+                              <time>{new Date(favorite.updatedAt).toLocaleString()}</time>
+                            </div>
+                            <pre>{favorite.script}</pre>
+                            <div className="klipper-command-actions">
+                              <button
+                                type="button"
+                                title={t("actions.editCommand")}
+                                aria-label={t("actions.editCommand")}
+                                onClick={() => editKlipperConsoleCommand(favorite.script)}
+                              >
+                                <MdEdit className="klipper-command-icon" />
+                              </button>
+                              <button
+                                type="button"
+                                title={t("actions.runCommand")}
+                                aria-label={t("actions.runCommand")}
+                                disabled={sendingKlipperCommand}
+                                onClick={() => void sendKlipperScript(favorite.script)}
+                              >
+                                <FaPlay className="klipper-command-icon accent" />
+                              </button>
+                              <button
+                                type="button"
+                                title={t("actions.removeFavoriteCommand")}
+                                aria-label={t("actions.removeFavoriteCommand")}
+                                onClick={() => toggleKlipperFavorite(favorite.script)}
+                              >
+                                <MdStar className="klipper-command-icon favorite" />
+                              </button>
+                            </div>
+                          </article>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
               </form>
             </section>
           </div>

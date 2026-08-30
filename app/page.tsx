@@ -790,6 +790,43 @@ function writeKlipperConsoleFavorites(favorites: KlipperConsoleFavorite[]) {
   window.localStorage.setItem(klipperConsoleFavoritesKey, JSON.stringify(favorites.slice(0, 100)));
 }
 
+function isHtmlLikeMessage(message: string) {
+  return /<\/?[a-z][\s\S]*>/i.test(message);
+}
+
+function sanitizeKlipperHtml(message: string) {
+  if (typeof window === "undefined") return "";
+
+  const parser = new DOMParser();
+  const document = parser.parseFromString(message, "text/html");
+  document.querySelectorAll("script, style, iframe, object, embed").forEach((node) => node.remove());
+
+  document.body.querySelectorAll("*").forEach((element) => {
+    for (const attribute of Array.from(element.attributes)) {
+      const name = attribute.name.toLowerCase();
+      const value = attribute.value.trim();
+
+      if (name.startsWith("on") || (["href", "src"].includes(name) && /^javascript:/i.test(value))) {
+        element.removeAttribute(attribute.name);
+      }
+
+      if (name === "target") {
+        element.setAttribute("rel", "noopener noreferrer");
+      }
+    }
+  });
+
+  return document.body.innerHTML;
+}
+
+function KlipperStoreMessage({ message }: { message: string }) {
+  if (!isHtmlLikeMessage(message)) {
+    return <pre>{message}</pre>;
+  }
+
+  return <div className="klipper-store-html" dangerouslySetInnerHTML={{ __html: sanitizeKlipperHtml(message) }} />;
+}
+
 function translate(messages: Messages, key: string, values: Record<string, string | number> = {}) {
   const template = messages[key] ?? defaultLocaleMessages[key] ?? defaultMessages[key] ?? key;
   return Object.entries(values).reduce(
@@ -5315,7 +5352,7 @@ export default function Home() {
                           item.kind === "store" ? (
                             <article key={item.id} className={`klipper-store-entry ${item.entry.type}`}>
                               <time>{formatTimestamp(item.entry.time)}</time>
-                              <pre>{item.entry.message}</pre>
+                              <KlipperStoreMessage message={item.entry.message} />
                             </article>
                           ) : (
                             <article key={item.id} className={`klipper-console-entry ${item.entry.status}`}>

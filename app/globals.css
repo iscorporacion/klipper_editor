@@ -3011,7 +3011,7 @@ body.is-resizing-row {
 
 .klipper-store-entry {
   display: grid;
-  grid-template-columns: 82px minmax(0, 1fr);
+  grid-template-columns: 120px minmax(0, 1fr);
   gap: 10px;
   border-bottom: 1px solid var(--border-soft);
   padding: 6px 2px 8px;
@@ -3024,9 +3024,12 @@ body.is-resizing-row {
 .klipper-store-entry time {
   color: var(--muted);
   font-size: 11px;
+  line-height: 1.35;
+  overflow-wrap: normal;
 }
 
-.klipper-store-entry pre {
+.klipper-store-entry pre,
+.klipper-store-html {
   margin: 0;
   overflow: auto;
   color: #d4d4d4;
@@ -3035,12 +3038,34 @@ body.is-resizing-row {
   white-space: pre-wrap;
 }
 
-.klipper-store-entry.command pre {
+.klipper-store-html {
+  white-space: normal;
+}
+
+.klipper-store-html a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.klipper-store-html a:hover {
+  text-decoration: underline;
+}
+
+.klipper-store-html img {
+  display: block;
+  max-width: min(260px, 100%);
+  height: auto;
+  margin: 8px 0;
+}
+
+.klipper-store-entry.command pre,
+.klipper-store-entry.command .klipper-store-html {
   color: var(--accent);
   font-weight: 800;
 }
 
-.klipper-store-entry.response pre {
+.klipper-store-entry.response pre,
+.klipper-store-entry.response .klipper-store-html {
   color: #f1c94b;
 }
 

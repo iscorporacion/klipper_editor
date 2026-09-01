@@ -2,6 +2,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
+import { readAppSettingsSync } from "@/lib/app-settings";
 import { WORKSPACE_ROOT } from "@/lib/workspace";
 
 type TerminalChunk = {
@@ -35,7 +36,7 @@ function sanitizeTerminalOutput(text: string) {
 }
 
 export function isTerminalEnabled() {
-  return process.env.KLIPPER_EDITOR_ENABLE_TERMINAL === "true";
+  return process.env.KLIPPER_EDITOR_ENABLE_TERMINAL === "true" || readAppSettingsSync().terminalEnabled === true;
 }
 
 export function terminalShell() {
@@ -93,7 +94,9 @@ function terminalWorkingDirectory() {
 
 export function createTerminalSession() {
   if (!isTerminalEnabled()) {
-    throw new Error("Terminal is disabled");
+    throw new Error(
+      "La terminal esta deshabilitada en este host. Habilitala en Opciones > Habilitar terminal SSH basica o con KLIPPER_EDITOR_ENABLE_TERMINAL=true en el servicio."
+    );
   }
 
   cleanupIdleSessions();

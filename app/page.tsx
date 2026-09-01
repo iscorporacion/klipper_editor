@@ -5,7 +5,7 @@ import Image from "next/image";
 import type { ChangeEvent, CSSProperties, FormEvent, MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import MdiIcon from "@mdi/react";
-import { mdiConsoleLine } from "@mdi/js";
+import { mdiArrowCollapseLeft, mdiArrowCollapseRight, mdiConsoleLine } from "@mdi/js";
 import type { Range } from "@codemirror/state";
 import { Decoration, DecorationSet, EditorView, ViewPlugin, ViewUpdate, WidgetType } from "@codemirror/view";
 import { HighlightStyle, StreamLanguage, syntaxHighlighting } from "@codemirror/language";
@@ -58,6 +58,7 @@ const terminalHistoryKey = "klipper-editor-terminal-history";
 const klipperConsoleFavoritesKey = "klipper-editor-klipper-console-favorites";
 const macroFavoritesKey = "klipper-editor-macro-favorites";
 const sectionPreviewDelayKey = "klipper-editor-section-preview-delay";
+const sidebarCollapsedKey = "klipper-editor-sidebar-collapsed";
 
 function apiPath(path: string) {
   return `${appBasePath}${path}`;
@@ -533,6 +534,8 @@ const defaultMessages: Messages = {
   "actions.saveAndClose": "Guardar y cerrar",
   "actions.closeWithoutSaving": "Cerrar sin guardar",
   "actions.closeAllEditors": "Cerrar todos",
+  "actions.collapseSidebar": "Contraer arbol",
+  "actions.expandSidebar": "Expandir arbol",
   "actions.options": "Opciones",
   "actions.terminal": "Terminal",
   "actions.openTerminal": "Abrir terminal",
@@ -540,6 +543,7 @@ const defaultMessages: Messages = {
   "actions.connectTerminal": "Conectar terminal",
   "actions.disconnectTerminal": "Desconectar terminal",
   "actions.runTerminalCommand": "Ejecutar",
+  "actions.enableTerminal": "Habilitar terminal",
   "actions.restartFirmware": "Restar",
   "actions.restartingFirmware": "Reiniciando",
   "actions.applyToGroup": "Aplicar a todos",
@@ -589,6 +593,7 @@ const defaultMessages: Messages = {
   "status.terminalConnected": "Terminal conectada",
   "status.terminalDisconnected": "Terminal desconectada",
   "status.terminalRunning": "Ejecutando comando",
+  "status.terminalSettingSaved": "Configuracion de terminal actualizada",
   "status.printerState": "Impresora: {state}",
   "status.resolvingInclude": "Resolviendo include {include}",
   "status.wildcardInclude": "Include con comodin: abierto {path}; {count} coincidencias",
@@ -626,7 +631,7 @@ const defaultMessages: Messages = {
   "errors.saveGeneric": "Error al guardar",
   "errors.restartFirmware": "No se pudo reiniciar el firmware",
   "errors.restartPrinting": "No se puede reiniciar firmware mientras hay una impresion en curso",
-  "errors.terminalDisabled": "La terminal esta deshabilitada en este host",
+  "errors.terminalDisabled": "La terminal esta deshabilitada en este host. Habilitala en Opciones > Habilitar terminal SSH basica o con KLIPPER_EDITOR_ENABLE_TERMINAL=true en el servicio.",
   "errors.terminalConnection": "No se pudo conectar la terminal",
   "errors.terminalCommand": "No se pudo enviar el comando",
   "errors.terminalUnsupportedCommand": "{command} no funciona en esta terminal. Usa SSH o una terminal TTY real para herramientas interactivas.",
@@ -639,6 +644,7 @@ const defaultMessages: Messages = {
   "confirm.restartFirmware": "Reiniciar firmware ahora?",
   "confirm.executeMacro": "Ejecutar macro {name} en la impresora?",
   "confirm.printFile": "Imprimir {name} ahora?",
+  "confirm.enableTerminal": "Habilitar la terminal permite ejecutar comandos del sistema desde el navegador en el host de la impresora. Usala solo en redes y equipos de confianza. Esta terminal es basica: no soporta herramientas interactivas como make menuconfig o raspi-config, no es una TTY completa y puede exponer informacion sensible en pantalla. Quieres habilitarla?",
   "confirm.cancelPrint": "Cancelar la impresion actual?",
   "confirm.updateAll": "Ejecutar todas las actualizaciones pendientes?",
   "confirm.updateComponent": "Actualizar {name}?",
@@ -653,7 +659,7 @@ const defaultMessages: Messages = {
   "panels.includes": "Includes",
   "panels.sections": "Sesiones",
   "empty.openFile": "Abre un archivo del arbol.",
-  "empty.terminal": "Terminal deshabilitada. Activa KLIPPER_EDITOR_ENABLE_TERMINAL=true en el servicio.",
+  "empty.terminal": "Terminal deshabilitada. Habilitala en Opciones > Habilitar terminal SSH basica o activa KLIPPER_EDITOR_ENABLE_TERMINAL=true en el servicio.",
   "empty.includes": "Sin includes detectados.",
   "empty.sections": "Sin sesiones detectadas.",
   "empty.sectionMatches": "Sin sesiones que coincidan.",
@@ -674,6 +680,11 @@ const defaultMessages: Messages = {
   "options.languageHelp": "Los idiomas disponibles salen de los archivos JSON en la carpeta `locales`.",
   "options.createBackupOnSave": "Crear copia de seguridad al guardar",
   "options.createBackupOnSaveHelp": "Antes de sobrescribir un archivo, crea una copia con fecha junto al original.",
+  "options.startCollapsedSidebar": "Iniciar con barra colapsada",
+  "options.startCollapsedSidebarHelp": "Al abrir K-Editor, muestra solo la barra lateral de iconos hasta pasar el mouse encima.",
+  "options.enableTerminal": "Habilitar terminal SSH basica",
+  "options.enableTerminalHelp": "Permite abrir una terminal basica del host desde K-Editor. Usa esta opcion solo en una red de confianza.",
+  "options.enableTerminalEnvHelp": "La terminal esta habilitada por KLIPPER_EDITOR_ENABLE_TERMINAL=true en el servicio.",
   "options.sectionPreviewDelay": "Retardo de vista previa de sesiones",
   "options.sectionPreviewDelayHelp": "Segundos que debe permanecer el mouse sobre una sesion antes de mostrar la vista previa.",
   "options.close": "Cerrar opciones",
@@ -1613,6 +1624,7 @@ function TreeItem({
 
 export default function Home() {
   const [tree, setTree] = useState<TreeNode[]>([]);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [hideBackupFiles, setHideBackupFiles] = useState(true);
   const [selectedTreeFiles, setSelectedTreeFiles] = useState<Set<string>>(() => new Set());
   const [openFiles, setOpenFiles] = useState<OpenFile[]>([]);
@@ -1690,6 +1702,8 @@ export default function Home() {
   const [runningMachinePowerAction, setRunningMachinePowerAction] = useState<MachinePowerAction | null>(null);
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [terminalEnabled, setTerminalEnabled] = useState(false);
+  const [terminalConfiguredEnabled, setTerminalConfiguredEnabled] = useState(false);
+  const [terminalEnvEnabled, setTerminalEnvEnabled] = useState(false);
   const [terminalSessionId, setTerminalSessionId] = useState<string | null>(null);
   const [terminalOutput, setTerminalOutput] = useState("");
   const [terminalInput, setTerminalInput] = useState("");
@@ -2119,15 +2133,25 @@ export default function Home() {
   const loadTerminalStatus = useCallback(async () => {
     try {
       const response = await fetch(apiPath("/api/terminal/status"), { cache: "no-store" });
-      const payload = (await response.json()) as { enabled?: boolean; shell?: string; error?: string };
+      const payload = (await response.json()) as {
+        enabled?: boolean;
+        configuredEnabled?: boolean;
+        envEnabled?: boolean;
+        shell?: string;
+        error?: string;
+      };
       if (!response.ok) throw new Error(payload.error ?? t("errors.terminalConnection"));
 
       const enabled = Boolean(payload.enabled);
       setTerminalEnabled(enabled);
+      setTerminalConfiguredEnabled(Boolean(payload.configuredEnabled));
+      setTerminalEnvEnabled(Boolean(payload.envEnabled));
       setTerminalError(enabled ? null : t("errors.terminalDisabled"));
       return enabled;
     } catch (error) {
       setTerminalEnabled(false);
+      setTerminalConfiguredEnabled(false);
+      setTerminalEnvEnabled(false);
       setTerminalError(error instanceof Error ? error.message : t("errors.terminalConnection"));
       return false;
     }
@@ -2160,6 +2184,37 @@ export default function Home() {
       setTerminalBusy(false);
     }
   }, [applyTerminalPayload, loadTerminalStatus, t, terminalAlive, terminalEnabled, terminalSessionId]);
+
+  const updateTerminalEnabledSetting = useCallback(
+    async (enabled: boolean) => {
+      if (enabled && !(await confirmDialog(t("actions.enableTerminal"), t("confirm.enableTerminal")))) return;
+
+      try {
+        const response = await fetch(apiPath("/api/terminal/settings"), {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ terminalEnabled: enabled })
+        });
+        const payload = (await response.json()) as {
+          terminalEnabled?: boolean;
+          configuredTerminalEnabled?: boolean;
+          envTerminalEnabled?: boolean;
+          error?: string;
+        };
+        if (!response.ok) throw new Error(payload.error ?? t("errors.terminalConnection"));
+
+        setTerminalConfiguredEnabled(Boolean(payload.configuredTerminalEnabled));
+        setTerminalEnvEnabled(Boolean(payload.envTerminalEnabled));
+        setTerminalEnabled(Boolean(payload.terminalEnabled));
+        setTerminalError(payload.terminalEnabled ? null : t("errors.terminalDisabled"));
+        setMessage(t("status.terminalSettingSaved"));
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : t("errors.terminalConnection"));
+        void loadTerminalStatus();
+      }
+    },
+    [confirmDialog, loadTerminalStatus, t]
+  );
 
   const pollTerminalSession = useCallback(async () => {
     if (!terminalSessionId) return;
@@ -3527,6 +3582,8 @@ export default function Home() {
       setSectionPreviewDelay(clamp(savedSectionPreviewDelay, 0, 10));
     }
 
+    setSidebarCollapsed(window.localStorage.getItem(sidebarCollapsedKey) === "true");
+
     try {
       const savedTerminalHistory = JSON.parse(window.localStorage.getItem(terminalHistoryKey) ?? "[]") as unknown;
       if (Array.isArray(savedTerminalHistory)) {
@@ -3767,7 +3824,7 @@ export default function Home() {
   const showPrinterInitializing = printerInitializing || isPrinterInitializingStatus(printerStatus);
 
   return (
-    <main className="workspace-shell" style={themeStyle}>
+    <main className={sidebarCollapsed ? "workspace-shell sidebar-collapsed" : "workspace-shell"} style={themeStyle}>
       {showPrinterInitializing && (
         <div className="printer-initializing-overlay" role="status" aria-live="polite">
           <div className="printer-initializing-card">
@@ -3936,6 +3993,24 @@ export default function Home() {
         <div className="topbar">
           <div className="quick-toolbar">
             <div className="toolbar-group primary-tool-group">
+              <button
+                className="icon-button sidebar-toggle-button"
+                type="button"
+                onClick={() => {
+                  const nextValue = !sidebarCollapsed;
+                  setSidebarCollapsed(nextValue);
+                  window.localStorage.setItem(sidebarCollapsedKey, String(nextValue));
+                }}
+                title={sidebarCollapsed ? t("actions.expandSidebar") : t("actions.collapseSidebar")}
+                aria-label={sidebarCollapsed ? t("actions.expandSidebar") : t("actions.collapseSidebar")}
+                aria-pressed={sidebarCollapsed}
+              >
+                <MdiIcon
+                  className="action-icon plain-action-icon"
+                  path={sidebarCollapsed ? mdiArrowCollapseRight : mdiArrowCollapseLeft}
+                  size={1}
+                />
+              </button>
               <button className="macro-button" type="button" onClick={openMacrosModal} title={t("actions.macros")}>
                 <MdFunctions className="macro-button-icon" />
                 <span className="toolbar-label">{t("actions.macros")}</span>
@@ -5914,6 +5989,31 @@ export default function Home() {
                   <span>{t("options.createBackupOnSave")}</span>
                 </label>
                 <p className="setting-help">{t("options.createBackupOnSaveHelp")}</p>
+                <label className="setting-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={sidebarCollapsed}
+                    onChange={(event) => {
+                      const checked = event.target.checked;
+                      setSidebarCollapsed(checked);
+                      window.localStorage.setItem(sidebarCollapsedKey, String(checked));
+                    }}
+                  />
+                  <span>{t("options.startCollapsedSidebar")}</span>
+                </label>
+                <p className="setting-help">{t("options.startCollapsedSidebarHelp")}</p>
+                <label className="setting-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={terminalEnvEnabled || terminalConfiguredEnabled}
+                    disabled={terminalEnvEnabled}
+                    onChange={(event) => void updateTerminalEnabledSetting(event.target.checked)}
+                  />
+                  <span>{t("options.enableTerminal")}</span>
+                </label>
+                <p className="setting-help">
+                  {terminalEnvEnabled ? t("options.enableTerminalEnvHelp") : t("options.enableTerminalHelp")}
+                </p>
                 <label className="setting-field">
                   <span>{t("options.sectionPreviewDelay")}</span>
                   <input

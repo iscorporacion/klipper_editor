@@ -4050,6 +4050,103 @@ body.is-resizing-row {
   white-space: nowrap;
 }
 
+.sidebar-toggle-button {
+  flex: 0 0 auto;
+}
+
+.workspace-shell.sidebar-collapsed {
+  grid-template-columns: 54px minmax(0, 1fr);
+}
+
+.workspace-shell.sidebar-collapsed .sidebar {
+  position: relative;
+  z-index: 35;
+  display: block;
+  width: 54px;
+  overflow: visible;
+  background: transparent;
+}
+
+.workspace-shell.sidebar-collapsed .sidebar-header {
+  position: absolute;
+  inset: 0 auto 0 0;
+  z-index: 3;
+  display: flex;
+  width: 54px;
+  height: 100vh;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  padding: 10px 8px;
+  border-right: 1px solid var(--border);
+  border-bottom: 0;
+  background: var(--panel);
+}
+
+.workspace-shell.sidebar-collapsed .sidebar-brand {
+  justify-content: center;
+  width: 100%;
+}
+
+.workspace-shell.sidebar-collapsed .sidebar-brand-text {
+  display: none;
+}
+
+.workspace-shell.sidebar-collapsed .sidebar-brand-logo {
+  width: 34px;
+  height: 34px;
+}
+
+.workspace-shell.sidebar-collapsed .sidebar-actions {
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.workspace-shell.sidebar-collapsed .sidebar-actions .icon-button {
+  width: 34px;
+  height: 34px;
+}
+
+.workspace-shell.sidebar-collapsed .sidebar .tree,
+.workspace-shell.sidebar-collapsed .sidebar .open-editors {
+  position: absolute;
+  left: 54px;
+  width: min(310px, calc(100vw - 54px));
+  border-right: 1px solid var(--border);
+  box-shadow: 18px 0 35px rgba(0, 0, 0, 0.32);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-10px);
+  transition:
+    opacity 130ms ease,
+    transform 130ms ease;
+}
+
+.workspace-shell.sidebar-collapsed .sidebar .tree {
+  top: 0;
+  bottom: 66px;
+  height: auto;
+  padding-top: 10px;
+  background: var(--panel);
+}
+
+.workspace-shell.sidebar-collapsed .sidebar .open-editors {
+  bottom: 0;
+  max-height: 132px;
+  background: var(--panel-soft);
+}
+
+.workspace-shell.sidebar-collapsed .sidebar:hover .tree,
+.workspace-shell.sidebar-collapsed .sidebar:hover .open-editors,
+.workspace-shell.sidebar-collapsed .sidebar:focus-within .tree,
+.workspace-shell.sidebar-collapsed .sidebar:focus-within .open-editors {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(0);
+}
+
 @media (max-width: 1180px) {
   .topbar {
     gap: 8px;
@@ -4111,5 +4208,121 @@ body.is-resizing-row {
 
   .toolbar-actions {
     justify-content: flex-start;
+  }
+}
+
+@media (max-width: 760px) {
+  .workspace-shell {
+    grid-template-columns: 54px minmax(0, 1fr);
+  }
+
+  .sidebar {
+    position: relative;
+    z-index: 35;
+    display: block;
+    width: 54px;
+    overflow: visible;
+    border-right: 1px solid var(--border);
+    background: transparent;
+  }
+
+  .sidebar-header {
+    position: absolute;
+    inset: 0 auto 0 0;
+    z-index: 3;
+    display: flex;
+    width: 54px;
+    height: 100vh;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 10px;
+    padding: 10px 8px;
+    border-right: 1px solid var(--border);
+    border-bottom: 0;
+    background: var(--panel);
+  }
+
+  .sidebar-brand {
+    justify-content: center;
+    width: 100%;
+  }
+
+  .sidebar-brand-text {
+    display: none;
+  }
+
+  .sidebar-brand-logo {
+    width: 34px;
+    height: 34px;
+  }
+
+  .sidebar-actions {
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+  }
+
+  .sidebar-actions .icon-button {
+    width: 34px;
+    height: 34px;
+  }
+
+  .sidebar .tree,
+  .sidebar .open-editors {
+    position: absolute;
+    left: 54px;
+    width: min(290px, calc(100vw - 54px));
+    border-right: 1px solid var(--border);
+    box-shadow: 18px 0 35px rgba(0, 0, 0, 0.32);
+    opacity: 0;
+    pointer-events: none;
+    transform: translateX(-10px);
+    transition:
+      opacity 130ms ease,
+      transform 130ms ease;
+  }
+
+  .sidebar .tree {
+    top: 0;
+    bottom: 66px;
+    height: auto;
+    padding-top: 10px;
+    background: var(--panel);
+  }
+
+  .sidebar .open-editors {
+    bottom: 0;
+    max-height: 132px;
+    background: var(--panel-soft);
+  }
+
+  .sidebar:hover .tree,
+  .sidebar:hover .open-editors,
+  .sidebar:focus-within .tree,
+  .sidebar:focus-within .open-editors {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateX(0);
+  }
+
+  .sidebar .empty-note {
+    padding-right: 8px;
+  }
+
+  .save-button,
+  .machine-power-primary {
+    width: 34px;
+    min-width: 34px;
+    padding: 0;
+  }
+
+  .save-button .toolbar-label,
+  .machine-power-primary .toolbar-label {
+    display: none;
+  }
+
+  .machine-power-menu {
+    margin-left: 0;
   }
 }

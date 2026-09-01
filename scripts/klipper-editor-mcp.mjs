@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import fs from "node:fs/promises";
 import fss from "node:fs";
+import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import readline from "node:readline";
@@ -13,6 +14,9 @@ const deleteEnabled = process.env.KLIPPER_EDITOR_MCP_ENABLE_DELETE === "true";
 const gcodeEnabled = process.env.KLIPPER_EDITOR_MCP_ENABLE_GCODE === "true";
 const restartEnabled = process.env.KLIPPER_EDITOR_MCP_ENABLE_RESTART === "true";
 const maxReadBytes = Number(process.env.KLIPPER_EDITOR_MCP_MAX_READ_BYTES || 1024 * 1024);
+const httpHost = process.env.KLIPPER_EDITOR_MCP_HTTP_HOST || "127.0.0.1";
+const httpPort = Number(process.env.KLIPPER_EDITOR_MCP_HTTP_PORT || 3001);
+const httpToken = process.env.KLIPPER_EDITOR_MCP_TOKEN || "";
 const blockedSegments = new Set([".git", ".next", "node_modules", appDirName]);
 
 function defaultRoot() {
@@ -322,26 +326,140 @@ function send(message) {
   process.stdout.write(`${JSON.stringify(message)}\n`);
 }
 
-const rl = readline.createInterface({ input: process.stdin });
-rl.on("line", async (line) => {
-  if (!line.trim()) return;
-  let request;
-  try {
-    request = JSON.parse(line);
-    if (!request.id) {
-      if (request.method === "notifications/initialized") return;
-      return;
+function rpcError(id, error) {
+  return {
+    jsonrpc: "2.0",
+    id: id ?? null,
+    error: {
+      code: -32000,
+      message: error instanceof Error ? error.message : "MCP server error"
     }
-    const result = await handleRequest(request);
-    send({ jsonrpc: "2.0", id: request.id, result });
-  } catch (error) {
-    send({
-      jsonrpc: "2.0",
-      id: request?.id ?? null,
-      error: {
-        code: -32000,
-        message: error instanceof Error ? error.message : "MCP server error"
+  };
+}
+
+function startStdioServer() {
+  const rl = readline.createInterface({ input: process.stdin });
+  rl.on("line", async (line) => {
+    if (!line.trim()) return;
+    let request;
+    try {
+      request = JSON.parse(line);
+      if (!request.id) {
+        if (request.method === "notifications/initialized") return;
+        return;
+      }
+      const result = await handleRequest(request);
+      send({ jsonrpc: "2.0", id: request.id, result });
+    } catch (error) {
+      send(rpcError(request?.id, error));
+    }
+  });
+}
+
+function readRequestBody(request) {
+  return new Promise((resolve, reject) => {
+    let body = "";
+    request.on("data", (chunk) => {
+      body += chunk;
+      if (body.length > 1024 * 1024) {
+        request.destroy();
+        reject(new Error("Request body too large"));
       }
     });
+    request.on("end", () => resolve(body));
+    request.on("error", reject);
+  });
+}
+
+function writeJson(response, statusCode, payload) {
+  response.writeHead(statusCode, {
+    "Content-Type": "application/json; charset=utf-8",
+    "Cache-Control": "no-store",
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Headers": "content-type, authorization, mcp-protocol-version",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS"
+  });
+  response.end(JSON.stringify(payload));
+}
+
+function isAuthorized(request, url) {
+  if (!httpToken) return true;
+  const authorization = request.headers.authorization || "";
+  return authorization === `Bearer ${httpToken}` || url.searchParams.get("token") === httpToken;
+}
+
+async function handleHttpRequest(request, response) {
+  const url = new URL(request.url || "/", `http://${request.headers.host || `${httpHost}:${httpPort}`}`);
+
+  if (request.method === "OPTIONS") {
+    writeJson(response, 204, {});
+    return;
   }
-});
+
+  if (url.pathname !== "/mcp") {
+    writeJson(response, 404, { error: "Not found" });
+    return;
+  }
+
+  if (!isAuthorized(request, url)) {
+    writeJson(response, 401, { error: "Unauthorized" });
+    return;
+  }
+
+  if (request.method === "GET") {
+    writeJson(response, 200, {
+      name: "klipper-editor-mcp",
+      transport: "http",
+      endpoint: "/mcp",
+      root,
+      moonrakerUrl,
+      authRequired: Boolean(httpToken),
+      tools: tools.map((tool) => tool.name)
+    });
+    return;
+  }
+
+  if (request.method !== "POST") {
+    writeJson(response, 405, { error: "Method not allowed" });
+    return;
+  }
+
+  let rpcRequest;
+  try {
+    rpcRequest = JSON.parse(await readRequestBody(request));
+    if (Array.isArray(rpcRequest)) {
+      const results = await Promise.all(
+        rpcRequest.map(async (item) => {
+          try {
+            if (!item.id) return null;
+            return { jsonrpc: "2.0", id: item.id, result: await handleRequest(item) };
+          } catch (error) {
+            return rpcError(item?.id, error);
+          }
+        })
+      );
+      writeJson(response, 200, results.filter(Boolean));
+      return;
+    }
+
+    const result = await handleRequest(rpcRequest);
+    writeJson(response, 200, { jsonrpc: "2.0", id: rpcRequest.id, result });
+  } catch (error) {
+    writeJson(response, 200, rpcError(rpcRequest?.id, error));
+  }
+}
+
+function startHttpServer() {
+  const server = http.createServer((request, response) => {
+    void handleHttpRequest(request, response);
+  });
+  server.listen(httpPort, httpHost, () => {
+    console.error(`klipper-editor-mcp listening on http://${httpHost}:${httpPort}/mcp`);
+  });
+}
+
+if (process.argv.includes("--http")) {
+  startHttpServer();
+} else {
+  startStdioServer();
+}

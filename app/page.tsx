@@ -186,6 +186,15 @@ type TerminalPayload = {
   error?: string;
 };
 
+type McpTunnelStatus = {
+  running: boolean;
+  starting: boolean;
+  url: string;
+  localUrl: string;
+  error: string;
+  log: string[];
+};
+
 type KlipperConsoleEntry = {
   id: string;
   script: string;
@@ -568,6 +577,9 @@ const defaultMessages: Messages = {
   "actions.disconnectTerminal": "Desconectar terminal",
   "actions.runTerminalCommand": "Ejecutar",
   "actions.enableTerminal": "Habilitar terminal",
+  "actions.startMcpTunnel": "Subir MCP",
+  "actions.stopMcpTunnel": "Bajar MCP",
+  "actions.copyMcpUrl": "Copiar URL",
   "actions.restartFirmware": "Restar",
   "actions.restartingFirmware": "Reiniciando",
   "actions.restartFirmwareLong": "Reiniciar firmware",
@@ -620,6 +632,10 @@ const defaultMessages: Messages = {
   "status.terminalDisconnected": "Terminal desconectada",
   "status.terminalRunning": "Ejecutando comando",
   "status.terminalSettingSaved": "Configuracion de terminal actualizada",
+  "status.mcpTunnelStarting": "Levantando MCP",
+  "status.mcpTunnelReady": "Tunel MCP listo",
+  "status.mcpTunnelStopped": "Tunel MCP detenido",
+  "status.mcpTunnelUrlCopied": "URL del MCP copiada",
   "status.printerState": "Impresora: {state}",
   "status.resolvingInclude": "Resolviendo include {include}",
   "status.wildcardInclude": "Include con comodin: abierto {path}; {count} coincidencias",
@@ -661,6 +677,7 @@ const defaultMessages: Messages = {
   "errors.terminalConnection": "No se pudo conectar la terminal",
   "errors.terminalCommand": "No se pudo enviar el comando",
   "errors.terminalUnsupportedCommand": "{command} no funciona en esta terminal. Usa SSH o una terminal TTY real para herramientas interactivas.",
+  "errors.mcpTunnel": "No se pudo controlar el tunel MCP",
   "errors.printerStatus": "No se pudo consultar Moonraker",
   "errors.includeNotFound": "No se encontro el include",
   "errors.includeOpen": "No se pudo abrir el include",
@@ -702,6 +719,8 @@ const defaultMessages: Messages = {
   "resize.height": "Cambiar alto de includes y sesiones",
   "preview.jump": "Ir a esta sesion",
   "options.title": "Opciones",
+  "options.generalTab": "General",
+  "options.mcpTab": "MCP",
   "options.language": "Idioma",
   "options.languageHelp": "Los idiomas disponibles salen de los archivos JSON en la carpeta `locales`.",
   "options.createBackupOnSave": "Crear copia de seguridad al guardar",
@@ -713,6 +732,12 @@ const defaultMessages: Messages = {
   "options.enableTerminal": "Habilitar terminal SSH basica",
   "options.enableTerminalHelp": "Permite abrir una terminal basica del host desde K-Editor. Usa esta opcion solo en una red de confianza.",
   "options.enableTerminalEnvHelp": "La terminal esta habilitada por KLIPPER_EDITOR_ENABLE_TERMINAL=true en el servicio.",
+  "options.mcpTunnelTitle": "MCP para ChatGPT",
+  "options.mcpTunnelHelp": "Levanta el MCP HTTP local y crea un tunel HTTPS con localtunnel. Usa la URL /mcp generada en ChatGPT solo mientras necesites acceso externo a los archivos de la impresora.",
+  "options.mcpTunnelUrl": "URL para ChatGPT",
+  "options.mcpTunnelStopped": "MCP apagado",
+  "options.mcpTunnelStarting": "Esperando tunel",
+  "options.mcpTunnelRunning": "MCP activo",
   "options.sectionPreviewDelay": "Retardo de vista previa de sesiones",
   "options.sectionPreviewDelayHelp": "Segundos que debe permanecer el mouse sobre una sesion antes de mostrar la vista previa.",
   "options.close": "Cerrar opciones",
@@ -1719,6 +1744,7 @@ export default function Home() {
   const [localesLoading, setLocalesLoading] = useState(true);
   const [mainsailTheme, setMainsailTheme] = useState<MainsailVisualTheme>(fallbackMainsailTheme);
   const [optionsOpen, setOptionsOpen] = useState(false);
+  const [optionsTab, setOptionsTab] = useState<"general" | "mcp">("general");
   const [macrosOpen, setMacrosOpen] = useState(false);
   const [movementOpen, setMovementOpen] = useState(false);
   const [moveStep, setMoveStep] = useState(50);
@@ -1799,6 +1825,15 @@ export default function Home() {
   const [terminalError, setTerminalError] = useState<string | null>(null);
   const [terminalWarning, setTerminalWarning] = useState<string | null>(null);
   const [terminalHeight, setTerminalHeight] = useState(238);
+  const [mcpTunnel, setMcpTunnel] = useState<McpTunnelStatus>({
+    running: false,
+    starting: false,
+    url: "",
+    localUrl: "",
+    error: "",
+    log: []
+  });
+  const [mcpTunnelBusy, setMcpTunnelBusy] = useState(false);
   const [outlineWidth, setOutlineWidth] = useState(320);
   const [includePanelHeight, setIncludePanelHeight] = useState(240);
   const [sectionPreview, setSectionPreview] = useState<SectionPreview | null>(null);
@@ -1813,6 +1848,7 @@ export default function Home() {
   const terminalOutputRef = useRef<HTMLPreElement | null>(null);
   const klipperConsoleInputRef = useRef<HTMLTextAreaElement | null>(null);
   const reloadOpenTextFilesRef = useRef<(() => Promise<void>) | null>(null);
+  const notifiedMcpTunnelUrlRef = useRef("");
 
   const activeFile = openFiles.find((file) => file.path === activePath);
   const openPathSet = useMemo(() => new Set(openFiles.map((file) => file.path)), [openFiles]);
@@ -2244,6 +2280,84 @@ export default function Home() {
       return false;
     }
   }, [t]);
+
+  const normalizeMcpTunnelStatus = useCallback((payload: Partial<McpTunnelStatus>): McpTunnelStatus => {
+    return {
+      running: Boolean(payload.running),
+      starting: Boolean(payload.starting),
+      url: typeof payload.url === "string" ? payload.url : "",
+      localUrl: typeof payload.localUrl === "string" ? payload.localUrl : "",
+      error: typeof payload.error === "string" ? payload.error : "",
+      log: Array.isArray(payload.log) ? payload.log.filter((entry): entry is string => typeof entry === "string") : []
+    };
+  }, []);
+
+  const loadMcpTunnelStatus = useCallback(async () => {
+    try {
+      const response = await fetch(apiPath("/api/mcp-tunnel"), { cache: "no-store" });
+      const payload = (await response.json()) as Partial<McpTunnelStatus> & { error?: string };
+      if (!response.ok) throw new Error(payload.error ?? t("errors.mcpTunnel"));
+
+      const nextStatus = normalizeMcpTunnelStatus(payload);
+      setMcpTunnel(nextStatus);
+      return nextStatus;
+    } catch (error) {
+      const nextError = error instanceof Error ? error.message : t("errors.mcpTunnel");
+      setMcpTunnel((current) => ({ ...current, error: nextError }));
+      return undefined;
+    }
+  }, [normalizeMcpTunnelStatus, t]);
+
+  const startMcpTunnel = useCallback(async () => {
+    setMcpTunnelBusy(true);
+    setMessage(t("status.mcpTunnelStarting"));
+
+    try {
+      const response = await fetch(apiPath("/api/mcp-tunnel"), { method: "POST" });
+      const payload = (await response.json()) as Partial<McpTunnelStatus> & { error?: string };
+      if (!response.ok) throw new Error(payload.error ?? t("errors.mcpTunnel"));
+
+      const nextStatus = normalizeMcpTunnelStatus(payload);
+      setMcpTunnel(nextStatus);
+      setMessage(nextStatus.url ? t("status.mcpTunnelReady") : t("status.mcpTunnelStarting"));
+    } catch (error) {
+      const nextError = error instanceof Error ? error.message : t("errors.mcpTunnel");
+      setMcpTunnel((current) => ({ ...current, error: nextError }));
+      setMessage(nextError);
+    } finally {
+      setMcpTunnelBusy(false);
+    }
+  }, [normalizeMcpTunnelStatus, t]);
+
+  const stopMcpTunnel = useCallback(async () => {
+    setMcpTunnelBusy(true);
+
+    try {
+      const response = await fetch(apiPath("/api/mcp-tunnel"), { method: "DELETE" });
+      const payload = (await response.json()) as Partial<McpTunnelStatus> & { error?: string };
+      if (!response.ok) throw new Error(payload.error ?? t("errors.mcpTunnel"));
+
+      setMcpTunnel(normalizeMcpTunnelStatus(payload));
+      setMessage(t("status.mcpTunnelStopped"));
+    } catch (error) {
+      const nextError = error instanceof Error ? error.message : t("errors.mcpTunnel");
+      setMcpTunnel((current) => ({ ...current, error: nextError }));
+      setMessage(nextError);
+    } finally {
+      setMcpTunnelBusy(false);
+    }
+  }, [normalizeMcpTunnelStatus, t]);
+
+  const copyMcpTunnelUrl = useCallback(async () => {
+    if (!mcpTunnel.url) return;
+
+    try {
+      await navigator.clipboard.writeText(mcpTunnel.url);
+      setMessage(t("status.mcpTunnelUrlCopied"));
+    } catch {
+      setMessage(mcpTunnel.url);
+    }
+  }, [mcpTunnel.url, t]);
 
   const startTerminalSession = useCallback(async () => {
     if (terminalSessionId && terminalAlive) return terminalSessionId;
@@ -3750,6 +3864,28 @@ export default function Home() {
   useEffect(() => {
     void loadTerminalStatus();
   }, [loadTerminalStatus]);
+
+  useEffect(() => {
+    void loadMcpTunnelStatus();
+  }, [loadMcpTunnelStatus]);
+
+  useEffect(() => {
+    if (!optionsOpen && !mcpTunnel.starting) return;
+
+    const interval = window.setInterval(() => void loadMcpTunnelStatus(), 2000);
+    return () => window.clearInterval(interval);
+  }, [loadMcpTunnelStatus, mcpTunnel.starting, optionsOpen]);
+
+  useEffect(() => {
+    if (!mcpTunnel.url) {
+      notifiedMcpTunnelUrlRef.current = "";
+      return;
+    }
+
+    if (notifiedMcpTunnelUrlRef.current === mcpTunnel.url) return;
+    notifiedMcpTunnelUrlRef.current = mcpTunnel.url;
+    setMessage(`${t("status.mcpTunnelReady")}: ${mcpTunnel.url}`);
+  }, [mcpTunnel.url, t]);
 
   useEffect(() => {
     void loadPrinterStatus();
@@ -6063,101 +6199,176 @@ export default function Home() {
                   x
                 </button>
               </div>
-              <div className="modal-body">
-                <label className="setting-field">
-                  <span>{t("options.language")}</span>
-                  <select
-                    value={localeCode}
-                    disabled={localesLoading || locales.length === 0}
-                    onChange={(event) => {
-                      const nextLocale = event.target.value;
-                      void loadLocale(nextLocale).catch((error) =>
-                        setMessage(error instanceof Error ? error.message : t("errors.loadTree"))
-                      );
-                    }}
+              <div className="modal-body options-body">
+                <div className="options-tabs" role="tablist" aria-label={t("options.title")}>
+                  <button
+                    className={optionsTab === "general" ? "options-tab active" : "options-tab"}
+                    type="button"
+                    role="tab"
+                    aria-selected={optionsTab === "general"}
+                    onClick={() => setOptionsTab("general")}
                   >
-                    {locales.map((locale) => (
-                      <option key={locale.code} value={locale.code}>
-                        {locale.name} ({locale.code})
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <p className="setting-help">
-                  {localesLoading
-                    ? t("options.loadingLocales")
-                    : locales.length === 0
-                      ? t("options.noLocales")
-                      : t("options.languageHelp")}
-                </p>
-                <label className="setting-checkbox">
-                  <input
-                    type="checkbox"
-                    checked={createBackupOnSave}
-                    onChange={(event) => {
-                      const checked = event.target.checked;
-                      setCreateBackupOnSave(checked);
-                      window.localStorage.setItem("klipper-editor-create-backup-on-save", String(checked));
-                    }}
-                  />
-                  <span>{t("options.createBackupOnSave")}</span>
-                </label>
-                <p className="setting-help">{t("options.createBackupOnSaveHelp")}</p>
-                <label className="setting-checkbox">
-                  <input
-                    type="checkbox"
-                    checked={sidebarCollapsed}
-                    onChange={(event) => {
-                      const checked = event.target.checked;
-                      setSidebarCollapsed(checked);
-                      window.localStorage.setItem(sidebarCollapsedKey, String(checked));
-                    }}
-                  />
-                  <span>{t("options.startCollapsedSidebar")}</span>
-                </label>
-                <p className="setting-help">{t("options.startCollapsedSidebarHelp")}</p>
-                <label className="setting-checkbox">
-                  <input
-                    type="checkbox"
-                    checked={useAccentLogo}
-                    onChange={(event) => {
-                      const checked = event.target.checked;
-                      setUseAccentLogo(checked);
-                      window.localStorage.setItem(useAccentLogoKey, String(checked));
-                    }}
-                  />
-                  <span>{t("options.useAccentLogo")}</span>
-                </label>
-                <p className="setting-help">{t("options.useAccentLogoHelp")}</p>
-                <label className="setting-checkbox">
-                  <input
-                    type="checkbox"
-                    checked={terminalEnvEnabled || terminalConfiguredEnabled}
-                    disabled={terminalEnvEnabled}
-                    onChange={(event) => void updateTerminalEnabledSetting(event.target.checked)}
-                  />
-                  <span>{t("options.enableTerminal")}</span>
-                </label>
-                <p className="setting-help">
-                  {terminalEnvEnabled ? t("options.enableTerminalEnvHelp") : t("options.enableTerminalHelp")}
-                </p>
-                <label className="setting-field">
-                  <span>{t("options.sectionPreviewDelay")}</span>
-                  <input
-                    type="number"
-                    min="0"
-                    max="10"
-                    step="0.25"
-                    value={sectionPreviewDelay}
-                    onFocus={(event) => event.currentTarget.select()}
-                    onChange={(event) => {
-                      const nextDelay = clamp(Number(event.target.value), 0, 10);
-                      setSectionPreviewDelay(nextDelay);
-                      window.localStorage.setItem(sectionPreviewDelayKey, String(nextDelay));
-                    }}
-                  />
-                </label>
-                <p className="setting-help">{t("options.sectionPreviewDelayHelp")}</p>
+                    {t("options.generalTab")}
+                  </button>
+                  <button
+                    className={optionsTab === "mcp" ? "options-tab active" : "options-tab"}
+                    type="button"
+                    role="tab"
+                    aria-selected={optionsTab === "mcp"}
+                    onClick={() => setOptionsTab("mcp")}
+                  >
+                    {t("options.mcpTab")}
+                  </button>
+                </div>
+                {optionsTab === "general" ? (
+                  <div className="options-tab-panel" role="tabpanel">
+                    <label className="setting-field">
+                      <span>{t("options.language")}</span>
+                      <select
+                        value={localeCode}
+                        disabled={localesLoading || locales.length === 0}
+                        onChange={(event) => {
+                          const nextLocale = event.target.value;
+                          void loadLocale(nextLocale).catch((error) =>
+                            setMessage(error instanceof Error ? error.message : t("errors.loadTree"))
+                          );
+                        }}
+                      >
+                        {locales.map((locale) => (
+                          <option key={locale.code} value={locale.code}>
+                            {locale.name} ({locale.code})
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <p className="setting-help">
+                      {localesLoading
+                        ? t("options.loadingLocales")
+                        : locales.length === 0
+                          ? t("options.noLocales")
+                          : t("options.languageHelp")}
+                    </p>
+                    <label className="setting-checkbox">
+                      <input
+                        type="checkbox"
+                        checked={createBackupOnSave}
+                        onChange={(event) => {
+                          const checked = event.target.checked;
+                          setCreateBackupOnSave(checked);
+                          window.localStorage.setItem("klipper-editor-create-backup-on-save", String(checked));
+                        }}
+                      />
+                      <span>{t("options.createBackupOnSave")}</span>
+                    </label>
+                    <p className="setting-help">{t("options.createBackupOnSaveHelp")}</p>
+                    <label className="setting-checkbox">
+                      <input
+                        type="checkbox"
+                        checked={sidebarCollapsed}
+                        onChange={(event) => {
+                          const checked = event.target.checked;
+                          setSidebarCollapsed(checked);
+                          window.localStorage.setItem(sidebarCollapsedKey, String(checked));
+                        }}
+                      />
+                      <span>{t("options.startCollapsedSidebar")}</span>
+                    </label>
+                    <p className="setting-help">{t("options.startCollapsedSidebarHelp")}</p>
+                    <label className="setting-checkbox">
+                      <input
+                        type="checkbox"
+                        checked={useAccentLogo}
+                        onChange={(event) => {
+                          const checked = event.target.checked;
+                          setUseAccentLogo(checked);
+                          window.localStorage.setItem(useAccentLogoKey, String(checked));
+                        }}
+                      />
+                      <span>{t("options.useAccentLogo")}</span>
+                    </label>
+                    <p className="setting-help">{t("options.useAccentLogoHelp")}</p>
+                    <label className="setting-checkbox">
+                      <input
+                        type="checkbox"
+                        checked={terminalEnvEnabled || terminalConfiguredEnabled}
+                        disabled={terminalEnvEnabled}
+                        onChange={(event) => void updateTerminalEnabledSetting(event.target.checked)}
+                      />
+                      <span>{t("options.enableTerminal")}</span>
+                    </label>
+                    <p className="setting-help">
+                      {terminalEnvEnabled ? t("options.enableTerminalEnvHelp") : t("options.enableTerminalHelp")}
+                    </p>
+                    <label className="setting-field">
+                      <span>{t("options.sectionPreviewDelay")}</span>
+                      <input
+                        type="number"
+                        min="0"
+                        max="10"
+                        step="0.25"
+                        value={sectionPreviewDelay}
+                        onFocus={(event) => event.currentTarget.select()}
+                        onChange={(event) => {
+                          const nextDelay = clamp(Number(event.target.value), 0, 10);
+                          setSectionPreviewDelay(nextDelay);
+                          window.localStorage.setItem(sectionPreviewDelayKey, String(nextDelay));
+                        }}
+                      />
+                    </label>
+                    <p className="setting-help">{t("options.sectionPreviewDelayHelp")}</p>
+                  </div>
+                ) : (
+                  <div className="options-tab-panel" role="tabpanel">
+                    <section className="mcp-tunnel-card" aria-label={t("options.mcpTunnelTitle")}>
+                      <div className="mcp-tunnel-heading">
+                        <div>
+                          <strong>{t("options.mcpTunnelTitle")}</strong>
+                          <p>{t("options.mcpTunnelHelp")}</p>
+                        </div>
+                        <span className={mcpTunnel.running ? "mcp-tunnel-status running" : "mcp-tunnel-status"}>
+                          {mcpTunnel.running
+                            ? t("options.mcpTunnelRunning")
+                            : mcpTunnel.starting
+                              ? t("options.mcpTunnelStarting")
+                              : t("options.mcpTunnelStopped")}
+                        </span>
+                      </div>
+                      <label className="setting-field mcp-tunnel-url">
+                        <span>{t("options.mcpTunnelUrl")}</span>
+                        <input readOnly value={mcpTunnel.url} placeholder="https://.../mcp" />
+                      </label>
+                      {mcpTunnel.error && <p className="mcp-tunnel-error">{mcpTunnel.error}</p>}
+                      <div className="mcp-tunnel-actions">
+                        <button
+                          className="dialog-button"
+                          type="button"
+                          disabled={mcpTunnelBusy || mcpTunnel.starting || mcpTunnel.running}
+                          onClick={() => void startMcpTunnel()}
+                        >
+                          <FcUpload className="dialog-button-icon" />
+                          {t("actions.startMcpTunnel")}
+                        </button>
+                        <button
+                          className="dialog-button"
+                          type="button"
+                          disabled={mcpTunnelBusy || (!mcpTunnel.running && !mcpTunnel.starting)}
+                          onClick={() => void stopMcpTunnel()}
+                        >
+                          <FcDownload className="dialog-button-icon" />
+                          {t("actions.stopMcpTunnel")}
+                        </button>
+                        <button
+                          className="dialog-button primary"
+                          type="button"
+                          disabled={!mcpTunnel.url}
+                          onClick={() => void copyMcpTunnelUrl()}
+                        >
+                          {t("actions.copyMcpUrl")}
+                        </button>
+                      </div>
+                    </section>
+                  </div>
+                )}
               </div>
             </section>
           </div>

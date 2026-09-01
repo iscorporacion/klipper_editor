@@ -2,7 +2,10 @@
 
 `klipper-editor-mcp` exposes the printer configuration folder and selected Moonraker actions to any MCP-compatible agent.
 
-The server uses stdio JSON-RPC, so it can be launched by clients such as Codex, Claude Desktop, Cursor, Continue, Windsurf, or other agents that support local MCP servers.
+The server supports two transports:
+
+- stdio JSON-RPC for clients that launch local MCP processes.
+- HTTP JSON-RPC at `/mcp` for clients that require a server URL, including ChatGPT custom MCP connectors.
 
 ## Required Release
 
@@ -65,7 +68,89 @@ Editor config with file write enabled:
 }
 ```
 
-The MCP server is launched by the client. You do not need to keep `npm run mcp` running manually unless you are testing it from a terminal.
+The stdio MCP server is launched by the client. You do not need to keep `npm run mcp` running manually unless you are testing it from a terminal.
+
+For ChatGPT custom MCP connectors, use the HTTP server instead.
+
+## HTTP Server for ChatGPT
+
+Start the HTTP MCP server on the printer or on a machine that can reach the printer:
+
+```bash
+cd ~/klipper_editor_app/current
+KLIPPER_EDITOR_MCP_ROOT=/home/pi/printer_data/config \
+MOONRAKER_URL=http://127.0.0.1:7125 \
+npm run mcp:http
+```
+
+By default it listens only on localhost:
+
+```text
+http://127.0.0.1:3001/mcp
+```
+
+For a LAN test:
+
+```bash
+KLIPPER_EDITOR_MCP_HTTP_HOST=0.0.0.0 npm run mcp:http
+```
+
+Then verify from another machine:
+
+```bash
+curl http://<printer-ip>:3001/mcp
+```
+
+ChatGPT custom MCP connectors need a reachable remote URL. If the server is local/private, expose it through a secure tunnel and use the public HTTPS `/mcp` URL in ChatGPT.
+
+Klipper Editor can start this for you from:
+
+```text
+Options > MCP para ChatGPT > Subir MCP
+```
+
+Copy the generated URL and paste it as the ChatGPT custom MCP server URL. Use `Bajar MCP` when you finish the session.
+
+You can also run the bundled localtunnel helper manually:
+
+```bash
+cd ~/klipper_editor_app/current
+KLIPPER_EDITOR_MCP_ROOT=/home/pi/printer_data/config \
+MOONRAKER_URL=http://127.0.0.1:7125 \
+npm run mcp:tunnel
+```
+
+The helper starts the HTTP MCP server locally and prints a public HTTPS `/mcp` URL.
+
+Example with a tunnel URL:
+
+```text
+https://your-secure-tunnel.example.com/mcp
+```
+
+In ChatGPT:
+
+```text
+Name: Klipper Editor
+Description: Controlled access to Klipper/RatOS configuration files and Moonraker actions.
+Connection: Server URL
+Server URL: https://your-secure-tunnel.example.com/mcp
+Authentication: No authentication
+```
+
+If you enable token protection:
+
+```bash
+KLIPPER_EDITOR_MCP_TOKEN=use-a-long-random-token npm run mcp:http
+```
+
+Use either a bearer token if your MCP client supports it, or append the token to the URL:
+
+```text
+https://your-secure-tunnel.example.com/mcp?token=use-a-long-random-token
+```
+
+Token-in-URL is less ideal than bearer auth because URLs can appear in logs. Prefer a secure tunnel or client-supported authorization when available.
 
 ## Safety Model
 

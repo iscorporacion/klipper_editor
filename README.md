@@ -92,6 +92,15 @@ Klipper Editor includes an optional stdio MCP server for local agents:
 npm run mcp
 ```
 
+For clients that require a server URL, start the HTTP MCP endpoint:
+
+```bash
+npm run mcp:http
+```
+
+The HTTP endpoint is `/mcp` and listens on `127.0.0.1:3001` by default.
+K-Editor can also start the HTTP MCP plus a localtunnel URL from `Options > MCP para ChatGPT > Subir MCP`; copy the generated `/mcp` URL into ChatGPT and stop it with `Bajar MCP` when done.
+
 On a printer installed from GitHub Releases, update Klipper Editor first. MCP is available only in releases that include `scripts/klipper-editor-mcp.mjs`.
 
 By default it exposes read-only file listing, file reading, config search, and printer status. Write, delete, G-code, and firmware restart actions require explicit environment flags.

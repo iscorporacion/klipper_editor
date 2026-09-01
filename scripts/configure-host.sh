@@ -10,6 +10,7 @@ SERVICE_NAME="${KLIPPER_EDITOR_SERVICE_NAME:-klipper-editor}"
 CONFIGURE_UPDATE_MANAGER="${KLIPPER_EDITOR_CONFIGURE_UPDATE_MANAGER:-true}"
 CONFIGURE_MAINSAIL_LINK="${KLIPPER_EDITOR_CONFIGURE_MAINSAIL_LINK:-true}"
 ENABLE_TERMINAL="${KLIPPER_EDITOR_ENABLE_TERMINAL:-false}"
+INSTALL_CLOUDFLARED="${KLIPPER_EDITOR_INSTALL_CLOUDFLARED:-true}"
 NGINX_SNIPPET="/etc/nginx/snippets/${APP_NAME}.conf"
 SYSTEMD_UNIT="/etc/systemd/system/${SERVICE_NAME}.service"
 APP_DIR="${KLIPPER_EDITOR_APP_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
@@ -216,6 +217,46 @@ configure_mainsail_link() {
   fi
 }
 
+install_cloudflared() {
+  if command -v cloudflared >/dev/null 2>&1; then
+    log "cloudflared already installed: $(cloudflared --version 2>/dev/null || printf 'version unavailable')"
+    return 0
+  fi
+
+  if [[ "${INSTALL_CLOUDFLARED}" != "true" ]]; then
+    log "cloudflared install skipped: KLIPPER_EDITOR_INSTALL_CLOUDFLARED=${INSTALL_CLOUDFLARED}"
+    return 0
+  fi
+
+  if ! command -v apt-get >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1; then
+    log "cloudflared install skipped: apt-get and curl are required."
+    log "Install cloudflared manually before using Options > MCP > Subir MCP."
+    return 0
+  fi
+
+  log "Installing cloudflared for temporary MCP tunnels."
+  run_sudo mkdir -p --mode=0755 /usr/share/keyrings
+  if ! curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg | run_sudo tee /usr/share/keyrings/cloudflare-main.gpg >/dev/null; then
+    log "cloudflared install skipped: could not download Cloudflare package key."
+    return 0
+  fi
+
+  printf '%s\n' 'deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared any main' |
+    run_sudo tee /etc/apt/sources.list.d/cloudflared.list >/dev/null
+
+  if ! run_sudo apt-get update; then
+    log "cloudflared install skipped: apt-get update failed."
+    return 0
+  fi
+
+  if ! run_sudo apt-get install -y cloudflared; then
+    log "cloudflared install skipped: apt-get install cloudflared failed."
+    return 0
+  fi
+
+  log "cloudflared installed: $(cloudflared --version 2>/dev/null || printf 'version unavailable')"
+}
+
 require_command node
 require_command nginx
 require_command systemctl
@@ -245,6 +286,7 @@ log "Base path: ${BASE_PATH}"
 log "Port: ${APP_PORT}"
 log "Mainsail sidebar link: ${CONFIGURE_MAINSAIL_LINK}"
 log "Terminal enabled: ${ENABLE_TERMINAL}"
+log "Install cloudflared: ${INSTALL_CLOUDFLARED}"
 if [[ -n "${PUBLIC_HOST}" ]]; then
   log "Public host: ${PUBLIC_HOST}"
 fi
@@ -259,7 +301,10 @@ NODE_ENV=production
 KLIPPER_EDITOR_CONFIGURE_MAINSAIL_LINK=${CONFIGURE_MAINSAIL_LINK}
 KLIPPER_EDITOR_ENABLE_TERMINAL=${ENABLE_TERMINAL}
 KLIPPER_EDITOR_TERMINAL_SHELL=${KLIPPER_EDITOR_TERMINAL_SHELL:-}
+KLIPPER_EDITOR_INSTALL_CLOUDFLARED=${INSTALL_CLOUDFLARED}
 ENV
+
+install_cloudflared
 
 run_sudo tee "${SYSTEMD_UNIT}" >/dev/null <<UNIT
 [Unit]

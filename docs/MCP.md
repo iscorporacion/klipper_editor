@@ -119,7 +119,9 @@ https://example.trycloudflare.com/mcp?token=temporary-token
 
 In ChatGPT, choose `No authentication` and paste the full URL, including the `token` query parameter.
 
-The tunnel helper uses `cloudflared`. The printer host must have the `cloudflared` command available in `PATH`. You can verify it with:
+The tunnel helper uses `cloudflared`. On Debian/Ubuntu hosts with `apt-get`, the Klipper Editor installer installs `cloudflared` automatically. Set `KLIPPER_EDITOR_INSTALL_CLOUDFLARED=false` before running the installer if you want to skip that system dependency.
+
+You can verify it with:
 
 ```bash
 cloudflared --version

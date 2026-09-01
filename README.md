@@ -25,6 +25,7 @@ Features:
 - emergency stop button
 - printer shutdown and reboot menu through Moonraker
 - optional local host terminal panel, disabled by default
+- optional MCP server for agents that need controlled access to printer config files
 - file upload, blank file creation, file download, and delete confirmation
 - image preview for supported image files
 - backup copies on save, configurable from options
@@ -82,6 +83,20 @@ http://<printer-ip>/editor/
 ```
 
 See [INSTALL.md](INSTALL.md) for overrides and details.
+
+## MCP server
+
+Klipper Editor includes an optional stdio MCP server for local agents:
+
+```bash
+npm run mcp
+```
+
+On a printer installed from GitHub Releases, update Klipper Editor first. MCP is available only in releases that include `scripts/klipper-editor-mcp.mjs`.
+
+By default it exposes read-only file listing, file reading, config search, and printer status. Write, delete, G-code, and firmware restart actions require explicit environment flags.
+
+See [docs/MCP.md](docs/MCP.md) for client configuration examples and the full permission model.
 
 ## Uninstall
 

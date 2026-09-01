@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "mcp": "node scripts/klipper-editor-mcp.mjs"
   },
   "dependencies": {
     "@codemirror/lang-javascript": "^6.2.4",

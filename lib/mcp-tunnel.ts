@@ -47,6 +47,8 @@ function handleEvent(event: TunnelEvent) {
     state.error = event.error;
     state.running = false;
     state.starting = false;
+  } else if (event.event === "tunnel_error" && event.error) {
+    state.error = event.error;
   } else if (event.event === "tunnel_closed" || event.event === "mcp_exit") {
     state.running = false;
     state.starting = false;
@@ -113,7 +115,10 @@ export function startMcpTunnel() {
     state.process = null;
     state.running = false;
     state.starting = false;
-    if (code && !state.error) state.error = `MCP tunnel exited with code ${code}`;
+    if (code && !state.error) {
+      const recentLog = state.log.slice(-6).join("\n");
+      state.error = recentLog ? `MCP tunnel exited with code ${code}\n${recentLog}` : `MCP tunnel exited with code ${code}`;
+    }
   });
 
   return getMcpTunnelStatus();

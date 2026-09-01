@@ -44,6 +44,38 @@ mkdir -p "${DEST_DIR}/node_modules/material-icon-theme"
 cp -a "${APP_DIR}/node_modules/material-icon-theme/dist" "${DEST_DIR}/node_modules/material-icon-theme/dist"
 cp -a "${APP_DIR}/node_modules/material-icon-theme/icons" "${DEST_DIR}/node_modules/material-icon-theme/icons"
 
+mcp_tunnel_modules=(
+  ansi-regex
+  ansi-styles
+  axios
+  cliui
+  color-convert
+  color-name
+  debug
+  emoji-regex
+  escalade
+  follow-redirects
+  get-caller-file
+  is-fullwidth-code-point
+  localtunnel
+  ms
+  openurl
+  require-directory
+  string-width
+  strip-ansi
+  wrap-ansi
+  y18n
+  yargs
+  yargs-parser
+)
+
+for module_name in "${mcp_tunnel_modules[@]}"; do
+  if [[ -d "${APP_DIR}/node_modules/${module_name}" ]]; then
+    mkdir -p "${DEST_DIR}/node_modules/$(dirname "${module_name}")"
+    cp -a "${APP_DIR}/node_modules/${module_name}" "${DEST_DIR}/node_modules/${module_name}"
+  fi
+done
+
 if [[ -z "${VERSION}" ]]; then
   VERSION="$(git -C "${APP_DIR}" describe --tags --exact-match 2>/dev/null || git -C "${APP_DIR}" describe --tags --always --dirty 2>/dev/null || node -p "require('${APP_DIR}/package.json').version")"
 fi

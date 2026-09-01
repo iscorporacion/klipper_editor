@@ -1529,7 +1529,8 @@ function TreeItem({
   renameLabel: string;
   selectLabel: string;
 }) {
-  const defaultOpen = node.type === "directory" && (node.name === "RatOS" || node.name === "ratos_generated");
+  const lowerNodeName = node.name.toLowerCase();
+  const defaultOpen = node.type === "directory" && (lowerNodeName === "ratos" || lowerNodeName === "ratos_generated");
   const [expanded, setExpanded] = useState(defaultOpen);
   const isDirectory = node.type === "directory";
   const isOpenFile = openPaths.has(node.path);
@@ -2027,9 +2028,13 @@ export default function Home() {
     async (refresh = false) => {
       setUpdatesLoading(true);
       setMessage(t("status.loadingUpdates"));
+      setUpdatesBusy(false);
+      setUpdates([]);
 
       try {
-        const response = await fetch(apiPath(`/api/updates?refresh=${refresh ? "1" : "0"}`), { cache: "no-store" });
+        const response = await fetch(apiPath(`/api/updates?refresh=${refresh ? "1" : "0"}&t=${Date.now()}`), {
+          cache: "no-store"
+        });
         const payload = (await response.json()) as { busy?: boolean; versionInfo?: UpdateApp[]; error?: string };
         if (!response.ok) throw new Error(payload.error ?? t("errors.loadUpdates"));
 

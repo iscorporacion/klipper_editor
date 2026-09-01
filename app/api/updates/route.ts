@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getMoonrakerStatus, getUpdateManagerStatus, updateAllComponents, updateComponent } from "@/lib/moonraker";
 
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 function updateError(error: unknown, fallback: string) {
   return NextResponse.json({ error: error instanceof Error ? error.message : fallback }, { status: 502 });
 }
@@ -9,7 +12,11 @@ export async function GET(request: NextRequest) {
   try {
     const refresh = request.nextUrl.searchParams.get("refresh") === "1";
     const status = await getUpdateManagerStatus(refresh);
-    return NextResponse.json(status);
+    return NextResponse.json(status, {
+      headers: {
+        "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate"
+      }
+    });
   } catch (error) {
     return updateError(error, "Unable to load updates");
   }

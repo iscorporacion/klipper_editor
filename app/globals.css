@@ -108,6 +108,74 @@ button {
   animation: printer-initializing-slide 1.15s ease-in-out infinite;
 }
 
+.printer-initializing-status {
+  margin: 0 16px 14px;
+  padding: 12px;
+  border: 1px solid rgba(255, 160, 0, 0.28);
+  border-left: 4px solid var(--accent);
+  border-radius: var(--control-radius);
+  background: rgba(0, 0, 0, 0.18);
+  color: var(--text);
+}
+
+.printer-initializing-status strong {
+  display: block;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.printer-initializing-status p {
+  margin-top: 8px;
+  color: #ffb43b;
+  font-family:
+    "JetBrains Mono",
+    "Cascadia Mono",
+    "SFMono-Regular",
+    Consolas,
+    monospace;
+  font-size: 13px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.printer-initializing-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: calc(100% - 32px);
+  min-height: 34px;
+  margin: 0 16px 16px;
+  border: 1px solid rgba(255, 160, 0, 0.36);
+  border-radius: var(--control-radius);
+  background: rgba(255, 160, 0, 0.08);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.printer-initializing-action:hover,
+.printer-initializing-action:focus-visible {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  outline: 0;
+}
+
+.printer-initializing-action:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.printer-initializing-action-icon {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+}
+
 @keyframes printer-initializing-slide {
   0% {
     transform: translateX(-110%);

@@ -546,6 +546,7 @@ const defaultMessages: Messages = {
   "actions.enableTerminal": "Habilitar terminal",
   "actions.restartFirmware": "Restar",
   "actions.restartingFirmware": "Reiniciando",
+  "actions.restartFirmwareLong": "Reiniciar firmware",
   "actions.applyToGroup": "Aplicar a todos",
   "status.ready": "Listo",
   "status.opening": "Abriendo {path}",
@@ -590,6 +591,7 @@ const defaultMessages: Messages = {
   "status.firmwareRestarting": "Reiniciando firmware",
   "status.firmwareRestarted": "Reinicio de firmware solicitado",
   "status.printerInitializing": "Inicializando",
+  "status.printerReported": "Reporta Klipper: {state}",
   "status.terminalConnected": "Terminal conectada",
   "status.terminalDisconnected": "Terminal desconectada",
   "status.terminalRunning": "Ejecutando comando",
@@ -2543,7 +2545,7 @@ export default function Home() {
   }, [openFiles, t]);
   reloadOpenTextFilesRef.current = reloadOpenTextFiles;
 
-  const restartFirmware = useCallback(async () => {
+  const restartFirmware = useCallback(async (confirmFirst = true) => {
     if (restartingFirmware) return;
     if (!printerStatus) {
       setMessage(t("errors.printerStatus"));
@@ -2555,7 +2557,7 @@ export default function Home() {
       return;
     }
 
-    if (!(await confirmDialog(t("actions.restartFirmware"), t("confirm.restartFirmware")))) return;
+    if (confirmFirst && !(await confirmDialog(t("actions.restartFirmware"), t("confirm.restartFirmware")))) return;
 
     setRestartingFirmware(true);
     setPrinterInitializing(true);
@@ -3827,6 +3829,9 @@ export default function Home() {
     runningMachinePowerAction !== null || !printerStatus || Boolean(printerStatus.error) || printerStatus.printing;
   const powerMenuDisabled = restartingFirmware || runningMachinePowerAction !== null || !printerStatus;
   const showPrinterInitializing = printerInitializing || isPrinterInitializingStatus(printerStatus);
+  const printerInitializingState = printerStatus?.webhooksState?.trim() || "unknown";
+  const printerInitializingMessage = printerStatus?.webhooksMessage?.trim() || printerStatus?.error || "";
+  const canRestartFromInitializing = Boolean(printerStatus) && !printerStatus?.printing && !restartingFirmware;
 
   return (
     <main className={sidebarCollapsed ? "workspace-shell sidebar-collapsed" : "workspace-shell"} style={themeStyle}>
@@ -3838,6 +3843,19 @@ export default function Home() {
               <span>{t("status.printerInitializing")}</span>
             </div>
             <div className="printer-initializing-bar" />
+            <div className="printer-initializing-status">
+              <strong>{t("status.printerReported", { state: printerInitializingState.toUpperCase() })}</strong>
+              {printerInitializingMessage && <p>{printerInitializingMessage}</p>}
+            </div>
+            <button
+              className="printer-initializing-action"
+              type="button"
+              disabled={!canRestartFromInitializing}
+              onClick={() => void restartFirmware(false)}
+            >
+              <FcRefresh className="printer-initializing-action-icon" />
+              <span>{restartingFirmware ? t("actions.restartingFirmware") : t("actions.restartFirmwareLong")}</span>
+            </button>
           </div>
         </div>
       )}

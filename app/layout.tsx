@@ -2,15 +2,14 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
-const faviconPath = `${basePath}/favicon.png`;
+const faviconPath = `${basePath}/img/k-editor-mark.svg`;
 
 export const metadata: Metadata = {
   title: "Klipper Editor",
   description: "Local editor for Klipper configuration files",
   icons: {
     icon: faviconPath,
-    shortcut: faviconPath,
-    apple: faviconPath
+    shortcut: faviconPath
   }
 };
 
@@ -22,8 +21,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
-        <link rel="icon" href={faviconPath} type="image/png" />
-        <link rel="apple-touch-icon" href={faviconPath} />
+        <link rel="icon" href={faviconPath} type="image/svg+xml" />
         <meta name="theme-color" content="#2196f3" />
       </head>
       <body>{children}</body>

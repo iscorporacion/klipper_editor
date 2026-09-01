@@ -57,6 +57,7 @@ const terminalHeightKey = "klipper-editor-terminal-height";
 const terminalHistoryKey = "klipper-editor-terminal-history";
 const klipperConsoleFavoritesKey = "klipper-editor-klipper-console-favorites";
 const macroFavoritesKey = "klipper-editor-macro-favorites";
+const sectionPreviewDelayKey = "klipper-editor-section-preview-delay";
 
 function apiPath(path: string) {
   return `${appBasePath}${path}`;
@@ -117,6 +118,7 @@ type PrinterStatus = {
   printState: string;
   filename: string;
   progress: number;
+  printDetails: PrintDetails;
   printing: boolean;
   zTiltAvailable: boolean;
   homedAxes: string;
@@ -134,6 +136,24 @@ type PrinterStatus = {
   extruders: ExtruderInfo[];
   zOffset: number;
   error?: string;
+};
+
+type PrintDetails = {
+  filename: string;
+  state: string;
+  message: string;
+  progress: number;
+  filePosition: number;
+  fileSize: number;
+  printDuration: number;
+  totalDuration: number;
+  filamentUsed: number;
+  info: {
+    currentLayer?: number;
+    totalLayer?: number;
+  };
+  metadata?: Partial<GcodeFileEntry>;
+  raw: unknown;
 };
 
 type QuickCommand = "home-all" | "home-x" | "home-y" | "home-z" | "z-tilt";
@@ -338,6 +358,12 @@ function normalizePrinterStatus(value: unknown, fallbackMessage: string): Printe
       : {};
   const printState = String(status.printState ?? "unknown");
   const error = typeof status.error === "string" && status.error.trim() ? status.error : undefined;
+  const printDetails = status.printDetails && typeof status.printDetails === "object"
+    ? (status.printDetails as Partial<PrintDetails>)
+    : {};
+  const printInfo = printDetails.info && typeof printDetails.info === "object"
+    ? (printDetails.info as Partial<PrintDetails["info"]>)
+    : {};
 
   return {
     webhooksState: String(status.webhooksState ?? "unknown"),
@@ -345,6 +371,23 @@ function normalizePrinterStatus(value: unknown, fallbackMessage: string): Printe
     printState,
     filename: String(status.filename ?? ""),
     progress: Math.min(Math.max(numericValue(status.progress), 0), 1),
+    printDetails: {
+      filename: String(printDetails.filename ?? status.filename ?? ""),
+      state: String(printDetails.state ?? printState),
+      message: String(printDetails.message ?? ""),
+      progress: Math.min(Math.max(numericValue(printDetails.progress ?? status.progress), 0), 1),
+      filePosition: numericValue(printDetails.filePosition),
+      fileSize: numericValue(printDetails.fileSize),
+      printDuration: numericValue(printDetails.printDuration),
+      totalDuration: numericValue(printDetails.totalDuration),
+      filamentUsed: numericValue(printDetails.filamentUsed),
+      info: {
+        currentLayer: printInfo.currentLayer === undefined ? undefined : numericValue(printInfo.currentLayer),
+        totalLayer: printInfo.totalLayer === undefined ? undefined : numericValue(printInfo.totalLayer)
+      },
+      metadata: printDetails.metadata,
+      raw: printDetails.raw ?? null
+    },
     printing: Boolean(status.printing),
     zTiltAvailable: Boolean(status.zTiltAvailable),
     homedAxes: String(status.homedAxes ?? ""),
@@ -631,6 +674,8 @@ const defaultMessages: Messages = {
   "options.languageHelp": "Los idiomas disponibles salen de los archivos JSON en la carpeta `locales`.",
   "options.createBackupOnSave": "Crear copia de seguridad al guardar",
   "options.createBackupOnSaveHelp": "Antes de sobrescribir un archivo, crea una copia con fecha junto al original.",
+  "options.sectionPreviewDelay": "Retardo de vista previa de sesiones",
+  "options.sectionPreviewDelayHelp": "Segundos que debe permanecer el mouse sobre una sesion antes de mostrar la vista previa.",
   "options.close": "Cerrar opciones",
   "options.loadingLocales": "Cargando idiomas.",
   "options.noLocales": "No hay archivos de idioma disponibles.",
@@ -673,6 +718,12 @@ const defaultMessages: Messages = {
   "gcodes.status": "Estado",
   "gcodes.started": "Inicio",
   "gcodes.finished": "Fin",
+  "printStatus.title": "Impresion en curso",
+  "printStatus.details": "Detalles",
+  "printStatus.raw": "Moonraker",
+  "printStatus.filePosition": "Posicion de archivo",
+  "printStatus.layers": "Capas",
+  "printStatus.message": "Mensaje",
   "globalSearch.placeholder": "Buscar en toda la configuracion",
   "globalSearch.empty": "Ingresa al menos 2 caracteres.",
   "globalSearch.noResults": "Sin resultados.",
@@ -1586,6 +1637,8 @@ export default function Home() {
   const [macroFavorites, setMacroFavorites] = useState<string[]>([]);
   const [macroSearch, setMacroSearch] = useState("");
   const [sectionSearch, setSectionSearch] = useState("");
+  const [sectionsNavigating, setSectionsNavigating] = useState(false);
+  const [sectionPreviewDelay, setSectionPreviewDelay] = useState(1);
   const [macrosLoading, setMacrosLoading] = useState(false);
   const [executingMacro, setExecutingMacro] = useState<string | null>(null);
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
@@ -1608,6 +1661,7 @@ export default function Home() {
   const [klipperFavoriteSearch, setKlipperFavoriteSearch] = useState("");
   const [sendingKlipperCommand, setSendingKlipperCommand] = useState(false);
   const [gcodesOpen, setGcodesOpen] = useState(false);
+  const [printStatusOpen, setPrintStatusOpen] = useState(false);
   const [gcodeModalTab, setGcodeModalTab] = useState<GcodeModalTab>("files");
   const [gcodeSearch, setGcodeSearch] = useState("");
   const [gcodeFiles, setGcodeFiles] = useState<GcodeFileEntry[]>([]);
@@ -1645,6 +1699,7 @@ export default function Home() {
   const [pendingJump, setPendingJump] = useState<PendingJump | null>(null);
   const editorViewRef = useRef<EditorView | null>(null);
   const includePanelRef = useRef<HTMLElement | null>(null);
+  const previewOpenTimerRef = useRef<number | null>(null);
   const previewCloseTimerRef = useRef<number | null>(null);
   const uploadInputRef = useRef<HTMLInputElement | null>(null);
   const heatersRef = useRef<HeaterStatus[]>([]);
@@ -1704,6 +1759,10 @@ export default function Home() {
   const anyHeaterActive = heaters.some((heater) => heater.target > 0);
   const extruderHeaters = useMemo(() => heaters.filter(isExtruderHeater), [heaters]);
   const bedHeaters = useMemo(() => heaters.filter(isBedHeater), [heaters]);
+  const currentPrintThumbnail = bestThumbnail(printerStatus?.printDetails.metadata?.thumbnails ?? []);
+  const currentPrintThumbnailUrl = currentPrintThumbnail
+    ? apiPath(`/api/printer/gcode-thumbnail?path=${encodeURIComponent(currentPrintThumbnail.relativePath)}`)
+    : "";
   const filteredGcodeFiles = useMemo(() => {
     const query = gcodeSearch.trim().toLowerCase();
     if (!query) return gcodeFiles;
@@ -3313,13 +3372,22 @@ export default function Home() {
     }
   }, []);
 
+  const clearPreviewOpenTimer = useCallback(() => {
+    if (previewOpenTimerRef.current) {
+      window.clearTimeout(previewOpenTimerRef.current);
+      previewOpenTimerRef.current = null;
+    }
+  }, []);
+
   const schedulePreviewClose = useCallback(() => {
+    clearPreviewOpenTimer();
     clearPreviewCloseTimer();
     previewCloseTimerRef.current = window.setTimeout(() => setSectionPreview(null), 180);
-  }, [clearPreviewCloseTimer]);
+  }, [clearPreviewCloseTimer, clearPreviewOpenTimer]);
 
-  const showSectionPreview = useCallback(
-    (section: ConfigSection, event: ReactMouseEvent<HTMLButtonElement>) => {
+  const scheduleSectionPreview = useCallback(
+    (section: ConfigSection, event: ReactMouseEvent<HTMLElement>) => {
+      clearPreviewOpenTimer();
       clearPreviewCloseTimer();
       const previewWidth = 560;
       const previewHeight = 380;
@@ -3328,9 +3396,12 @@ export default function Home() {
       const left = clamp(event.clientX - previewWidth - 18, 14, maxLeft);
       const top = clamp(event.clientY - 28, 14, maxTop);
 
-      setSectionPreview({ section, left, top });
+      previewOpenTimerRef.current = window.setTimeout(
+        () => setSectionPreview({ section, left, top }),
+        Math.max(0, sectionPreviewDelay) * 1000
+      );
     },
-    [clearPreviewCloseTimer]
+    [clearPreviewCloseTimer, clearPreviewOpenTimer, sectionPreviewDelay]
   );
 
   const startOutlineWidthResize = useCallback(
@@ -3418,6 +3489,14 @@ export default function Home() {
   }, [cacheAndSetHeaters, setHeaterTargetInputs]);
 
   useEffect(() => {
+    if (!printerStatus?.printing || !currentPrintThumbnailUrl) return;
+
+    const image = new window.Image();
+    image.decoding = "async";
+    image.src = currentPrintThumbnailUrl;
+  }, [currentPrintThumbnailUrl, printerStatus?.printing]);
+
+  useEffect(() => {
     let cancelled = false;
 
     const savedBackupPreference = window.localStorage.getItem("klipper-editor-create-backup-on-save");
@@ -3433,6 +3512,11 @@ export default function Home() {
     const savedTerminalHeight = Number(window.localStorage.getItem(terminalHeightKey));
     if (Number.isFinite(savedTerminalHeight) && savedTerminalHeight > 0) {
       setTerminalHeight(clamp(savedTerminalHeight, 140, maxTerminalHeight(window.innerHeight)));
+    }
+
+    const savedSectionPreviewDelay = Number(window.localStorage.getItem(sectionPreviewDelayKey));
+    if (Number.isFinite(savedSectionPreviewDelay) && savedSectionPreviewDelay >= 0) {
+      setSectionPreviewDelay(clamp(savedSectionPreviewDelay, 0, 10));
     }
 
     try {
@@ -4148,7 +4232,7 @@ export default function Home() {
         <div className="editor-panel">
           {!activeFile ? (
             <div className="welcome">
-              <Image className="welcome-logo" src={logoWhite} alt="" priority />
+              <img className="welcome-logo" src={apiPath("/img/k-editor-logo.svg")} alt="" />
               <h2>{t("welcome.title")}</h2>
               <p>{t("welcome.description")}</p>
             </div>
@@ -4247,7 +4331,9 @@ export default function Home() {
                   aria-label={t("resize.height")}
                   onMouseDown={startOutlineHeightResize}
                 />
-                <section className="outline-section section-outline-section">
+                <section
+                  className="outline-section section-outline-section"
+                >
                   <div className="panel-title">{t("panels.sections")}</div>
                   <label className="section-search-field">
                     <FcSearch className="action-icon" />
@@ -4283,6 +4369,11 @@ export default function Home() {
                         <div
                           key={`${activeFile.path}-${section.line}-${section.title}`}
                           className="outline-link section-link"
+                          onMouseEnter={(event) => {
+                            setSectionsNavigating(true);
+                            scheduleSectionPreview(section, event);
+                          }}
+                          onMouseLeave={schedulePreviewClose}
                         >
                           <button
                             className="section-title-button"
@@ -4292,16 +4383,6 @@ export default function Home() {
                           >
                             <span>{section.title}</span>
                             <span className="line-number">{section.line}</span>
-                          </button>
-                          <button
-                            className="section-preview-button"
-                            type="button"
-                            title={t("preview.show")}
-                            aria-label={t("preview.show")}
-                            onMouseEnter={(event) => showSectionPreview(section, event)}
-                            onMouseLeave={schedulePreviewClose}
-                          >
-                            <FcSearch className="action-icon" />
                           </button>
                         </div>
                       ))
@@ -5820,6 +5901,23 @@ export default function Home() {
                   <span>{t("options.createBackupOnSave")}</span>
                 </label>
                 <p className="setting-help">{t("options.createBackupOnSaveHelp")}</p>
+                <label className="setting-field">
+                  <span>{t("options.sectionPreviewDelay")}</span>
+                  <input
+                    type="number"
+                    min="0"
+                    max="10"
+                    step="0.25"
+                    value={sectionPreviewDelay}
+                    onFocus={(event) => event.currentTarget.select()}
+                    onChange={(event) => {
+                      const nextDelay = clamp(Number(event.target.value), 0, 10);
+                      setSectionPreviewDelay(nextDelay);
+                      window.localStorage.setItem(sectionPreviewDelayKey, String(nextDelay));
+                    }}
+                  />
+                </label>
+                <p className="setting-help">{t("options.sectionPreviewDelayHelp")}</p>
               </div>
             </section>
           </div>
@@ -5858,6 +5956,131 @@ export default function Home() {
                 }}
               />
             </div>
+          </div>
+        )}
+
+        {printerStatus?.printing && (
+          <button
+            className={sectionsNavigating && activeFile ? "floating-print-status compact" : "floating-print-status"}
+            type="button"
+            title={t("printStatus.title")}
+            aria-label={t("printStatus.title")}
+            style={{ "--print-progress": `${printerStatus.progress * 360}deg` } as CSSProperties}
+            onMouseEnter={() => setSectionsNavigating(false)}
+            onFocus={() => setSectionsNavigating(false)}
+            onClick={() => setPrintStatusOpen(true)}
+          >
+            <span className="floating-print-ring" aria-hidden="true" />
+            <BsPrinterFill className="floating-print-icon" />
+            <span className="floating-print-percent">{formatProgress(printerStatus.progress)}</span>
+          </button>
+        )}
+
+        {printStatusOpen && printerStatus && (
+          <div className="modal-backdrop" role="presentation" onMouseDown={() => setPrintStatusOpen(false)}>
+            <section
+              className="options-modal print-status-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="print-status-title"
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <div className="modal-header">
+                <h2 id="print-status-title">{t("printStatus.title")}</h2>
+                <button
+                  className="modal-close"
+                  type="button"
+                  title={t("options.close")}
+                  aria-label={t("options.close")}
+                  onClick={() => setPrintStatusOpen(false)}
+                >
+                  x
+                </button>
+              </div>
+              <div className="print-status-body">
+                <div className="print-status-preview">
+                  {currentPrintThumbnail ? (
+                    <img
+                      className="print-status-thumbnail"
+                      src={currentPrintThumbnailUrl}
+                      alt=""
+                    />
+                  ) : (
+                    <div className="print-status-thumbnail-empty">
+                      <BsPrinterFill />
+                      <span>{t("gcodes.noThumbnail")}</span>
+                    </div>
+                  )}
+                  <div className="print-status-progress">
+                    <strong>{formatProgress(printerStatus.printDetails.progress)}</strong>
+                    <span>{printerStatus.filename || "-"}</span>
+                    <div className="print-status-progress-bar" aria-hidden="true">
+                      <span style={{ width: `${printerStatus.printDetails.progress * 100}%` }} />
+                    </div>
+                    <div className="print-status-actions">
+                      <button
+                        className="print-status-action"
+                        type="button"
+                        disabled={runningPrintAction !== null}
+                        title={printerStatus.printState === "paused" ? t("actions.resumePrint") : t("actions.pausePrint")}
+                        aria-label={printerStatus.printState === "paused" ? t("actions.resumePrint") : t("actions.pausePrint")}
+                        onClick={() => void runPrintControl(printerStatus.printState === "paused" ? "resume" : "pause")}
+                      >
+                        {printerStatus.printState === "paused" ? <FaPlay /> : <FaPause />}
+                      </button>
+                      <button
+                        className="print-status-action danger"
+                        type="button"
+                        disabled={runningPrintAction !== null}
+                        title={t("actions.cancelPrint")}
+                        aria-label={t("actions.cancelPrint")}
+                        onClick={() => void runPrintControl("cancel")}
+                      >
+                        <FaStop />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <div className="print-status-details">
+                  <h3>{t("printStatus.details")}</h3>
+                  <div className="print-status-table" role="table">
+                    {[
+                      [t("gcodes.status"), printerStatus.printDetails.state],
+                      [t("printStatus.message"), printerStatus.printDetails.message || "-"],
+                      [t("gcodes.printDuration"), formatDuration(printerStatus.printDetails.printDuration)],
+                      [t("gcodes.totalDuration"), formatDuration(printerStatus.printDetails.totalDuration)],
+                      [t("gcodes.filament"), formatMillimeters(printerStatus.printDetails.filamentUsed)],
+                      [t("gcodes.estimatedTime"), formatDuration(printerStatus.printDetails.metadata?.estimatedTime ?? 0)],
+                      [t("gcodes.layerHeight"), formatMillimeters(printerStatus.printDetails.metadata?.layerHeight)],
+                      [t("gcodes.objectHeight"), formatMillimeters(printerStatus.printDetails.metadata?.objectHeight)],
+                      [
+                        t("printStatus.filePosition"),
+                        `${formatBytes(printerStatus.printDetails.filePosition)}${
+                          printerStatus.printDetails.fileSize > 0
+                            ? ` / ${formatBytes(printerStatus.printDetails.fileSize)}`
+                            : ""
+                        }`
+                      ],
+                      [
+                        t("printStatus.layers"),
+                        `${printerStatus.printDetails.info.currentLayer ?? "-"}${
+                          printerStatus.printDetails.info.totalLayer ? ` / ${printerStatus.printDetails.info.totalLayer}` : ""
+                        }`
+                      ]
+                    ].map(([label, value]) => (
+                      <div className="print-status-row" role="row" key={label}>
+                        <div className="print-status-cell label" role="cell">{label}</div>
+                        <div className="print-status-cell value" role="cell">{value}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <details className="print-status-raw">
+                    <summary>{t("printStatus.raw")}</summary>
+                    <pre>{JSON.stringify(printerStatus.printDetails.raw, null, 2)}</pre>
+                  </details>
+                </div>
+              </div>
+            </section>
           </div>
         )}
 

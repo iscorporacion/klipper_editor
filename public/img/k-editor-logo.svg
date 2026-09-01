@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 220" role="img" aria-labelledby="title desc">
+  <title id="title">K-Editor logo</title>
+  <desc id="desc">A Klipper-inspired K-Editor logo with an angular K mark and code editor symbol.</desc>
+  <defs>
+    <linearGradient id="markShade" x1="48" y1="24" x2="176" y2="180" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#566879" />
+      <stop offset="1" stop-color="#202a34" />
+    </linearGradient>
+    <linearGradient id="accentShade" x1="72" y1="42" x2="150" y2="170" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#e0444b" />
+      <stop offset="1" stop-color="#9f2229" />
+    </linearGradient>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="10" stdDeviation="10" flood-color="#000000" flood-opacity="0.28" />
+    </filter>
+  </defs>
+
+  <g filter="url(#softShadow)">
+    <path fill="url(#markShade)" d="M112 14 196 62v96l-84 48-84-48V62Z" />
+    <path fill="#151b22" d="M112 30 181 70v80l-69 40-69-40V70Z" opacity="0.72" />
+    <path fill="url(#accentShade)" d="M72 58h28v45l42-45h35l-50 52 54 58h-37l-44-50v50H72Z" />
+    <path fill="#f2f6fb" d="M139 86h33v13h-33Zm-15 28h48v13h-48Zm15 28h33v13h-33Z" opacity="0.95" />
+    <path fill="#78d6ff" d="M55 78 35 110l20 32h16l-20-32 20-32Zm114 0 20 32-20 32h-16l20-32-20-32Z" />
+  </g>
+
+  <g transform="translate(240 54)">
+    <text x="0" y="68" fill="#f4f7fb" font-family="Segoe UI, Arial, sans-serif" font-size="72" font-weight="800">K-Editor</text>
+    <text x="4" y="112" fill="#9fb0c0" font-family="Segoe UI, Arial, sans-serif" font-size="28" font-weight="700">Klipper config workspace</text>
+  </g>
+</svg>

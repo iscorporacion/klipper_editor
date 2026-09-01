@@ -12,6 +12,7 @@ export type MoonrakerStatus = {
   printState: string;
   filename: string;
   progress: number;
+  printDetails: MoonrakerPrintDetails;
   printing: boolean;
   zTiltAvailable: boolean;
   homedAxes: string;
@@ -28,6 +29,24 @@ export type MoonrakerStatus = {
   };
   extruders: ExtruderInfo[];
   zOffset: number;
+};
+
+export type MoonrakerPrintDetails = {
+  filename: string;
+  state: string;
+  message: string;
+  progress: number;
+  filePosition: number;
+  fileSize: number;
+  printDuration: number;
+  totalDuration: number;
+  filamentUsed: number;
+  info: {
+    currentLayer?: number;
+    totalLayer?: number;
+  };
+  metadata?: Partial<GcodeFileEntry>;
+  raw: unknown;
 };
 
 export type AxisLimit = {
@@ -144,12 +163,13 @@ async function moonrakerFetch(path: string, init?: RequestInit) {
 
 export async function getMoonrakerStatus(): Promise<MoonrakerStatus> {
   const payload = await moonrakerFetch(
-    "/printer/objects/query?webhooks=state,state_message&print_stats=state,filename&virtual_sdcard=progress&configfile=settings&toolhead=homed_axes,position&gcode_move=gcode_position,homing_origin"
+    "/printer/objects/query?webhooks=state,state_message&print_stats=state,filename,message,print_duration,total_duration,filament_used,info&virtual_sdcard=progress,file_position,file_size&display_status=message,progress&configfile=settings&toolhead=homed_axes,position&gcode_move=gcode_position,homing_origin"
   );
   const status = payload?.result?.status ?? payload?.status ?? {};
   const webhooks = status.webhooks ?? {};
   const printStats = status.print_stats ?? {};
   const virtualSdcard = status.virtual_sdcard ?? {};
+  const displayStatus = status.display_status ?? {};
   const configSettings = status.configfile?.settings ?? {};
   const toolhead = status.toolhead ?? {};
   const gcodeMove = status.gcode_move ?? {};
@@ -160,6 +180,7 @@ export async function getMoonrakerStatus(): Promise<MoonrakerStatus> {
       : [];
   const homingOrigin = Array.isArray(gcodeMove.homing_origin) ? gcodeMove.homing_origin : [];
   const printState = String(printStats.state ?? "unknown");
+  const filename = String(printStats.filename ?? "");
   const homedAxes = String(toolhead.homed_axes ?? "").toLowerCase();
   const positionLimits = {
     x: readAxisLimit(configSettings.stepper_x),
@@ -167,12 +188,42 @@ export async function getMoonrakerStatus(): Promise<MoonrakerStatus> {
     z: readAxisLimit(configSettings.stepper_z)
   };
 
+  let metadata: Partial<GcodeFileEntry> | undefined;
+  if (filename) {
+    try {
+      metadata = await getGcodeMetadata(filename);
+    } catch {
+      metadata = undefined;
+    }
+  }
+
   return {
     webhooksState: String(webhooks.state ?? "unknown"),
     webhooksMessage: String(webhooks.message ?? ""),
     printState,
-    filename: String(printStats.filename ?? ""),
+    filename,
     progress: Math.min(Math.max(toNumber(virtualSdcard.progress), 0), 1),
+    printDetails: {
+      filename,
+      state: printState,
+      message: String(printStats.message ?? displayStatus.message ?? ""),
+      progress: Math.min(Math.max(toNumber(virtualSdcard.progress ?? displayStatus.progress), 0), 1),
+      filePosition: toNumber(virtualSdcard.file_position),
+      fileSize: toNumber(virtualSdcard.file_size),
+      printDuration: toNumber(printStats.print_duration),
+      totalDuration: toNumber(printStats.total_duration),
+      filamentUsed: toNumber(printStats.filament_used),
+      info: {
+        currentLayer: printStats.info?.current_layer === undefined ? undefined : toNumber(printStats.info.current_layer),
+        totalLayer: printStats.info?.total_layer === undefined ? undefined : toNumber(printStats.info.total_layer)
+      },
+      metadata,
+      raw: {
+        print_stats: printStats,
+        virtual_sdcard: virtualSdcard,
+        display_status: displayStatus
+      }
+    },
     printing: printState === "printing" || printState === "paused",
     zTiltAvailable: Boolean(configSettings.z_tilt),
     homedAxes,

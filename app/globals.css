@@ -736,6 +736,7 @@ h1 {
 }
 
 .editor-area {
+  position: relative;
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr) auto auto;
   min-width: 0;
@@ -1649,29 +1650,9 @@ body.is-resizing-row {
   white-space: nowrap;
 }
 
-.section-title-button:focus-visible,
-.section-preview-button:focus-visible {
+.section-title-button:focus-visible {
   outline: 1px solid var(--accent);
   outline-offset: -1px;
-}
-
-.section-preview-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 30px;
-  min-height: 28px;
-  flex: 0 0 auto;
-  border: 0;
-  border-left: 1px solid var(--border-soft);
-  background: transparent;
-  cursor: pointer;
-  opacity: 0.75;
-}
-
-.section-preview-button:hover {
-  background: var(--accent-soft);
-  opacity: 1;
 }
 
 .line-number {
@@ -3573,16 +3554,19 @@ body.is-resizing-row {
   font-size: 13px;
 }
 
-.setting-field select {
+.setting-field select,
+.setting-field input {
   width: 100%;
   height: 34px;
   border: 1px solid var(--border);
+  border-radius: var(--control-radius);
   background: var(--panel-soft);
   color: var(--text);
   padding: 0 8px;
 }
 
-.setting-field select:focus-visible {
+.setting-field select:focus-visible,
+.setting-field input:focus-visible {
   border-color: var(--accent);
   outline: 0;
 }
@@ -3626,7 +3610,7 @@ body.is-resizing-row {
 }
 
 .welcome-logo {
-  width: min(260px, 58vw);
+  width: min(360px, 70vw);
   height: auto;
   margin-bottom: 22px;
   opacity: 0.92;
@@ -3696,6 +3680,349 @@ body.is-resizing-row {
   background: #0c5a96;
   color: #eef7ff;
   font-size: 12px;
+}
+
+.floating-print-status {
+  position: absolute;
+  right: 22px;
+  bottom: 42px;
+  display: grid;
+  place-items: center;
+  width: 76px;
+  height: 76px;
+  border: 0;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at center, #121820 0 46%, transparent 47%),
+    conic-gradient(var(--accent) var(--print-progress), rgba(255, 255, 255, 0.16) 0);
+  color: var(--text);
+  cursor: pointer;
+  filter: drop-shadow(0 12px 22px rgba(0, 0, 0, 0.42));
+  transition:
+    transform 160ms ease,
+    filter 160ms ease;
+  z-index: 18;
+}
+
+.floating-print-status:hover,
+.floating-print-status:focus-visible {
+  transform: scale(1.11);
+  filter: drop-shadow(0 16px 30px rgba(0, 0, 0, 0.5));
+  outline: 0;
+}
+
+.floating-print-status.compact {
+  right: 0;
+  bottom: 65px;
+  width: 10px;
+  height: 48px;
+  border-radius: 8px 0 0 8px;
+  background: var(--accent);
+  filter: none;
+  overflow: hidden;
+  transform: none;
+  transition:
+    right 160ms ease,
+    bottom 160ms ease,
+    width 160ms ease,
+    height 160ms ease,
+    border-radius 160ms ease,
+    background 160ms ease,
+    filter 160ms ease;
+}
+
+.floating-print-status.compact:hover,
+.floating-print-status.compact:focus-visible {
+  right: 22px;
+  bottom: 42px;
+  width: 76px;
+  height: 76px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at center, #121820 0 46%, transparent 47%),
+    conic-gradient(var(--accent) var(--print-progress), rgba(255, 255, 255, 0.16) 0);
+  filter: drop-shadow(0 16px 30px rgba(0, 0, 0, 0.5));
+  overflow: visible;
+  transform: scale(1.11);
+}
+
+.floating-print-status.compact .floating-print-ring,
+.floating-print-status.compact .floating-print-icon,
+.floating-print-status.compact .floating-print-percent {
+  opacity: 0;
+}
+
+.floating-print-status.compact:hover .floating-print-ring,
+.floating-print-status.compact:hover .floating-print-icon,
+.floating-print-status.compact:hover .floating-print-percent,
+.floating-print-status.compact:focus-visible .floating-print-ring,
+.floating-print-status.compact:focus-visible .floating-print-icon,
+.floating-print-status.compact:focus-visible .floating-print-percent {
+  opacity: 1;
+}
+
+.floating-print-status.compact:hover .floating-print-ring,
+.floating-print-status.compact:focus-visible .floating-print-ring {
+  inset: 7px;
+  width: auto;
+  height: auto;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: transparent;
+  transform: none;
+}
+
+.floating-print-status.compact:hover .floating-print-icon,
+.floating-print-status.compact:focus-visible .floating-print-icon {
+  position: static;
+  transform: none;
+}
+
+.floating-print-status.compact:hover .floating-print-percent,
+.floating-print-status.compact:focus-visible .floating-print-percent {
+  top: 18px;
+  right: auto;
+  bottom: auto;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.floating-print-ring {
+  position: absolute;
+  inset: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.floating-print-icon {
+  width: 30px;
+  height: 30px;
+  color: #d7e8f6;
+}
+
+.floating-print-percent {
+  position: absolute;
+  top: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  min-width: 38px;
+  border-radius: 999px;
+  background: rgba(10, 14, 18, 0.86);
+  color: var(--accent);
+  font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1;
+  padding: 3px 5px;
+}
+
+.print-status-modal {
+  width: min(980px, calc(100vw - 34px));
+}
+
+.print-status-body {
+  display: grid;
+  grid-template-columns: minmax(340px, 0.92fr) minmax(360px, 1.08fr);
+  gap: 16px;
+  min-height: 0;
+  max-height: min(720px, calc(100vh - 130px));
+  overflow: auto;
+  padding: 14px;
+}
+
+.print-status-preview {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  min-width: 0;
+}
+
+.print-status-thumbnail,
+.print-status-thumbnail-empty {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  border: 1px solid var(--border-soft);
+  background: #0b0f14;
+  object-fit: contain;
+}
+
+.print-status-thumbnail-empty {
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.print-status-thumbnail-empty svg {
+  width: 64px;
+  height: 64px;
+  color: var(--accent);
+}
+
+.print-status-progress {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--border-soft);
+  background: var(--panel-soft);
+  padding: 12px;
+}
+
+.print-status-progress strong {
+  color: var(--accent);
+  font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+  font-size: 30px;
+  line-height: 1;
+}
+
+.print-status-progress span {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.print-status-progress-bar {
+  height: 7px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.print-status-progress-bar span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 58%, transparent);
+  transition: width 220ms ease;
+}
+
+.print-status-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.print-status-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 34px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--control-radius);
+  background: var(--panel);
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.print-status-action:hover,
+.print-status-action:focus-visible {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  outline: 0;
+}
+
+.print-status-action.danger {
+  color: var(--danger);
+}
+
+.print-status-action.danger:hover,
+.print-status-action.danger:focus-visible {
+  border-color: var(--danger);
+  background: rgba(255, 107, 107, 0.18);
+}
+
+.print-status-action:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.print-status-action svg {
+  width: 16px;
+  height: 16px;
+}
+
+.print-status-details {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  min-width: 0;
+}
+
+.print-status-details h3 {
+  color: color-mix(in srgb, var(--accent) 68%, var(--text));
+  font-size: 16px;
+  text-transform: uppercase;
+}
+
+.print-status-table {
+  display: grid;
+  overflow: hidden;
+  border: 1px solid var(--border-soft);
+  background: var(--panel-soft);
+}
+
+.print-status-row {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.62fr) minmax(0, 1fr);
+  min-height: 42px;
+}
+
+.print-status-row:nth-child(even) {
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.print-status-cell {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.055);
+  padding: 9px 12px;
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.print-status-row:last-child .print-status-cell {
+  border-bottom: 0;
+}
+
+.print-status-cell.label {
+  color: color-mix(in srgb, var(--accent) 62%, var(--text));
+  font-weight: 800;
+}
+
+.print-status-cell.value {
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+}
+
+.print-status-raw {
+  border: 1px solid var(--border-soft);
+  background: var(--panel-soft);
+}
+
+.print-status-raw summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  padding: 8px 10px;
+}
+
+.print-status-raw pre {
+  max-height: 180px;
+  overflow: auto;
+  border-top: 1px solid var(--border-soft);
+  color: #d7e8f6;
+  font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.45;
+  margin: 0;
+  padding: 10px;
 }
 
 .statusbar span {

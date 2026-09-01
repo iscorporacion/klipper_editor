@@ -950,8 +950,16 @@ function formatTemperature(value: number) {
   return `${Math.round(value)} °C`;
 }
 
+function formatCompactTemperature(value: number) {
+  return `${Math.round(value)}`;
+}
+
 function heaterTargetLabel(heater: HeaterStatus) {
   return heater.target > 0 ? formatTemperature(heater.target) : "0 °C";
+}
+
+function heaterCompactTargetLabel(heater: HeaterStatus) {
+  return heater.target > 0 ? formatCompactTemperature(heater.target) : "0";
 }
 
 function isExtruderHeater(heater: HeaterStatus) {
@@ -2557,12 +2565,12 @@ export default function Home() {
         return;
       }
 
-      if (printerStatus.printing) {
+      if (printerStatus.printing && payload.action !== "z-offset") {
         setMessage(t("errors.restartPrinting"));
         return;
       }
 
-      if (!printerStatus.allAxesHomed) {
+      if (payload.action !== "z-offset" && !printerStatus.allAxesHomed) {
         setMessage(t("errors.moveHoming"));
         return;
       }
@@ -3744,7 +3752,8 @@ export default function Home() {
     Boolean(printerStatus.error) ||
     printerStatus.printing ||
     !printerStatus.allAxesHomed;
-  const movementPanelDisabled = movingAction !== null || !printerStatus || Boolean(printerStatus.error) || printerStatus.printing;
+  const offsetDisabled = movingAction !== null || !printerStatus || Boolean(printerStatus.error);
+  const movementPanelDisabled = movingAction !== null || !printerStatus || Boolean(printerStatus.error);
   const extrusionDisabled =
     movingAction !== null ||
     !printerStatus ||
@@ -3926,28 +3935,30 @@ export default function Home() {
       <section className={terminalOpen ? "editor-area terminal-open" : "editor-area"}>
         <div className="topbar">
           <div className="quick-toolbar">
-            <button className="macro-button" type="button" onClick={openMacrosModal} title={t("actions.macros")}>
-              <MdFunctions className="macro-button-icon" />
-              {t("actions.macros")}
-            </button>
-            <button
-              className="icon-button printed-files-button"
-              type="button"
-              onClick={openGcodesModal}
-              title={t("actions.printedFiles")}
-              aria-label={t("actions.printedFiles")}
-            >
-              <BsPrinterFill className="action-icon plain-action-icon" />
-            </button>
-            <button
-              className="icon-button klipper-console-button"
-              type="button"
-              onClick={() => setKlipperConsoleOpen(true)}
-              aria-label={t("actions.klipperConsole")}
-              title={t("actions.klipperConsole")}
-            >
-              <MdiIcon className="action-icon plain-action-icon" path={mdiConsoleLine} size={1} />
-            </button>
+            <div className="toolbar-group primary-tool-group">
+              <button className="macro-button" type="button" onClick={openMacrosModal} title={t("actions.macros")}>
+                <MdFunctions className="macro-button-icon" />
+                <span className="toolbar-label">{t("actions.macros")}</span>
+              </button>
+              <button
+                className="icon-button printed-files-button"
+                type="button"
+                onClick={openGcodesModal}
+                title={t("actions.printedFiles")}
+                aria-label={t("actions.printedFiles")}
+              >
+                <BsPrinterFill className="action-icon plain-action-icon" />
+              </button>
+              <button
+                className="icon-button klipper-console-button"
+                type="button"
+                onClick={() => setKlipperConsoleOpen(true)}
+                aria-label={t("actions.klipperConsole")}
+                title={t("actions.klipperConsole")}
+              >
+                <MdiIcon className="action-icon plain-action-icon" path={mdiConsoleLine} size={1} />
+              </button>
+            </div>
             <div className="home-actions">
               <button
                 className="home-button"
@@ -3957,7 +3968,7 @@ export default function Home() {
                 onClick={() => void runQuickCommand("home-all", t("actions.homeAll"))}
               >
                 <MdHome className="home-button-icon" />
-                All
+                <span className="toolbar-label">All</span>
               </button>
               <button
                 className="home-button"
@@ -3994,7 +4005,7 @@ export default function Home() {
                   title={t("actions.zTilt")}
                   onClick={() => void runQuickCommand("z-tilt", t("actions.zTilt"))}
                 >
-                  Z Tilt
+                  <span className="toolbar-label">Z Tilt</span>
                 </button>
               )}
               <button
@@ -4019,7 +4030,7 @@ export default function Home() {
                 onClick={() => void openHeatersModal()}
               >
                 <FaHotjar className="hot-button-icon" />
-                Hot
+                <span className="toolbar-label">Hot</span>
               </button>
               <div className="heater-indicators" aria-label={t("heaters.title")}>
                 {heaters.slice(0, 4).map((heater) => (
@@ -4038,8 +4049,8 @@ export default function Home() {
                       style={{ color: heater.color ?? "#7fd4ff" }}
                     />
                     <span>
-                      {heater.label} {formatTemperature(heater.temperature)}
-                      {heater.target > 0 ? ` / ${heaterTargetLabel(heater)}` : ""}
+                      {heater.label} {formatCompactTemperature(heater.temperature)}
+                      {heater.target > 0 ? ` / ${heaterCompactTargetLabel(heater)}` : ""}
                     </span>
                   </button>
                 ))}
@@ -4073,16 +4084,6 @@ export default function Home() {
                 </button>
               </div>
             )}
-            <button
-              className="emergency-button"
-              type="button"
-              title={t("actions.emergencyStop")}
-              aria-label={t("actions.emergencyStop")}
-              disabled={emergencyStopping}
-              onClick={() => void triggerEmergencyStop()}
-            >
-              <BsSignStopFill className="emergency-button-icon" />
-            </button>
           </div>
           <div className="toolbar-actions">
             <a
@@ -4122,6 +4123,16 @@ export default function Home() {
               <FcSearch className="action-icon" />
             </button>
             <button
+              className="emergency-button"
+              type="button"
+              title={t("actions.emergencyStop")}
+              aria-label={t("actions.emergencyStop")}
+              disabled={emergencyStopping}
+              onClick={() => void triggerEmergencyStop()}
+            >
+              <BsSignStopFill className="emergency-button-icon" />
+            </button>
+            <button
               className="save-button"
               type="button"
               onClick={() => void saveActiveFile()}
@@ -4133,7 +4144,7 @@ export default function Home() {
               }
             >
               <FaFloppyDisk className="action-icon save-icon" />
-              {activeFile?.saving ? t("actions.saving") : t("actions.save")}
+              <span className="toolbar-label">{activeFile?.saving ? t("actions.saving") : t("actions.save")}</span>
             </button>
             <div className="machine-power-menu" ref={machinePowerMenuRef}>
               <button
@@ -4144,7 +4155,9 @@ export default function Home() {
                 onClick={() => void restartFirmware()}
               >
                 <IoPower className="power-icon" />
-                {restartingFirmware ? t("actions.restartingFirmware") : t("actions.restartFirmware")}
+                <span className="toolbar-label">
+                  {restartingFirmware ? t("actions.restartingFirmware") : t("actions.restartFirmware")}
+                </span>
               </button>
               <button
                 className="machine-power-trigger"
@@ -4826,7 +4839,7 @@ export default function Home() {
                         key={`up-${step}`}
                         className="offset-button"
                         type="button"
-                        disabled={movementDisabled}
+                        disabled={offsetDisabled}
                         onClick={() =>
                           void runMove({ action: "z-offset", adjust: step }, `Z-offset ${formatSigned(step)}`)
                         }
@@ -4840,7 +4853,7 @@ export default function Home() {
                         key={`down-${step}`}
                         className="offset-button"
                         type="button"
-                        disabled={movementDisabled}
+                        disabled={offsetDisabled}
                         onClick={() =>
                           void runMove({ action: "z-offset", adjust: -step }, `Z-offset ${formatSigned(-step)}`)
                         }
@@ -5947,7 +5960,15 @@ export default function Home() {
                 height="100%"
                 maxHeight="100%"
                 theme={vscodeDark}
-                extensions={[cfgLanguage, syntaxHighlighting(klipperHighlightStyle), EditorView.editable.of(false)]}
+                extensions={[
+                  cfgLanguage,
+                  syntaxHighlighting(klipperHighlightStyle),
+                  EditorView.editable.of(false),
+                  EditorView.theme({
+                    "&": { height: "100%" },
+                    ".cm-scroller": { overflowY: "auto", overflowX: "auto" }
+                  })
+                ]}
                 basicSetup={{
                   lineNumbers: false,
                   foldGutter: false,

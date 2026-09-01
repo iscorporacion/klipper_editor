@@ -745,12 +745,13 @@ h1 {
 
 .topbar {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
+  flex-direction: row;
   min-width: 0;
-  min-height: 48px;
-  padding: 8px 12px;
+  min-height: 50px;
+  padding: 7px 10px;
   border-bottom: 1px solid var(--border-soft);
   background: var(--panel);
 }
@@ -758,13 +759,20 @@ h1 {
 .quick-toolbar {
   display: inline-flex;
   align-items: center;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
   gap: 8px;
+  width: auto;
   min-width: 0;
+  min-height: 34px;
+  overflow: visible;
 }
 
+.toolbar-group,
 .home-actions {
   display: inline-flex;
   align-items: center;
+  flex: 0 0 auto;
   gap: 4px;
   min-width: 0;
 }
@@ -772,6 +780,7 @@ h1 {
 .heater-toolbar {
   display: inline-flex;
   align-items: center;
+  flex: 0 0 auto;
   gap: 6px;
   min-width: 0;
 }
@@ -866,6 +875,7 @@ h1 {
 .heater-indicators {
   display: inline-flex;
   align-items: center;
+  flex: 0 0 auto;
   gap: 4px;
   min-width: 0;
   overflow: hidden;
@@ -928,6 +938,7 @@ h1 {
 .print-control-actions {
   display: inline-flex;
   align-items: center;
+  flex: 0 0 auto;
   gap: 4px;
   min-width: 0;
 }
@@ -986,13 +997,20 @@ h1 {
 .toolbar-actions {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  justify-content: flex-end;
   flex: 0 0 auto;
+  flex-wrap: nowrap;
+  gap: 8px;
+  width: auto;
+  min-width: 0;
+  min-height: 34px;
+  overflow: visible;
 }
 
 .machine-power-menu {
   position: relative;
   display: inline-flex;
+  flex: 0 0 auto;
   margin-left: 4px;
 }
 
@@ -1714,7 +1732,7 @@ body.is-resizing-row {
 .section-preview-body {
   height: 318px;
   max-height: 318px;
-  overflow: hidden;
+  overflow: auto;
 }
 
 .section-preview-body .cm-editor {
@@ -4032,6 +4050,42 @@ body.is-resizing-row {
   white-space: nowrap;
 }
 
+@media (max-width: 1180px) {
+  .topbar {
+    gap: 8px;
+    padding: 6px 8px;
+  }
+
+  .quick-toolbar,
+  .toolbar-actions {
+    gap: 5px;
+  }
+
+  .macro-button,
+  .hot-button,
+  .home-button,
+  .save-button,
+  .machine-power-primary {
+    min-width: 34px;
+    padding-inline: 8px;
+  }
+
+  .z-tilt-button {
+    min-width: 48px;
+  }
+
+  .heater-indicator {
+    max-width: 108px;
+    padding-inline: 6px;
+  }
+}
+
+@media (max-width: 1040px) {
+  .heater-indicator {
+    max-width: 92px;
+  }
+}
+
 @media (max-width: 900px) {
   .workspace-shell {
     grid-template-columns: 220px minmax(0, 1fr);
@@ -4047,7 +4101,6 @@ body.is-resizing-row {
   }
 
   .topbar {
-    align-items: flex-start;
     flex-direction: column;
   }
 
@@ -4057,6 +4110,6 @@ body.is-resizing-row {
   }
 
   .toolbar-actions {
-    justify-content: flex-end;
+    justify-content: flex-start;
   }
 }

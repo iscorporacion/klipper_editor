@@ -50,11 +50,11 @@ export async function POST(request: NextRequest) {
     const body = (await request.json()) as MoveBody;
     const status = await getMoonrakerStatus();
 
-    if (status.printing) {
+    if (status.printing && body.action !== "z-offset") {
       return NextResponse.json({ error: "A print is currently active", status }, { status: 409 });
     }
 
-    if (!status.allAxesHomed) {
+    if (body.action !== "z-offset" && !status.allAxesHomed) {
       return NextResponse.json({ error: "Printer must be homed before moving", status }, { status: 409 });
     }
 

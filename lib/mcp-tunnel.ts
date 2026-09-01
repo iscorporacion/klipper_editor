@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
+import { randomBytes } from "node:crypto";
 
 type TunnelEvent = {
   time?: string;
@@ -17,6 +18,7 @@ type TunnelState = {
   starting: boolean;
   url: string;
   localUrl: string;
+  token: string;
   error: string;
   log: string[];
 };
@@ -27,6 +29,7 @@ const state: TunnelState = {
   starting: false,
   url: "",
   localUrl: "",
+  token: "",
   error: "",
   log: []
 };
@@ -78,6 +81,7 @@ export function getMcpTunnelStatus() {
     starting: state.starting,
     url: state.url,
     localUrl: state.localUrl,
+    token: state.token,
     error: state.error,
     log: state.log
   };
@@ -90,12 +94,16 @@ export function startMcpTunnel() {
   state.starting = true;
   state.url = "";
   state.localUrl = "";
+  state.token = randomBytes(24).toString("base64url");
   state.error = "";
   state.log = [];
 
   const child = spawn(process.execPath, ["scripts/klipper-editor-mcp-tunnel.mjs"], {
     cwd: process.cwd(),
-    env: process.env,
+    env: {
+      ...process.env,
+      KLIPPER_EDITOR_MCP_TOKEN: state.token
+    },
     stdio: ["ignore", "pipe", "pipe"]
   });
 
@@ -133,5 +141,6 @@ export function stopMcpTunnel() {
   state.starting = false;
   state.url = "";
   state.localUrl = "";
+  state.token = "";
   return getMcpTunnelStatus();
 }

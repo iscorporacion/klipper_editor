@@ -99,7 +99,7 @@ npm run mcp:http
 ```
 
 The HTTP endpoint is `/mcp` and listens on `127.0.0.1:3001` by default.
-K-Editor can also start the HTTP MCP plus a localtunnel URL from `Options > MCP para ChatGPT > Subir MCP`; copy the generated `/mcp` URL into ChatGPT and stop it with `Bajar MCP` when done.
+K-Editor can also start the HTTP MCP plus a temporary Cloudflare quick tunnel from `Options > MCP para ChatGPT > Subir MCP`; copy the generated `/mcp?token=...` URL into ChatGPT with `No authentication` and stop it with `Bajar MCP` when done. This requires the `cloudflared` command on the printer host.
 
 On a printer installed from GitHub Releases, update Klipper Editor first. MCP is available only in releases that include `scripts/klipper-editor-mcp.mjs`.
 

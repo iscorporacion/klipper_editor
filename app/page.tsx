@@ -191,6 +191,7 @@ type McpTunnelStatus = {
   starting: boolean;
   url: string;
   localUrl: string;
+  token: string;
   error: string;
   log: string[];
 };
@@ -733,8 +734,9 @@ const defaultMessages: Messages = {
   "options.enableTerminalHelp": "Permite abrir una terminal basica del host desde K-Editor. Usa esta opcion solo en una red de confianza.",
   "options.enableTerminalEnvHelp": "La terminal esta habilitada por KLIPPER_EDITOR_ENABLE_TERMINAL=true en el servicio.",
   "options.mcpTunnelTitle": "MCP para ChatGPT",
-  "options.mcpTunnelHelp": "Levanta el MCP HTTP local y crea un tunel HTTPS con localtunnel. Usa la URL /mcp generada en ChatGPT solo mientras necesites acceso externo a los archivos de la impresora.",
+  "options.mcpTunnelHelp": "Levanta el MCP HTTP local y crea un tunel HTTPS temporal con cloudflared. Usa la URL /mcp generada en ChatGPT solo mientras necesites acceso externo a los archivos de la impresora.",
   "options.mcpTunnelUrl": "URL para ChatGPT",
+  "options.mcpTunnelToken": "Token temporal",
   "options.mcpTunnelStopped": "MCP apagado",
   "options.mcpTunnelStarting": "Esperando tunel",
   "options.mcpTunnelRunning": "MCP activo",
@@ -1830,6 +1832,7 @@ export default function Home() {
     starting: false,
     url: "",
     localUrl: "",
+    token: "",
     error: "",
     log: []
   });
@@ -2287,6 +2290,7 @@ export default function Home() {
       starting: Boolean(payload.starting),
       url: typeof payload.url === "string" ? payload.url : "",
       localUrl: typeof payload.localUrl === "string" ? payload.localUrl : "",
+      token: typeof payload.token === "string" ? payload.token : "",
       error: typeof payload.error === "string" ? payload.error : "",
       log: Array.isArray(payload.log) ? payload.log.filter((entry): entry is string => typeof entry === "string") : []
     };
@@ -6336,6 +6340,10 @@ export default function Home() {
                       <label className="setting-field mcp-tunnel-url">
                         <span>{t("options.mcpTunnelUrl")}</span>
                         <input readOnly value={mcpTunnel.url} placeholder="https://.../mcp" />
+                      </label>
+                      <label className="setting-field mcp-tunnel-url">
+                        <span>{t("options.mcpTunnelToken")}</span>
+                        <input readOnly value={mcpTunnel.token} placeholder="-" />
                       </label>
                       {mcpTunnel.error && <p className="mcp-tunnel-error">{mcpTunnel.error}</p>}
                       <div className="mcp-tunnel-actions">

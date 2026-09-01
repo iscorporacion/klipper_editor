@@ -111,7 +111,21 @@ Options > MCP para ChatGPT > Subir MCP
 
 Copy the generated URL and paste it as the ChatGPT custom MCP server URL. Use `Bajar MCP` when you finish the session.
 
-You can also run the bundled localtunnel helper manually:
+The generated URL is temporary and includes a temporary token:
+
+```text
+https://example.trycloudflare.com/mcp?token=temporary-token
+```
+
+In ChatGPT, choose `No authentication` and paste the full URL, including the `token` query parameter.
+
+The tunnel helper uses `cloudflared`. The printer host must have the `cloudflared` command available in `PATH`. You can verify it with:
+
+```bash
+cloudflared --version
+```
+
+You can also run the bundled cloudflared helper manually:
 
 ```bash
 cd ~/klipper_editor_app/current
@@ -120,12 +134,12 @@ MOONRAKER_URL=http://127.0.0.1:7125 \
 npm run mcp:tunnel
 ```
 
-The helper starts the HTTP MCP server locally and prints a public HTTPS `/mcp` URL.
+The helper starts the HTTP MCP server locally, starts `cloudflared tunnel --url http://127.0.0.1:3001`, and prints a public HTTPS `/mcp?token=...` URL.
 
 Example with a tunnel URL:
 
 ```text
-https://your-secure-tunnel.example.com/mcp
+https://example.trycloudflare.com/mcp?token=temporary-token
 ```
 
 In ChatGPT:
@@ -134,7 +148,7 @@ In ChatGPT:
 Name: Klipper Editor
 Description: Controlled access to Klipper/RatOS configuration files and Moonraker actions.
 Connection: Server URL
-Server URL: https://your-secure-tunnel.example.com/mcp
+Server URL: https://example.trycloudflare.com/mcp?token=temporary-token
 Authentication: No authentication
 ```
 

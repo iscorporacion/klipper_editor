@@ -22,7 +22,6 @@
     "@uiw/codemirror-theme-vscode": "^4.25.3",
     "@uiw/react-codemirror": "^4.25.3",
     "fflate": "^0.8.3",
-    "localtunnel": "^2.0.2",
     "material-icon-theme": "^5.38.1",
     "next": "^15.0.0",
     "prettier": "^3.9.6",

@@ -228,6 +228,8 @@
     "options.enableTerminal": "Habilitar terminal SSH basica",
     "options.enableTerminalHelp": "Permite abrir una terminal basica del host desde K-Editor. Usa esta opcion solo en una red de confianza.",
     "options.enableTerminalEnvHelp": "La terminal esta habilitada por KLIPPER_EDITOR_ENABLE_TERMINAL=true en el servicio.",
+    "options.useAccentLogo": "Usar acento en logo K-Editor",
+    "options.useAccentLogoHelp": "Usa el logo propio de K-Editor y pinta la K con el color de enfasis configurado.",
     "options.sectionPreviewDelay": "Retardo de vista previa de sesiones",
     "options.sectionPreviewDelayHelp": "Segundos que debe permanecer el mouse sobre una sesion antes de mostrar la vista previa.",
     "options.close": "Cerrar opciones",

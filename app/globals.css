@@ -232,11 +232,21 @@ button {
     var(--panel-strong);
 }
 
+.keditor-brand-logo {
+  background: transparent;
+}
+
 .sidebar-theme-logo {
   display: block;
   width: 26px;
   height: 26px;
   object-fit: contain;
+}
+
+.sidebar-keditor-logo {
+  width: 32px;
+  height: 32px;
+  overflow: visible;
 }
 
 .sidebar-theme-logo-mask {

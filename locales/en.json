@@ -228,6 +228,8 @@
     "options.enableTerminal": "Enable basic SSH terminal",
     "options.enableTerminalHelp": "Allows opening a basic host terminal from K-Editor. Use this only on a trusted network.",
     "options.enableTerminalEnvHelp": "Terminal is enabled by KLIPPER_EDITOR_ENABLE_TERMINAL=true in the service.",
+    "options.useAccentLogo": "Use accent in K-Editor logo",
+    "options.useAccentLogoHelp": "Uses the K-Editor logo and paints the K with the configured accent color.",
     "options.sectionPreviewDelay": "Section preview delay",
     "options.sectionPreviewDelayHelp": "Seconds the mouse must remain over a section before showing the preview.",
     "options.close": "Close options",

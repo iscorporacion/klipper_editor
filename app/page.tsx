@@ -59,6 +59,7 @@ const klipperConsoleFavoritesKey = "klipper-editor-klipper-console-favorites";
 const macroFavoritesKey = "klipper-editor-macro-favorites";
 const sectionPreviewDelayKey = "klipper-editor-section-preview-delay";
 const sidebarCollapsedKey = "klipper-editor-sidebar-collapsed";
+const useAccentLogoKey = "klipper-editor-use-accent-logo";
 
 function apiPath(path: string) {
   return `${appBasePath}${path}`;
@@ -347,6 +348,29 @@ function axisLimitValue(value: unknown): AxisLimit {
   };
 }
 
+function readablePrinterMessage(value: unknown) {
+  const raw = typeof value === "string" ? value.trim() : "";
+  if (!raw) return "";
+
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (parsed && typeof parsed === "object") {
+      const record = parsed as Record<string, unknown>;
+      if (typeof record.message === "string" && record.message.trim()) return record.message.trim();
+      if (typeof record.error === "string" && record.error.trim()) return record.error.trim();
+      if (typeof record.code === "number") return `HTTP ${record.code}`;
+    }
+  } catch {
+    // Plain Moonraker messages should pass through unchanged.
+  }
+
+  return raw
+    .replace(/\\n/g, "\n")
+    .split("\n")
+    .map((line) => line.trim())
+    .find((line) => line && !line.toLowerCase().startsWith("traceback")) ?? raw;
+}
+
 function normalizePrinterStatus(value: unknown, fallbackMessage: string): PrinterStatus {
   const status = value && typeof value === "object" ? (value as Partial<PrinterStatus>) : {};
   const position =
@@ -368,7 +392,7 @@ function normalizePrinterStatus(value: unknown, fallbackMessage: string): Printe
 
   return {
     webhooksState: String(status.webhooksState ?? "unknown"),
-    webhooksMessage: String(status.webhooksMessage ?? error ?? fallbackMessage),
+    webhooksMessage: readablePrinterMessage(status.webhooksMessage ?? error ?? fallbackMessage),
     printState,
     filename: String(status.filename ?? ""),
     progress: Math.min(Math.max(numericValue(status.progress), 0), 1),
@@ -684,6 +708,8 @@ const defaultMessages: Messages = {
   "options.createBackupOnSaveHelp": "Antes de sobrescribir un archivo, crea una copia con fecha junto al original.",
   "options.startCollapsedSidebar": "Iniciar con barra colapsada",
   "options.startCollapsedSidebarHelp": "Al abrir K-Editor, muestra solo la barra lateral de iconos hasta pasar el mouse encima.",
+  "options.useAccentLogo": "Usar acento en logo K-Editor",
+  "options.useAccentLogoHelp": "Usa el logo propio de K-Editor y pinta la K con el color de enfasis configurado.",
   "options.enableTerminal": "Habilitar terminal SSH basica",
   "options.enableTerminalHelp": "Permite abrir una terminal basica del host desde K-Editor. Usa esta opcion solo en una red de confianza.",
   "options.enableTerminalEnvHelp": "La terminal esta habilitada por KLIPPER_EDITOR_ENABLE_TERMINAL=true en el servicio.",
@@ -1217,6 +1243,60 @@ function MaterialIcon({ name, className }: { name: string; className: string }) 
   );
 }
 
+function KEditorAccentMark({ className }: { className: string }) {
+  return (
+    <svg className={className} viewBox="22 8 180 204" role="img" aria-label="K-Editor">
+      <defs>
+        <linearGradient id="keditorMarkShade" x1="48" y1="24" x2="176" y2="180" gradientUnits="userSpaceOnUse">
+          <stop offset="0" stopColor="#566879" />
+          <stop offset="1" stopColor="#202a34" />
+        </linearGradient>
+        <filter id="keditorSoftShadow" x="-20%" y="-20%" width="140%" height="140%">
+          <feDropShadow dx="0" dy="10" stdDeviation="10" floodColor="#000000" floodOpacity="0.28" />
+        </filter>
+      </defs>
+      <g filter="url(#keditorSoftShadow)">
+        <path fill="url(#keditorMarkShade)" d="M112 14 196 62v96l-84 48-84-48V62Z" />
+        <path fill="#151b22" d="M112 30 181 70v80l-69 40-69-40V70Z" opacity="0.72" />
+        <path fill="var(--accent)" d="M72 58h28v45l42-45h35l-50 52 54 58h-37l-44-50v50H72Z" />
+        <path fill="#f2f6fb" d="M139 86h33v13h-33Zm-15 28h48v13h-48Zm15 28h33v13h-33Z" opacity="0.95" />
+        <path fill="#78d6ff" d="M55 78 35 110l20 32h16l-20-32 20-32Zm114 0 20 32-20 32h-16l20-32-20-32Z" />
+      </g>
+    </svg>
+  );
+}
+
+function KEditorAccentLogo({ className }: { className: string }) {
+  return (
+    <svg className={className} viewBox="0 0 720 220" role="img" aria-label="K-Editor">
+      <defs>
+        <linearGradient id="keditorLogoMarkShade" x1="48" y1="24" x2="176" y2="180" gradientUnits="userSpaceOnUse">
+          <stop offset="0" stopColor="#566879" />
+          <stop offset="1" stopColor="#202a34" />
+        </linearGradient>
+        <filter id="keditorLogoSoftShadow" x="-20%" y="-20%" width="140%" height="140%">
+          <feDropShadow dx="0" dy="10" stdDeviation="10" floodColor="#000000" floodOpacity="0.28" />
+        </filter>
+      </defs>
+      <g filter="url(#keditorLogoSoftShadow)">
+        <path fill="url(#keditorLogoMarkShade)" d="M112 14 196 62v96l-84 48-84-48V62Z" />
+        <path fill="#151b22" d="M112 30 181 70v80l-69 40-69-40V70Z" opacity="0.72" />
+        <path fill="var(--accent)" d="M72 58h28v45l42-45h35l-50 52 54 58h-37l-44-50v50H72Z" />
+        <path fill="#f2f6fb" d="M139 86h33v13h-33Zm-15 28h48v13h-48Zm15 28h33v13h-33Z" opacity="0.95" />
+        <path fill="#78d6ff" d="M55 78 35 110l20 32h16l-20-32 20-32Zm114 0 20 32-20 32h-16l20-32-20-32Z" />
+      </g>
+      <g transform="translate(240 54)">
+        <text x="0" y="68" fill="#f4f7fb" fontFamily="Segoe UI, Arial, sans-serif" fontSize="72" fontWeight="800">
+          K-Editor
+        </text>
+        <text x="4" y="112" fill="#9fb0c0" fontFamily="Segoe UI, Arial, sans-serif" fontSize="28" fontWeight="700">
+          Klipper config workspace
+        </text>
+      </g>
+    </svg>
+  );
+}
+
 function fallbackIconForPath(path: string) {
   const lower = path.toLowerCase();
   if (lower.endsWith(".cfg") || lower.endsWith(".conf") || lower.endsWith(".ini")) {
@@ -1628,6 +1708,7 @@ function TreeItem({
 export default function Home() {
   const [tree, setTree] = useState<TreeNode[]>([]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [useAccentLogo, setUseAccentLogo] = useState(false);
   const [hideBackupFiles, setHideBackupFiles] = useState(true);
   const [selectedTreeFiles, setSelectedTreeFiles] = useState<Set<string>>(() => new Set());
   const [openFiles, setOpenFiles] = useState<OpenFile[]>([]);
@@ -3590,6 +3671,7 @@ export default function Home() {
     }
 
     setSidebarCollapsed(window.localStorage.getItem(sidebarCollapsedKey) === "true");
+    setUseAccentLogo(window.localStorage.getItem(useAccentLogoKey) === "true");
 
     try {
       const savedTerminalHistory = JSON.parse(window.localStorage.getItem(terminalHistoryKey) ?? "[]") as unknown;
@@ -3862,8 +3944,13 @@ export default function Home() {
       <aside className="sidebar">
         <div className="sidebar-header">
           <div className="sidebar-brand">
-            <div className="sidebar-brand-logo" title={mainsailTheme.theme}>
-              {mainsailLogoUrl && mainsailTheme.logoMask ? (
+            <div
+              className={useAccentLogo ? "sidebar-brand-logo keditor-brand-logo" : "sidebar-brand-logo"}
+              title={useAccentLogo ? t("app.title") : mainsailTheme.theme}
+            >
+              {useAccentLogo ? (
+                <KEditorAccentMark className="sidebar-theme-logo sidebar-keditor-logo" />
+              ) : mainsailLogoUrl && mainsailTheme.logoMask ? (
                 <span className="sidebar-theme-logo sidebar-theme-logo-mask" aria-hidden="true" style={mainsailLogoMaskStyle} />
               ) : mainsailLogoUrl ? (
                 <img className="sidebar-theme-logo" src={mainsailLogoUrl} alt="" />
@@ -4343,7 +4430,11 @@ export default function Home() {
         <div className="editor-panel">
           {!activeFile ? (
             <div className="welcome">
-              <img className="welcome-logo" src={apiPath("/img/k-editor-logo.svg")} alt="" />
+              {useAccentLogo ? (
+                <KEditorAccentLogo className="welcome-logo" />
+              ) : (
+                <img className="welcome-logo" src={apiPath("/img/k-editor-logo.svg")} alt="" />
+              )}
               <h2>{t("welcome.title")}</h2>
               <p>{t("welcome.description")}</p>
             </div>
@@ -6025,6 +6116,19 @@ export default function Home() {
                   <span>{t("options.startCollapsedSidebar")}</span>
                 </label>
                 <p className="setting-help">{t("options.startCollapsedSidebarHelp")}</p>
+                <label className="setting-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={useAccentLogo}
+                    onChange={(event) => {
+                      const checked = event.target.checked;
+                      setUseAccentLogo(checked);
+                      window.localStorage.setItem(useAccentLogoKey, String(checked));
+                    }}
+                  />
+                  <span>{t("options.useAccentLogo")}</span>
+                </label>
+                <p className="setting-help">{t("options.useAccentLogoHelp")}</p>
                 <label className="setting-checkbox">
                   <input
                     type="checkbox"

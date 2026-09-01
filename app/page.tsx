@@ -42,7 +42,6 @@ import {
   MdStarBorder,
   MdTerminal
 } from "react-icons/md";
-import { TbActivityHeartbeat } from "react-icons/tb";
 import { IoClose, IoDocumentTextOutline, IoHelpCircleOutline, IoPower } from "react-icons/io5";
 import logoWhite from "@/components/logoWhite.png";
 import { klipperConfigParser } from "@/lib/codemirror/klipper-config";
@@ -490,6 +489,7 @@ const defaultMessages: Messages = {
   "actions.saving": "Guardando",
   "actions.saveAndClose": "Guardar y cerrar",
   "actions.closeWithoutSaving": "Cerrar sin guardar",
+  "actions.closeAllEditors": "Cerrar todos",
   "actions.options": "Opciones",
   "actions.terminal": "Terminal",
   "actions.openTerminal": "Abrir terminal",
@@ -499,6 +499,7 @@ const defaultMessages: Messages = {
   "actions.runTerminalCommand": "Ejecutar",
   "actions.restartFirmware": "Restar",
   "actions.restartingFirmware": "Reiniciando",
+  "actions.applyToGroup": "Aplicar a todos",
   "status.ready": "Listo",
   "status.opening": "Abriendo {path}",
   "status.opened": "Abierto {path}",
@@ -694,6 +695,9 @@ const defaultMessages: Messages = {
   "heaters.cacheHelp": "Si modificaste tus calentadores recientemente, pulsa actualizar para recargarlos y guardarlos nuevamente.",
   "heaters.current": "Actual",
   "heaters.target": "Objetivo",
+  "heaters.extruders": "Extrusores",
+  "heaters.beds": "Camas",
+  "heaters.groupTarget": "Valor para todos",
   "movement.title": "Movimiento",
   "movement.absolutePosition": "Posicion: absoluta",
   "movement.zOffset": "Z-Offset: {offset}",
@@ -893,6 +897,38 @@ function dirname(path: string) {
 
 function formatTemperature(value: number) {
   return `${Math.round(value)} °C`;
+}
+
+function heaterTargetLabel(heater: HeaterStatus) {
+  return heater.target > 0 ? formatTemperature(heater.target) : "0 °C";
+}
+
+function isExtruderHeater(heater: HeaterStatus) {
+  return /^extruder\d*$/.test(heater.name);
+}
+
+function isBedHeater(heater: HeaterStatus) {
+  return heater.name === "heater_bed" || /\bbed\b/i.test(`${heater.name} ${heater.label}`);
+}
+
+function HeaterTypeIcon({
+  heater,
+  className,
+  style
+}: {
+  heater: HeaterStatus;
+  className?: string;
+  style?: CSSProperties;
+}) {
+  const path = isBedHeater(heater)
+    ? "M20,12H4A2,2 0 0,0 2,14V22H4V20H20V22H22V14A2,2 0 0,0 20,12M7,17A1,1 0 0,1 6,18A1,1 0 0,1 5,17V15A1,1 0 0,1 6,14A1,1 0 0,1 7,15V17M11,17A1,1 0 0,1 10,18A1,1 0 0,1 9,17V15A1,1 0 0,1 10,14A1,1 0 0,1 11,15V17M15,17A1,1 0 0,1 14,18A1,1 0 0,1 13,17V15A1,1 0 0,1 14,14A1,1 0 0,1 15,15V17M19,17A1,1 0 0,1 18,18A1,1 0 0,1 17,17V15A1,1 0 0,1 18,14A1,1 0 0,1 19,15V17Z"
+    : "M7,2H17V8H19V13H16.5L13,17H11L7.5,13H5V8H7V2M10,22H2V20H10A1,1 0 0,0 11,19V18H13V19A3,3 0 0,1 10,22Z";
+
+  return (
+    <svg className={className} style={style} viewBox="0 0 24 24" role="img" aria-hidden="true">
+      <path d={path} fill="currentColor" />
+    </svg>
+  );
 }
 
 function formatProgress(value: number) {
@@ -1541,6 +1577,8 @@ export default function Home() {
   const [heatersOpen, setHeatersOpen] = useState(false);
   const [heaters, setHeaters] = useState<HeaterStatus[]>([]);
   const [heaterTargets, setHeaterTargets] = useState<Record<string, string>>({});
+  const [bulkExtruderTarget, setBulkExtruderTarget] = useState("");
+  const [bulkBedTarget, setBulkBedTarget] = useState("");
   const [heatersLoading, setHeatersLoading] = useState(false);
   const [settingHeaters, setSettingHeaters] = useState(false);
   const [macros, setMacros] = useState<MacroEntry[]>([]);
@@ -1664,6 +1702,8 @@ export default function Home() {
     [updates]
   );
   const anyHeaterActive = heaters.some((heater) => heater.target > 0);
+  const extruderHeaters = useMemo(() => heaters.filter(isExtruderHeater), [heaters]);
+  const bedHeaters = useMemo(() => heaters.filter(isBedHeater), [heaters]);
   const filteredGcodeFiles = useMemo(() => {
     const query = gcodeSearch.trim().toLowerCase();
     if (!query) return gcodeFiles;
@@ -2671,6 +2711,16 @@ export default function Home() {
     setHeaterTargets((targets) => ({ ...targets, [heaterName]: value }));
   }, []);
 
+  const setHeaterGroupTargetValues = useCallback((group: HeaterStatus[], value: string) => {
+    const normalizedValue = value.trim();
+    if (!normalizedValue || group.length === 0) return;
+
+    setHeaterTargets((targets) => ({
+      ...targets,
+      ...Object.fromEntries(group.map((heater) => [heater.name, normalizedValue]))
+    }));
+  }, []);
+
   const submitHeaters = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
@@ -2845,6 +2895,24 @@ export default function Home() {
     },
     [activePath, closeUnsavedDialog, openFiles, saveFile, t]
   );
+
+  const closeAllFiles = useCallback(async () => {
+    const keepOpen = new Set<string>();
+
+    for (const file of openFiles) {
+      if (file.kind === "image" || file.content === file.savedContent) continue;
+
+      const choice = await closeUnsavedDialog(t("actions.close"), t("confirm.closeUnsaved", { path: file.path }));
+      if (choice === "cancel") return;
+      if (choice === "save" && !(await saveFile(file))) {
+        keepOpen.add(file.path);
+      }
+    }
+
+    const nextFiles = openFiles.filter((file) => keepOpen.has(file.path));
+    setOpenFiles(nextFiles);
+    setActivePath(nextFiles.at(-1)?.path);
+  }, [closeUnsavedDialog, openFiles, saveFile, t]);
 
   const createBlankFile = useCallback(async () => {
     const defaultPath = activeDirectory ? `${activeDirectory}/new.cfg` : "new.cfg";
@@ -3728,7 +3796,20 @@ export default function Home() {
               </div>
             </div>
           )}
-          <div className="panel-title">{t("panels.openEditors")}</div>
+          <div className="open-editors-header">
+            <div className="panel-title">{t("panels.openEditors")}</div>
+            {openFiles.length > 0 && (
+              <button
+                className="open-editors-close-all"
+                type="button"
+                title={t("actions.closeAllEditors")}
+                aria-label={t("actions.closeAllEditors")}
+                onClick={() => void closeAllFiles()}
+              >
+                <IoClose className="open-editors-close-all-icon" />
+              </button>
+            )}
+          </div>
           {openFiles.length === 0 ? (
             <p className="empty-note">{t("empty.openFile")}</p>
           ) : (
@@ -3867,9 +3948,14 @@ export default function Home() {
                     disabled={settingHeaters}
                     onClick={() => void coolHeater(heater)}
                   >
-                    <TbActivityHeartbeat className="heater-indicator-icon" style={{ color: heater.color ?? "#7fd4ff" }} />
+                    <HeaterTypeIcon
+                      heater={heater}
+                      className="heater-indicator-icon"
+                      style={{ color: heater.color ?? "#7fd4ff" }}
+                    />
                     <span>
                       {heater.label} {formatTemperature(heater.temperature)}
+                      {heater.target > 0 ? ` / ${heaterTargetLabel(heater)}` : ""}
                     </span>
                   </button>
                 ))}
@@ -4728,29 +4814,97 @@ export default function Home() {
                 ) : heaters.length === 0 ? (
                   <p className="empty-note">{t("heaters.empty")}</p>
                 ) : (
-                  <div className="heater-list">
-                    {heaters.map((heater) => (
-                      <label key={heater.name} className="heater-row">
-                        <span className="heater-row-name">{heater.label}</span>
-                        <span className="heater-row-current">
-                          {t("heaters.current")} {formatTemperature(heater.temperature)}
-                        </span>
-                        <span className="heater-row-target">
-                          {t("heaters.target")}
-                          <input
-                            type="number"
-                            min="0"
-                            max="350"
-                            step="1"
-                            value={heaterTargets[heater.name] ?? ""}
-                            onFocus={(event) => event.currentTarget.select()}
-                            onClick={(event) => event.currentTarget.select()}
-                            onChange={(event) => setHeaterTargetValue(heater.name, event.target.value)}
-                          />
-                        </span>
-                      </label>
-                    ))}
-                  </div>
+                  <>
+                    {(extruderHeaters.length > 1 || bedHeaters.length > 1) && (
+                      <div className="heater-group-controls">
+                        {extruderHeaters.length > 1 && (
+                          <label className="heater-group-row">
+                            <span className="heater-group-name">{t("heaters.extruders")}</span>
+                            <span className="heater-group-input">
+                              {t("heaters.groupTarget")}
+                              <input
+                                type="number"
+                                min="0"
+                                max="350"
+                                step="1"
+                                value={bulkExtruderTarget}
+                                onFocus={(event) => event.currentTarget.select()}
+                                onClick={(event) => event.currentTarget.select()}
+                                onChange={(event) => setBulkExtruderTarget(event.target.value)}
+                              />
+                            </span>
+                            <button
+                              className="dialog-button"
+                              type="button"
+                              disabled={!bulkExtruderTarget.trim()}
+                              onClick={() => setHeaterGroupTargetValues(extruderHeaters, bulkExtruderTarget)}
+                            >
+                              {t("actions.applyToGroup")}
+                            </button>
+                          </label>
+                        )}
+                        {bedHeaters.length > 1 && (
+                          <label className="heater-group-row">
+                            <span className="heater-group-name">{t("heaters.beds")}</span>
+                            <span className="heater-group-input">
+                              {t("heaters.groupTarget")}
+                              <input
+                                type="number"
+                                min="0"
+                                max="350"
+                                step="1"
+                                value={bulkBedTarget}
+                                onFocus={(event) => event.currentTarget.select()}
+                                onClick={(event) => event.currentTarget.select()}
+                                onChange={(event) => setBulkBedTarget(event.target.value)}
+                              />
+                            </span>
+                            <button
+                              className="dialog-button"
+                              type="button"
+                              disabled={!bulkBedTarget.trim()}
+                              onClick={() => setHeaterGroupTargetValues(bedHeaters, bulkBedTarget)}
+                            >
+                              {t("actions.applyToGroup")}
+                            </button>
+                          </label>
+                        )}
+                      </div>
+                    )}
+                    <div className="heater-list">
+                      {heaters.map((heater) => (
+                        <label key={heater.name} className="heater-row">
+                          <span className="heater-row-name">
+                            <HeaterTypeIcon
+                              heater={heater}
+                              className="heater-row-icon"
+                              style={{ color: heater.color ?? "#7fd4ff" }}
+                            />
+                            <span>{heater.label}</span>
+                          </span>
+                          <span className="heater-row-current">
+                            <span>{t("heaters.current")} {formatTemperature(heater.temperature)}</span>
+                            {heater.target > 0 && (
+                              <span>{t("heaters.target")} {heaterTargetLabel(heater)}</span>
+                            )}
+                          </span>
+                          <span className="heater-row-target">
+                            {t("heaters.target")}
+                            <input
+                              type="number"
+                              min="0"
+                              max="350"
+                              step="1"
+                              value={heaterTargets[heater.name] ?? ""}
+                              onFocus={(event) => event.currentTarget.select()}
+                              onClick={(event) => event.currentTarget.select()}
+                              onChange={(event) => setHeaterTargetValue(heater.name, event.target.value)}
+                            />
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  </>
                 )}
                 <div className="dialog-actions">
                   <button className="dialog-button" type="button" onClick={() => setHeatersOpen(false)}>

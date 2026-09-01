@@ -643,6 +643,43 @@ h1 {
   text-transform: uppercase;
 }
 
+.open-editors-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.open-editors-header .panel-title {
+  margin-bottom: 0;
+}
+
+.open-editors-close-all {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--control-radius);
+  background: var(--panel-soft);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.open-editors-close-all:hover,
+.open-editors-close-all:focus-visible {
+  border-color: var(--accent);
+  color: var(--text);
+  outline: 0;
+}
+
+.open-editors-close-all-icon {
+  width: 15px;
+  height: 15px;
+}
+
 .open-editor,
 .open-editor-row {
   gap: 7px;
@@ -857,6 +894,11 @@ h1 {
   width: 17px;
   height: 17px;
   flex: 0 0 auto;
+}
+
+.heater-indicator-icon path,
+.heater-row-icon path {
+  fill: currentColor;
 }
 
 .heater-indicator span {
@@ -2161,6 +2203,53 @@ body.is-resizing-row {
   padding: 9px 10px;
 }
 
+.heater-group-controls {
+  display: grid;
+  gap: 8px;
+}
+
+.heater-group-row {
+  display: grid;
+  grid-template-columns: minmax(90px, 0.8fr) minmax(170px, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--border-soft);
+  background: rgba(255, 255, 255, 0.035);
+  padding: 8px 10px;
+}
+
+.heater-group-name {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.heater-group-input {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.heater-group-input input {
+  width: 78px;
+  height: 30px;
+  border: 1px solid var(--border);
+  border-radius: var(--control-radius);
+  background: var(--panel);
+  color: var(--text);
+  font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+  font-size: 13px;
+  padding: 0 8px;
+}
+
+.heater-group-input input:focus-visible {
+  border-color: var(--accent);
+  outline: 0;
+}
+
 .help-page {
   min-height: 100vh;
   background: var(--bg);
@@ -2394,6 +2483,10 @@ body.is-resizing-row {
 }
 
 .heater-row-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
   overflow: hidden;
   color: #7fd4ff;
   font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
@@ -2403,7 +2496,21 @@ body.is-resizing-row {
   white-space: nowrap;
 }
 
+.heater-row-name span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.heater-row-icon {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+}
+
 .heater-row-current {
+  display: grid;
+  gap: 3px;
   color: var(--muted);
   font-size: 12px;
 }

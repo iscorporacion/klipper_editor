@@ -87,6 +87,10 @@ export function getMcpTunnelStatus() {
   };
 }
 
+export function clearMcpTunnelInstallError() {
+  if (state.error.includes("cloudflared")) state.error = "";
+}
+
 export function startMcpTunnel() {
   if (state.process && !state.process.killed) return getMcpTunnelStatus();
 

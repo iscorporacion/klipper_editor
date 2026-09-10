@@ -123,6 +123,13 @@ The tunnel helper uses `cloudflared`. On RatOS printer hosts, the Klipper Editor
 
 Manual install uses the same flow:
 
+Options > MCP > Install / verify cloudflared runs `scripts/install-cloudflared.sh`
+on the printer host and displays the verified version or installation error.
+It requires Linux ARM, wget, and non-interactive sudo (or root). It does not
+start the tunnel automatically. In Windows local mode, open K-Editor on the
+printer to install there. The script can also be run with
+`bash scripts/install-cloudflared.sh` over SSH.
+
 ```bash
 wget https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm
 chmod +x cloudflared-linux-arm

@@ -4022,6 +4022,9 @@ body.is-resizing-row {
   gap: 8px;
 }
 
+.cloudflared-install-result { margin: 12px 0; color: var(--text); overflow-wrap: anywhere; }
+.mcp-tunnel-actions button:disabled { opacity: 0.5; cursor: not-allowed; filter: grayscale(1); }
+
 .welcome {
   display: grid;
   align-content: center;

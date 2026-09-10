@@ -633,6 +633,10 @@ const defaultMessages: Messages = {
   "actions.runTerminalCommand": "Ejecutar",
   "actions.enableTerminal": "Habilitar terminal",
   "actions.startMcpTunnel": "Subir MCP",
+  "mcp.install": "Instalar / verificar cloudflared",
+  "mcp.installing": "Instalando y verificando...",
+  "mcp.installed": "Instalacion verificada",
+  "mcp.installFailed": "No se pudo verificar la instalacion",
   "actions.stopMcpTunnel": "Bajar MCP",
   "actions.copyMcpUrl": "Copiar URL",
   "actions.restartFirmware": "Restar",
@@ -2133,6 +2137,8 @@ export default function Home() {
     log: []
   });
   const [mcpTunnelBusy, setMcpTunnelBusy] = useState(false);
+  const [installingCloudflared, setInstallingCloudflared] = useState(false);
+  const [cloudflaredInstallResult, setCloudflaredInstallResult] = useState("");
   const [xyRecorderEnabled, setXyRecorderEnabled] = useState(false);
   const [xyRecorderPanelOpen, setXyRecorderPanelOpen] = useState(false);
   const [xySnapshots, setXySnapshots] = useState<XySnapshot[]>([]);
@@ -2682,6 +2688,7 @@ export default function Home() {
   }, [normalizeMcpTunnelStatus, t]);
 
   const startMcpTunnel = useCallback(async () => {
+    if (installingCloudflared) return;
     setMcpTunnelBusy(true);
     setMessage(t("status.mcpTunnelStarting"));
 
@@ -2700,7 +2707,7 @@ export default function Home() {
     } finally {
       setMcpTunnelBusy(false);
     }
-  }, [normalizeMcpTunnelStatus, t]);
+  }, [installingCloudflared, normalizeMcpTunnelStatus, t]);
 
   const stopMcpTunnel = useCallback(async () => {
     setMcpTunnelBusy(true);
@@ -5013,7 +5020,7 @@ export default function Home() {
                 <span className="toolbar-label">Hot</span>
               </button>
               <div className="heater-indicators" aria-label={t("heaters.title")}>
-                {heaters.slice(0, 4).map((heater) => (
+                {heaters.filter((heater) => heater.target > 0).slice(0, 4).map((heater) => (
                   <button
                     key={heater.name}
                     className={heater.target > 0 ? "heater-indicator active" : "heater-indicator"}
@@ -7147,11 +7154,26 @@ export default function Home() {
                         <input readOnly value={mcpTunnel.token} placeholder="-" />
                       </label>
                       {mcpTunnel.error && <p className="mcp-tunnel-error">{mcpTunnel.error}</p>}
+                      {cloudflaredInstallResult && <p role="status" className="cloudflared-install-result">{cloudflaredInstallResult}</p>}
                       <div className="mcp-tunnel-actions">
+                        <button type="button" className="dialog-button" disabled={installingCloudflared || mcpTunnelBusy || mcpTunnel.running || mcpTunnel.starting}
+                          onClick={async () => {
+                            setInstallingCloudflared(true);
+                            setCloudflaredInstallResult(t("mcp.installing"));
+                            try {
+                              const response = await fetch(apiPath("/api/mcp-tunnel/install"), { method: "POST" });
+                              const payload = await response.json();
+                              if (!response.ok || !payload.installed) throw new Error(payload.error);
+                              setCloudflaredInstallResult(`${t("mcp.installed")}: ${payload.version}`);
+                              setMcpTunnel((current) => ({ ...current, error: "" }));
+                            } catch (error) {
+                              setCloudflaredInstallResult(`${t("mcp.installFailed")}: ${error instanceof Error ? error.message : String(error)}`);
+                            } finally { setInstallingCloudflared(false); }
+                          }}><FcDownload className="action-icon" />{t(installingCloudflared ? "mcp.installing" : "mcp.install")}</button>
                         <button
                           className="dialog-button"
                           type="button"
-                          disabled={mcpTunnelBusy || mcpTunnel.starting || mcpTunnel.running}
+                          disabled={installingCloudflared || mcpTunnelBusy || mcpTunnel.starting || mcpTunnel.running}
                           onClick={() => void startMcpTunnel()}
                         >
                           <FcUpload className="dialog-button-icon" />

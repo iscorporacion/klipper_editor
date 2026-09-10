@@ -4,6 +4,10 @@
     "name": "Español"
   },
   "messages": {
+    "mcp.install": "Instalar / verificar cloudflared",
+    "mcp.installing": "Instalando y verificando...",
+    "mcp.installed": "Instalacion verificada",
+    "mcp.installFailed": "No se pudo verificar la instalacion",
     "pid.title": "Calibracion PID",
     "pid.heater": "Calentador",
     "pid.start": "Iniciar calibracion",

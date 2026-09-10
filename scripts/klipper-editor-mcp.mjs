@@ -8,6 +8,7 @@ import readline from "node:readline";
 
 const appDirName = "ratos-file-viewer";
 const root = path.resolve(process.env.KLIPPER_EDITOR_MCP_ROOT || process.env.RATOS_VIEWER_ROOT || defaultRoot());
+const logsRoot = path.resolve(process.env.KLIPPER_EDITOR_MCP_LOG_ROOT || defaultLogsRoot(root));
 const moonrakerUrl = normalizeUrl(process.env.MOONRAKER_URL || process.env.RATOS_MOONRAKER_URL || "http://127.0.0.1:7125");
 const writeEnabled = process.env.KLIPPER_EDITOR_MCP_ENABLE_WRITE === "true";
 const deleteEnabled = process.env.KLIPPER_EDITOR_MCP_ENABLE_DELETE === "true";
@@ -22,6 +23,11 @@ const blockedSegments = new Set([".git", ".next", "node_modules", appDirName]);
 function defaultRoot() {
   const printerDataConfig = path.join(os.homedir(), "printer_data", "config");
   return fss.existsSync(printerDataConfig) ? printerDataConfig : path.resolve(process.cwd(), "..");
+}
+
+function defaultLogsRoot(configRoot) {
+  const printerDataLogs = path.resolve(configRoot, "..", "logs");
+  return fss.existsSync(printerDataLogs) ? printerDataLogs : path.join(os.homedir(), "printer_data", "logs");
 }
 
 function normalizeUrl(value) {
@@ -47,6 +53,18 @@ function resolveSafe(relativePath = "") {
   const rootWithSeparator = root.endsWith(path.sep) ? root : `${root}${path.sep}`;
   if (absolute !== root && !absolute.startsWith(rootWithSeparator)) {
     throw new Error("Path is outside the configured root");
+  }
+  return absolute;
+}
+
+function resolveSafeLog(logName = "") {
+  const clean = path.basename(String(logName || ""));
+  if (!clean || !clean.endsWith(".log")) throw new Error("Only .log files can be read");
+
+  const absolute = path.resolve(logsRoot, clean);
+  const rootWithSeparator = logsRoot.endsWith(path.sep) ? logsRoot : `${logsRoot}${path.sep}`;
+  if (absolute !== logsRoot && !absolute.startsWith(rootWithSeparator)) {
+    throw new Error("Log path is outside the configured log root");
   }
   return absolute;
 }
@@ -169,6 +187,22 @@ const tools = [
     name: "printer_status",
     description: "Read a small printer status summary from Moonraker.",
     inputSchema: { type: "object", properties: {} }
+  },
+  {
+    name: "list_logs",
+    description: "List readable Klipper/Moonraker log files from printer_data/logs.",
+    inputSchema: { type: "object", properties: {} }
+  },
+  {
+    name: "read_log",
+    description: "Read the tail of a .log file from printer_data/logs. Defaults to klippy.log.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Log file name, for example klippy.log or moonraker.log." },
+        lines: { type: "number", description: "Number of trailing lines to return. Defaults to 200, max 1000." }
+      }
+    }
   }
 ];
 
@@ -284,6 +318,42 @@ async function printerStatus() {
   );
 }
 
+async function listLogs() {
+  const dirents = await fs.readdir(logsRoot, { withFileTypes: true });
+  const logs = [];
+  for (const dirent of dirents) {
+    if (!dirent.isFile() || !dirent.name.endsWith(".log")) continue;
+    const absolute = resolveSafeLog(dirent.name);
+    const stat = await fs.stat(absolute);
+    logs.push({
+      name: dirent.name,
+      size: stat.size,
+      modified: stat.mtime.toISOString()
+    });
+  }
+  logs.sort((a, b) => b.modified.localeCompare(a.modified));
+  return { root: logsRoot, logs };
+}
+
+async function readLog(args) {
+  const name = String(args.name || "klippy.log");
+  const lines = Math.max(1, Math.min(Number(args.lines || 200), 1000));
+  const absolute = resolveSafeLog(name);
+  const stat = await fs.stat(absolute);
+  if (!stat.isFile()) throw new Error("Log path is not a file");
+
+  const readSize = Math.min(stat.size, Math.max(maxReadBytes, 1024 * 1024));
+  const file = await fs.open(absolute, "r");
+  try {
+    const buffer = Buffer.alloc(readSize);
+    await file.read(buffer, 0, readSize, stat.size - readSize);
+    const content = buffer.toString("utf8").split(/\r?\n/).slice(-lines).join("\n");
+    return { name, size: stat.size, lines, content };
+  } finally {
+    await file.close();
+  }
+}
+
 const handlers = {
   list_files: listFiles,
   read_file: readFile,
@@ -293,7 +363,9 @@ const handlers = {
   search_config: searchConfig,
   run_gcode: runGcode,
   restart_firmware: restartFirmware,
-  printer_status: printerStatus
+  printer_status: printerStatus,
+  list_logs: listLogs,
+  read_log: readLog
 };
 
 function textContent(value) {
@@ -412,6 +484,7 @@ async function handleHttpRequest(request, response) {
       transport: "http",
       endpoint: "/mcp",
       root,
+      logsRoot,
       moonrakerUrl,
       authRequired: Boolean(httpToken),
       tools: tools.map((tool) => tool.name)

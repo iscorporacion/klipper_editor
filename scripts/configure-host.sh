@@ -228,29 +228,25 @@ install_cloudflared() {
     return 0
   fi
 
-  if ! command -v apt-get >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1; then
-    log "cloudflared install skipped: apt-get and curl are required."
+  if ! command -v wget >/dev/null 2>&1; then
+    log "cloudflared install skipped: wget is required."
     log "Install cloudflared manually before using Options > MCP > Subir MCP."
     return 0
   fi
 
-  log "Installing cloudflared for temporary MCP tunnels."
-  run_sudo mkdir -p --mode=0755 /usr/share/keyrings
-  if ! curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg | run_sudo tee /usr/share/keyrings/cloudflare-main.gpg >/dev/null; then
-    log "cloudflared install skipped: could not download Cloudflare package key."
+  log "Installing cloudflared for temporary MCP tunnels from GitHub ARM binary."
+  local tmp_cloudflared
+  tmp_cloudflared="$(mktemp)"
+  if ! wget -O "${tmp_cloudflared}" https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm; then
+    rm -f "${tmp_cloudflared}"
+    log "cloudflared install skipped: could not download cloudflared-linux-arm."
     return 0
   fi
 
-  printf '%s\n' 'deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared any main' |
-    run_sudo tee /etc/apt/sources.list.d/cloudflared.list >/dev/null
-
-  if ! run_sudo apt-get update; then
-    log "cloudflared install skipped: apt-get update failed."
-    return 0
-  fi
-
-  if ! run_sudo apt-get install -y cloudflared; then
-    log "cloudflared install skipped: apt-get install cloudflared failed."
+  chmod +x "${tmp_cloudflared}"
+  if ! run_sudo mv "${tmp_cloudflared}" /usr/local/bin/cloudflared; then
+    rm -f "${tmp_cloudflared}"
+    log "cloudflared install skipped: could not move binary to /usr/local/bin/cloudflared."
     return 0
   fi
 

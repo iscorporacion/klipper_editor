@@ -119,7 +119,16 @@ https://example.trycloudflare.com/mcp?token=temporary-token
 
 In ChatGPT, choose `No authentication` and paste the full URL, including the `token` query parameter.
 
-The tunnel helper uses `cloudflared`. On Debian/Ubuntu hosts with `apt-get`, the Klipper Editor installer installs `cloudflared` automatically. Set `KLIPPER_EDITOR_INSTALL_CLOUDFLARED=false` before running the installer if you want to skip that system dependency.
+The tunnel helper uses `cloudflared`. On RatOS printer hosts, the Klipper Editor installer installs the ARM binary directly from Cloudflare's GitHub release. Set `KLIPPER_EDITOR_INSTALL_CLOUDFLARED=false` before running the installer if you want to skip that system dependency.
+
+Manual install uses the same flow:
+
+```bash
+wget https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm
+chmod +x cloudflared-linux-arm
+sudo mv cloudflared-linux-arm /usr/local/bin/cloudflared
+cloudflared --version
+```
 
 You can verify it with:
 

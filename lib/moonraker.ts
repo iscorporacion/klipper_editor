@@ -1,3 +1,6 @@
+import { request as httpRequest } from "node:http";
+import { request as httpsRequest } from "node:https";
+
 function normalizeMoonrakerUrl(input: string) {
   const markdownLink = input.match(/\]\((https?:\/\/[^)]+)\)/i);
   const rawUrl = markdownLink?.[1] ?? input;
@@ -22,6 +25,9 @@ export type MoonrakerStatus = {
     y: number;
     z: number;
   };
+  speed: number;
+  activeExtruder: string;
+  excludeObject: ExcludeObjectStatus;
   positionLimits: {
     x: AxisLimit;
     y: AxisLimit;
@@ -47,6 +53,15 @@ export type MoonrakerPrintDetails = {
   };
   metadata?: Partial<GcodeFileEntry>;
   raw: unknown;
+};
+
+export type ExcludeObjectStatus = {
+  objects: Array<{
+    name: string;
+    polygon?: unknown;
+  }>;
+  excludedObjects: string[];
+  currentObject: string;
 };
 
 export type AxisLimit = {
@@ -161,9 +176,29 @@ async function moonrakerFetch(path: string, init?: RequestInit) {
   return payload;
 }
 
+export async function uploadGcodeFile(file: File) {
+  const formData = new FormData();
+  formData.append("root", "gcodes");
+  formData.append("path", "");
+  formData.append("file", file, file.name);
+
+  return moonrakerFetch("/server/files/upload", {
+    method: "POST",
+    body: formData
+  });
+}
+
+export async function deleteGcodeFile(filename: string) {
+  const cleanFilename = filename.trim().replace(/^\/+/, "");
+  const payload = await moonrakerFetch(`/server/files/gcodes/${cleanFilename.split("/").map(encodeURIComponent).join("/")}`, {
+    method: "DELETE"
+  });
+  return payload?.result ?? payload;
+}
+
 export async function getMoonrakerStatus(): Promise<MoonrakerStatus> {
   const payload = await moonrakerFetch(
-    "/printer/objects/query?webhooks=state,state_message&print_stats=state,filename,message,print_duration,total_duration,filament_used,info&virtual_sdcard=progress,file_position,file_size&display_status=message,progress&configfile=settings&toolhead=homed_axes,position&gcode_move=gcode_position,homing_origin"
+    "/printer/objects/query?webhooks=state,state_message&print_stats=state,filename,message,print_duration,total_duration,filament_used,info&virtual_sdcard=progress,file_position,file_size&display_status=message,progress&configfile=settings&toolhead=homed_axes,position,extruder&gcode_move=gcode_position,homing_origin,speed&exclude_object=objects,excluded_objects,current_object"
   );
   const status = payload?.result?.status ?? payload?.status ?? {};
   const webhooks = status.webhooks ?? {};
@@ -173,6 +208,7 @@ export async function getMoonrakerStatus(): Promise<MoonrakerStatus> {
   const configSettings = status.configfile?.settings ?? {};
   const toolhead = status.toolhead ?? {};
   const gcodeMove = status.gcode_move ?? {};
+  const excludeObject = status.exclude_object ?? {};
   const position = Array.isArray(gcodeMove.gcode_position)
     ? gcodeMove.gcode_position
     : Array.isArray(toolhead.position)
@@ -232,6 +268,23 @@ export async function getMoonrakerStatus(): Promise<MoonrakerStatus> {
       x: toNumber(position[0]),
       y: toNumber(position[1]),
       z: toNumber(position[2])
+    },
+    speed: toNumber(gcodeMove.speed),
+    activeExtruder: String(toolhead.extruder ?? ""),
+    excludeObject: {
+      objects: Array.isArray(excludeObject.objects)
+        ? (excludeObject.objects as unknown[])
+            .filter((object): object is Record<string, unknown> => Boolean(object) && typeof object === "object")
+            .map((object) => ({
+              name: String(object.name ?? ""),
+              polygon: object.polygon
+            }))
+            .filter((object) => object.name)
+        : [],
+      excludedObjects: Array.isArray(excludeObject.excluded_objects)
+        ? (excludeObject.excluded_objects as unknown[]).map((object) => String(object))
+        : [],
+      currentObject: String(excludeObject.current_object ?? "")
     },
     positionLimits,
     extruders: listExtruders(configSettings),
@@ -334,6 +387,34 @@ export async function runGcodeScript(script: string) {
     body: JSON.stringify({ script })
   });
   return payload?.result ?? payload;
+}
+
+// PID can take longer than fetch's default response-header timeout.
+export function runPidCalibration(heater: string, target: number): Promise<void> {
+  const url = new URL(moonrakerPath("/printer/gcode/script"));
+  const body = JSON.stringify({ script: `PID_CALIBRATE HEATER="${heater}" TARGET=${target}` });
+  return new Promise((resolve, reject) => {
+    const request = (url.protocol === "https:" ? httpsRequest : httpRequest)(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(body) }
+    }, (response) => {
+      let text = "";
+      response.setEncoding("utf8");
+      response.on("data", (chunk: string) => { text += chunk; });
+      response.on("error", reject);
+      response.on("end", () => {
+        try {
+          const payload = JSON.parse(text);
+          if (response.statusCode !== 200 || payload.error || payload.result !== "ok") {
+            reject(new Error(payload.error?.message ?? "PID completion was not confirmed"));
+          } else resolve();
+        } catch (error) { reject(error); }
+      });
+    });
+    request.setTimeout(60 * 60 * 1000, () => request.destroy(new Error("PID response timed out; completion was not confirmed")));
+    request.on("error", reject);
+    request.end(body);
+  });
 }
 
 export async function getGcodeStore(count = 100): Promise<GcodeStoreEntry[]> {

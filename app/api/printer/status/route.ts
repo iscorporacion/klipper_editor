@@ -34,6 +34,13 @@ export async function GET() {
         y: 0,
         z: 0
       },
+      speed: 0,
+      activeExtruder: "",
+      excludeObject: {
+        objects: [],
+        excludedObjects: [],
+        currentObject: ""
+      },
       positionLimits: {
         x: { min: 0, max: 0 },
         y: { min: 0, max: 0 },

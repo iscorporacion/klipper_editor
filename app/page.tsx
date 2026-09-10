@@ -2,7 +2,15 @@
 
 import dynamic from "next/dynamic";
 import Image from "next/image";
-import type { ChangeEvent, CSSProperties, FormEvent, MouseEvent as ReactMouseEvent, ReactNode } from "react";
+import PidChart, { type PidSample } from "@/components/PidChart";
+import type {
+  ChangeEvent,
+  CSSProperties,
+  DragEvent as ReactDragEvent,
+  FormEvent,
+  MouseEvent as ReactMouseEvent,
+  ReactNode
+} from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import MdiIcon from "@mdi/react";
 import { mdiArrowCollapseLeft, mdiArrowCollapseRight, mdiConsoleLine } from "@mdi/js";
@@ -30,6 +38,7 @@ import {
 } from "react-icons/fc";
 import {
   MdDelete,
+  MdAcUnit,
   MdEdit,
   MdFunctions,
   MdHome,
@@ -130,6 +139,9 @@ type PrinterStatus = {
     y: number;
     z: number;
   };
+  speed: number;
+  activeExtruder: string;
+  excludeObject: ExcludeObjectStatus;
   positionLimits: {
     x: AxisLimit;
     y: AxisLimit;
@@ -156,6 +168,29 @@ type PrintDetails = {
   };
   metadata?: Partial<GcodeFileEntry>;
   raw: unknown;
+};
+
+type ExcludeObjectStatus = {
+  objects: Array<{
+    name: string;
+    polygon?: unknown;
+  }>;
+  excludedObjects: string[];
+  currentObject: string;
+};
+
+type XySnapshot = {
+  timestamp: number;
+  filename: string;
+  layer?: number;
+  x: number;
+  y: number;
+  z: number;
+  speed: number;
+  activeExtruder: string;
+  filePosition: number;
+  suggestedIntervalMs: number;
+  excludeObject: ExcludeObjectStatus;
 };
 
 type QuickCommand = "home-all" | "home-x" | "home-y" | "home-z" | "z-tilt";
@@ -399,6 +434,9 @@ function normalizePrinterStatus(value: unknown, fallbackMessage: string): Printe
   const printInfo = printDetails.info && typeof printDetails.info === "object"
     ? (printDetails.info as Partial<PrintDetails["info"]>)
     : {};
+  const excludeObject = status.excludeObject && typeof status.excludeObject === "object"
+    ? (status.excludeObject as Partial<ExcludeObjectStatus>)
+    : {};
 
   return {
     webhooksState: String(status.webhooksState ?? "unknown"),
@@ -431,6 +469,21 @@ function normalizePrinterStatus(value: unknown, fallbackMessage: string): Printe
       x: numericValue(position.x),
       y: numericValue(position.y),
       z: numericValue(position.z)
+    },
+    speed: numericValue(status.speed),
+    activeExtruder: String(status.activeExtruder ?? ""),
+    excludeObject: {
+      objects: Array.isArray(excludeObject.objects)
+        ? excludeObject.objects
+            .filter((object): object is ExcludeObjectStatus["objects"][number] => {
+              return Boolean(object) && typeof object === "object" && typeof object.name === "string";
+            })
+            .map((object) => ({ name: object.name, polygon: object.polygon }))
+        : [],
+      excludedObjects: Array.isArray(excludeObject.excludedObjects)
+        ? excludeObject.excludedObjects.map((object) => String(object))
+        : [],
+      currentObject: String(excludeObject.currentObject ?? "")
     },
     positionLimits: {
       x: axisLimitValue(positionLimits.x),
@@ -516,6 +569,7 @@ const defaultMessages: Messages = {
   "actions.showBackupFiles": "Mostrar backups",
   "actions.downloadFile": "Descargar archivo",
   "actions.deleteFile": "Borrar archivo",
+  "actions.deleting": "Borrando",
   "actions.renameFile": "Renombrar archivo",
   "actions.selectFile": "Seleccionar archivo",
   "actions.downloadSelectedFiles": "Descargar seleccionados",
@@ -770,6 +824,10 @@ const defaultMessages: Messages = {
   "gcodes.loading": "Cargando archivos.",
   "gcodes.empty": "Sin archivos G-code.",
   "gcodes.historyEmpty": "Sin historial de impresiones.",
+  "gcodes.upload": "Subir G-code",
+  "gcodes.dropUpload": "Arrastra archivos .gcode aqui o pulsa para subir",
+  "gcodes.uploading": "Subiendo G-code.",
+  "gcodes.uploadOnlyGcode": "Selecciona archivos .gcode.",
   "gcodes.noSelection": "Selecciona un archivo para ver sus detalles.",
   "gcodes.noThumbnail": "Sin miniatura",
   "gcodes.search": "Buscar archivo",
@@ -782,6 +840,14 @@ const defaultMessages: Messages = {
   "gcodes.layerHeight": "Altura de capa",
   "gcodes.objectHeight": "Altura objeto",
   "gcodes.status": "Estado",
+  "gcodes.statusComplete": "Completada",
+  "gcodes.statusCancelled": "Cancelada",
+  "gcodes.statusError": "Error",
+  "gcodes.statusPrinting": "Imprimiendo",
+  "gcodes.statusPaused": "Pausada",
+  "gcodes.statusStandby": "En espera",
+  "gcodes.statusUnknown": "Desconocido",
+  "gcodes.lastStatus": "Ultima",
   "gcodes.started": "Inicio",
   "gcodes.finished": "Fin",
   "printStatus.title": "Impresion en curso",
@@ -790,6 +856,21 @@ const defaultMessages: Messages = {
   "printStatus.filePosition": "Posicion de archivo",
   "printStatus.layers": "Capas",
   "printStatus.message": "Mensaje",
+  "printStatus.xyRecorder": "Registro XY",
+  "printStatus.xyRecorderStart": "Activar registro XY",
+  "printStatus.xyRecorderStop": "Desactivar registro XY",
+  "printStatus.xyRecorderOn": "Activo",
+  "printStatus.xyRecorderOff": "Inactivo",
+  "printStatus.xyPanelOpen": "Abrir panel XY",
+  "printStatus.xyPanelClose": "Cerrar panel XY",
+  "printStatus.snapshots": "Snapshots",
+  "printStatus.lastSnapshot": "Ultimo snapshot",
+  "printStatus.xy": "XY",
+  "printStatus.recoveryZ": "Recuperacion Z",
+  "printStatus.speed": "Velocidad",
+  "printStatus.suggestedInterval": "Intervalo sugerido",
+  "printStatus.currentObject": "Objeto actual",
+  "printStatus.excludedObjects": "Objetos excluidos",
   "globalSearch.placeholder": "Buscar en toda la configuracion",
   "globalSearch.empty": "Ingresa al menos 2 caracteres.",
   "globalSearch.noResults": "Sin resultados.",
@@ -808,6 +889,18 @@ const defaultMessages: Messages = {
   "updates.busy": "Moonraker update manager esta ocupado.",
   "sections.search": "Buscar sesion",
   "heaters.title": "Calentadores",
+  "pid.title": "Calibracion PID",
+  "pid.heater": "Calentador",
+  "pid.start": "Iniciar calibracion",
+  "pid.busy": "Calibrando...",
+  "pid.complete": "Calibracion terminada. Los resultados estan listos para guardar.",
+  "pid.saved": "Configuracion guardada. Reiniciando Klipper.",
+  "pid.ready": "Listo para calibrar",
+  "pid.chart": "Temperatura, objetivo y potencia del calentador en tiempo real",
+  "heaters.coolAll": "Enfriar todos los calentadores",
+  "heaters.pidRunning": "Calibrando PID: {heater}",
+  "heaters.pidSave": "Calibracion PID terminada. Guardar los resultados y reiniciar Klipper ahora? Se guardaran tambien otros cambios de calibracion pendientes.",
+  "heaters.pidSaveTitle": "Guardar PID y reiniciar",
   "heaters.empty": "Sin calentadores detectados.",
   "heaters.cacheHelp": "Si modificaste tus calentadores recientemente, pulsa actualizar para recargarlos y guardarlos nuevamente.",
   "heaters.current": "Actual",
@@ -1095,6 +1188,32 @@ function formatMillimeters(value: number | undefined) {
   return Number.isFinite(Number(value)) && Number(value) > 0 ? `${Number(value).toFixed(2)} mm` : "-";
 }
 
+function formatCoordinate(value: number | undefined) {
+  return Number.isFinite(Number(value)) ? Number(value).toFixed(2) : "-";
+}
+
+function suggestedXySnapshotInterval(speed: number) {
+  const targetDistanceMm = 25;
+  const defaultIntervalMs = 1000;
+  if (!Number.isFinite(speed) || speed <= 0) return defaultIntervalMs;
+  return Math.min(Math.max(Math.round((targetDistanceMm / speed) * 1000), 500), 5000);
+}
+
+function normalizedPrintStatus(status: string | undefined) {
+  const value = String(status ?? "").trim().toLowerCase();
+  if (["complete", "completed", "success"].includes(value)) return "complete";
+  if (["cancelled", "canceled"].includes(value)) return "cancelled";
+  if (["error", "failed", "failure"].includes(value)) return "error";
+  if (["printing", "in_progress"].includes(value)) return "printing";
+  if (value === "paused") return "paused";
+  if (["standby", "queued"].includes(value)) return "standby";
+  return value || "unknown";
+}
+
+function printStatusClassName(status: string | undefined) {
+  return `gcode-status-badge ${normalizedPrintStatus(status)}`;
+}
+
 function bestThumbnail(thumbnails: GcodeThumbnail[] = []) {
   return [...thumbnails].sort((a, b) => b.width * b.height - a.width * a.height)[0];
 }
@@ -1322,6 +1441,12 @@ function KEditorAccentLogo({ className }: { className: string }) {
       </g>
     </svg>
   );
+}
+
+function kEditorFaviconDataUrl(accent: string) {
+  const safeAccent = normalizeCssColor(accent, "#7bff33");
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="22 8 180 204"><defs><linearGradient id="markShade" x1="48" y1="24" x2="176" y2="180" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#566879"/><stop offset="1" stop-color="#202a34"/></linearGradient></defs><path fill="url(#markShade)" d="M112 14 196 62v96l-84 48-84-48V62Z"/><path fill="#151b22" d="M112 30 181 70v80l-69 40-69-40V70Z" opacity="0.72"/><path fill="${safeAccent}" d="M72 58h28v45l42-45h35l-50 52 54 58h-37l-44-50v50H72Z"/><path fill="#f2f6fb" d="M139 86h33v13h-33Zm-15 28h48v13h-48Zm15 28h33v13h-33Z" opacity="0.95"/><path fill="#78d6ff" d="M55 78 35 110l20 32h16l-20-32 20-32Zm114 0 20 32-20 32h-16l20-32-20-32Z"/></svg>`;
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
 }
 
 function fallbackIconForPath(path: string) {
@@ -1556,6 +1681,13 @@ function isImagePath(path: string) {
   return /\.(avif|bmp|gif|ico|jpe?g|png|svg|webp)$/i.test(path);
 }
 
+const treeFileDragType = "application/x-keditor-file";
+
+function collectTreeFilePaths(node: TreeNode): string[] {
+  if (node.type === "file") return [node.path];
+  return node.children?.flatMap((child) => collectTreeFilePaths(child)) ?? [];
+}
+
 function FileTree({
   nodes,
   activePath,
@@ -1566,6 +1698,9 @@ function FileTree({
   onDelete,
   onRename,
   onToggleSelected,
+  onToggleDirectorySelected,
+  onMoveFile,
+  onUploadFiles,
   downloadLabel,
   deleteLabel,
   renameLabel,
@@ -1580,13 +1715,43 @@ function FileTree({
   onDelete: (path: string) => void;
   onRename: (path: string) => void;
   onToggleSelected: (path: string) => void;
+  onToggleDirectorySelected: (paths: string[]) => void;
+  onMoveFile: (path: string, targetDirectory: string) => void;
+  onUploadFiles: (files: File[], targetDirectory: string) => void;
   downloadLabel: string;
   deleteLabel: string;
   renameLabel: string;
   selectLabel: string;
 }) {
+  const [dropActive, setDropActive] = useState(false);
+
+  const handleRootDragOver = (event: ReactDragEvent<HTMLDivElement>) => {
+    if (event.dataTransfer.types.includes("Files")) {
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "copy";
+      setDropActive(true);
+    }
+  };
+
+  const handleRootDrop = (event: ReactDragEvent<HTMLDivElement>) => {
+    const files = Array.from(event.dataTransfer.files ?? []);
+    if (files.length === 0) return;
+    event.preventDefault();
+    setDropActive(false);
+    onUploadFiles(files, "");
+  };
+
   return (
-    <div className="tree">
+    <div
+      className={`tree ${dropActive ? "drop-active" : ""}`}
+      onDragOver={handleRootDragOver}
+      onDragLeave={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+          setDropActive(false);
+        }
+      }}
+      onDrop={handleRootDrop}
+    >
       {nodes.map((node) => (
         <TreeItem
           key={node.path}
@@ -1599,6 +1764,9 @@ function FileTree({
           onDelete={onDelete}
           onRename={onRename}
           onToggleSelected={onToggleSelected}
+          onToggleDirectorySelected={onToggleDirectorySelected}
+          onMoveFile={onMoveFile}
+          onUploadFiles={onUploadFiles}
           downloadLabel={downloadLabel}
           deleteLabel={deleteLabel}
           renameLabel={renameLabel}
@@ -1619,6 +1787,9 @@ function TreeItem({
   onDelete,
   onRename,
   onToggleSelected,
+  onToggleDirectorySelected,
+  onMoveFile,
+  onUploadFiles,
   downloadLabel,
   deleteLabel,
   renameLabel,
@@ -1633,6 +1804,9 @@ function TreeItem({
   onDelete: (path: string) => void;
   onRename: (path: string) => void;
   onToggleSelected: (path: string) => void;
+  onToggleDirectorySelected: (paths: string[]) => void;
+  onMoveFile: (path: string, targetDirectory: string) => void;
+  onUploadFiles: (files: File[], targetDirectory: string) => void;
   downloadLabel: string;
   deleteLabel: string;
   renameLabel: string;
@@ -1641,18 +1815,109 @@ function TreeItem({
   const lowerNodeName = node.name.toLowerCase();
   const defaultOpen = node.type === "directory" && (lowerNodeName === "ratos" || lowerNodeName === "ratos_generated");
   const [expanded, setExpanded] = useState(defaultOpen);
+  const [dropActive, setDropActive] = useState(false);
   const isDirectory = node.type === "directory";
   const isOpenFile = openPaths.has(node.path);
   const downloadOnly = isDownloadOnlyPath(node.path);
+  const directoryFilePaths = isDirectory ? collectTreeFilePaths(node) : [];
+  const selectedDirectoryFiles = directoryFilePaths.filter((path) => selectedPaths.has(path)).length;
+  const directoryAllSelected = directoryFilePaths.length > 0 && selectedDirectoryFiles === directoryFilePaths.length;
+  const directorySomeSelected = selectedDirectoryFiles > 0 && !directoryAllSelected;
+  const directoryCheckboxRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (directoryCheckboxRef.current) {
+      directoryCheckboxRef.current.indeterminate = directorySomeSelected;
+    }
+  }, [directorySomeSelected]);
 
   if (isDirectory) {
+    const handleDirectoryDragOver = (event: ReactDragEvent<HTMLDivElement>) => {
+      const hasFileDrag = event.dataTransfer.types.includes(treeFileDragType);
+      const hasExternalFiles = event.dataTransfer.types.includes("Files");
+      if (!hasFileDrag && !hasExternalFiles) return;
+      event.preventDefault();
+      event.stopPropagation();
+      event.dataTransfer.dropEffect = hasFileDrag ? "move" : "copy";
+      setDropActive(true);
+    };
+
+    const handleDirectoryDrop = (event: ReactDragEvent<HTMLDivElement>) => {
+      const draggedPath = event.dataTransfer.getData(treeFileDragType);
+      const files = Array.from(event.dataTransfer.files ?? []);
+      if (!draggedPath && files.length === 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      setDropActive(false);
+      setExpanded(true);
+      if (draggedPath) {
+        onMoveFile(draggedPath, node.path);
+        return;
+      }
+      onUploadFiles(files, node.path);
+    };
+
     return (
-      <div>
-        <button className="tree-row" type="button" onClick={() => setExpanded((value) => !value)}>
-          {expanded ? <FcExpand className="disclosure-icon" /> : <FcNext className="disclosure-icon" />}
-          <MaterialIcon name={(expanded ? node.openIcon : node.icon) ?? "folder"} className="folder-type-icon" />
-          <span>{node.name}</span>
-        </button>
+      <div
+        onDragOver={handleDirectoryDragOver}
+        onDragLeave={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+            setDropActive(false);
+          }
+        }}
+        onDrop={handleDirectoryDrop}
+      >
+        <div
+          className={`tree-row directory-row ${dropActive ? "drop-target" : ""}`}
+          title={`${node.path}\n${renameLabel}`}
+          onContextMenu={(event) => {
+            event.preventDefault();
+            onRename(node.path);
+          }}
+        >
+          <button className="tree-open-button" type="button" onClick={() => setExpanded((value) => !value)}>
+            {expanded ? <FcExpand className="disclosure-icon" /> : <FcNext className="disclosure-icon" />}
+            <MaterialIcon name={(expanded ? node.openIcon : node.icon) ?? "folder"} className="folder-type-icon" />
+            <span>{node.name}</span>
+          </button>
+          <div className="tree-file-actions directory-actions">
+            <button
+              className="tree-action-button"
+              type="button"
+              title={renameLabel}
+              aria-label={renameLabel}
+              onClick={(event) => {
+                event.stopPropagation();
+                onRename(node.path);
+              }}
+            >
+              <MdEdit className="tree-action-icon" />
+            </button>
+            <button
+              className="tree-action-button danger"
+              type="button"
+              title={deleteLabel}
+              aria-label={deleteLabel}
+              onClick={(event) => {
+                event.stopPropagation();
+                onDelete(node.path);
+              }}
+            >
+              <MdDelete className="tree-action-icon" />
+            </button>
+          </div>
+          <input
+            ref={directoryCheckboxRef}
+            className="tree-select-checkbox directory-select-checkbox"
+            type="checkbox"
+            checked={directoryAllSelected}
+            disabled={directoryFilePaths.length === 0}
+            title={selectLabel}
+            aria-label={selectLabel}
+            onChange={() => onToggleDirectorySelected(directoryFilePaths)}
+            onClick={(event) => event.stopPropagation()}
+          />
+        </div>
         {expanded && node.children && (
           <div className="tree-children">
             {node.children.map((child) => (
@@ -1667,6 +1932,9 @@ function TreeItem({
                 onDelete={onDelete}
                 onRename={onRename}
                 onToggleSelected={onToggleSelected}
+                onToggleDirectorySelected={onToggleDirectorySelected}
+                onMoveFile={onMoveFile}
+                onUploadFiles={onUploadFiles}
                 downloadLabel={downloadLabel}
                 deleteLabel={deleteLabel}
                 renameLabel={renameLabel}
@@ -1683,6 +1951,12 @@ function TreeItem({
     <div
       className={`tree-row file-row ${activePath === node.path ? "active" : ""}`}
       title={`${node.path}\n${renameLabel}`}
+      draggable
+      onDragStart={(event) => {
+        event.dataTransfer.setData(treeFileDragType, node.path);
+        event.dataTransfer.setData("text/plain", node.path);
+        event.dataTransfer.effectAllowed = "move";
+      }}
       onContextMenu={(event) => {
         event.preventDefault();
         onRename(node.path);
@@ -1709,6 +1983,15 @@ function TreeItem({
         {isOpenFile && <Icon className="open-dot">*</Icon>}
       </button>
       <div className="tree-file-actions">
+        <button
+          className="tree-action-button"
+          type="button"
+          title={renameLabel}
+          aria-label={renameLabel}
+          onClick={() => onRename(node.path)}
+        >
+          <MdEdit className="tree-action-icon" />
+        </button>
         <button
           className="tree-action-button"
           type="button"
@@ -1763,6 +2046,16 @@ export default function Home() {
   const [bulkExtruderTarget, setBulkExtruderTarget] = useState("");
   const [bulkBedTarget, setBulkBedTarget] = useState("");
   const [heatersLoading, setHeatersLoading] = useState(false);
+  const [pidJob, setPidJob] = useState<{ id: string; heater: string } | null>(null);
+  const pidBusyRef = useRef(false);
+  const [pidMessage, setPidMessage] = useState("");
+  const [pidOpen, setPidOpen] = useState(false);
+  const [pidHeater, setPidHeater] = useState("");
+  const [pidTarget, setPidTarget] = useState("");
+  const [pidStarting, setPidStarting] = useState(false);
+  const [pidSaving, setPidSaving] = useState(false);
+  const [pidCompleted, setPidCompleted] = useState<{ id: string; heater: string } | null>(null);
+  const [pidSamples, setPidSamples] = useState<PidSample[]>([]);
   const [settingHeaters, setSettingHeaters] = useState(false);
   const [macros, setMacros] = useState<MacroEntry[]>([]);
   const [macroTab, setMacroTab] = useState<MacroTab>("favorites");
@@ -1800,6 +2093,9 @@ export default function Home() {
   const [gcodeHistory, setGcodeHistory] = useState<GcodeHistoryEntry[]>([]);
   const [selectedGcodeItem, setSelectedGcodeItem] = useState<SelectedGcodeItem | null>(null);
   const [gcodesLoading, setGcodesLoading] = useState(false);
+  const [gcodesUploading, setGcodesUploading] = useState(false);
+  const [gcodesDragActive, setGcodesDragActive] = useState(false);
+  const [deletingGcodePath, setDeletingGcodePath] = useState<string | null>(null);
   const [startingPrint, setStartingPrint] = useState(false);
   const [runningPrintAction, setRunningPrintAction] = useState<PrintControlAction | null>(null);
   const [dialog, setDialog] = useState<AppDialog | null>(null);
@@ -1837,6 +2133,9 @@ export default function Home() {
     log: []
   });
   const [mcpTunnelBusy, setMcpTunnelBusy] = useState(false);
+  const [xyRecorderEnabled, setXyRecorderEnabled] = useState(false);
+  const [xyRecorderPanelOpen, setXyRecorderPanelOpen] = useState(false);
+  const [xySnapshots, setXySnapshots] = useState<XySnapshot[]>([]);
   const [outlineWidth, setOutlineWidth] = useState(320);
   const [includePanelHeight, setIncludePanelHeight] = useState(240);
   const [sectionPreview, setSectionPreview] = useState<SectionPreview | null>(null);
@@ -1846,6 +2145,7 @@ export default function Home() {
   const previewOpenTimerRef = useRef<number | null>(null);
   const previewCloseTimerRef = useRef<number | null>(null);
   const uploadInputRef = useRef<HTMLInputElement | null>(null);
+  const gcodeUploadInputRef = useRef<HTMLInputElement | null>(null);
   const heatersRef = useRef<HeaterStatus[]>([]);
   const machinePowerMenuRef = useRef<HTMLDivElement | null>(null);
   const terminalOutputRef = useRef<HTMLPreElement | null>(null);
@@ -1908,6 +2208,17 @@ export default function Home() {
   const currentPrintThumbnailUrl = currentPrintThumbnail
     ? apiPath(`/api/printer/gcode-thumbnail?path=${encodeURIComponent(currentPrintThumbnail.relativePath)}`)
     : "";
+  const latestXySnapshot = xySnapshots.at(-1);
+  const latestGcodeHistoryByFilename = useMemo(() => {
+    const jobsByFilename = new Map<string, GcodeHistoryEntry>();
+    for (const job of gcodeHistory) {
+      const filename = job.filename;
+      const basenameKey = basename(filename);
+      if (!jobsByFilename.has(filename)) jobsByFilename.set(filename, job);
+      if (!jobsByFilename.has(basenameKey)) jobsByFilename.set(basenameKey, job);
+    }
+    return jobsByFilename;
+  }, [gcodeHistory]);
   const filteredGcodeFiles = useMemo(() => {
     const query = gcodeSearch.trim().toLowerCase();
     if (!query) return gcodeFiles;
@@ -1983,6 +2294,15 @@ export default function Home() {
   const t = useCallback(
     (key: string, values?: Record<string, string | number>) => translate(messages, key, values),
     [messages]
+  );
+  const printStatusLabel = useCallback(
+    (status: string | undefined) => {
+      const normalized = normalizedPrintStatus(status);
+      const key = `gcodes.status${normalized.charAt(0).toUpperCase()}${normalized.slice(1)}`;
+      const label = t(key);
+      return label === key ? status || t("gcodes.statusUnknown") : label;
+    },
+    [t]
   );
 
   const appendTerminalOutput = useCallback((chunks: TerminalChunk[]) => {
@@ -2128,7 +2448,7 @@ export default function Home() {
       };
       if (!response.ok) throw new Error(payload.error ?? t("errors.loadGcodes"));
 
-      setGcodeFiles(payload.files ?? []);
+      setGcodeFiles([...(payload.files ?? [])].sort((a, b) => b.modified - a.modified));
       setGcodeHistory(payload.history ?? []);
       setSelectedGcodeItem(null);
     } catch (error) {
@@ -2145,6 +2465,52 @@ export default function Home() {
     setSelectedGcodeItem(null);
     void loadGcodes();
   }, [loadGcodes]);
+
+  const uploadGcodeFiles = useCallback(
+    async (files: File[]) => {
+      const gcodeUploads = files.filter((file) => file.name.toLowerCase().endsWith(".gcode"));
+      if (gcodeUploads.length === 0) {
+        setMessage(t("gcodes.uploadOnlyGcode"));
+        return;
+      }
+
+      setGcodesUploading(true);
+      setGcodeModalTab("files");
+
+      try {
+        for (const file of gcodeUploads) {
+          setMessage(t("status.uploading", { path: file.name }));
+          const formData = new FormData();
+          formData.append("file", file);
+
+          const response = await fetch(apiPath("/api/printer/gcodes/upload"), {
+            method: "POST",
+            body: formData
+          });
+          const payload = await response.json();
+          if (!response.ok) throw new Error(payload.error ?? t("errors.uploadFile"));
+        }
+
+        await loadGcodes();
+        setMessage(t("status.uploaded", { path: gcodeUploads.map((file) => file.name).join(", ") }));
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : t("errors.uploadFile"));
+      } finally {
+        setGcodesUploading(false);
+        setGcodesDragActive(false);
+      }
+    },
+    [loadGcodes, t]
+  );
+
+  const uploadGcodesFromInput = useCallback(
+    async (event: ChangeEvent<HTMLInputElement>) => {
+      const files = Array.from(event.target.files ?? []);
+      event.target.value = "";
+      await uploadGcodeFiles(files);
+    },
+    [uploadGcodeFiles]
+  );
 
   const loadUpdates = useCallback(
     async (refresh = false) => {
@@ -2227,9 +2593,12 @@ export default function Home() {
       if (nextStatus.webhooksState.toLowerCase() === "ready" && !nextStatus.error) {
         setPrinterInitializing(false);
       }
+      return nextStatus;
     } catch (error) {
       const message = error instanceof Error ? error.message : t("errors.printerStatus");
-      setPrinterStatus(normalizePrinterStatus({ error: message }, t("errors.printerStatus")));
+      const nextStatus = normalizePrinterStatus({ error: message }, t("errors.printerStatus"));
+      setPrinterStatus(nextStatus);
+      return nextStatus;
     }
   }, [t]);
 
@@ -2643,6 +3012,10 @@ export default function Home() {
 
         const nextHeaters = (payload.heaters ?? []) as HeaterStatus[];
         cacheAndSetHeaters(nextHeaters);
+        if (pidOpen || pidJob) {
+          const selected = nextHeaters.find((heater) => heater.name === (pidJob?.heater ?? pidHeater));
+          if (selected) setPidSamples((samples) => [...samples, { time: Date.now(), temperature: selected.temperature, target: selected.target, power: selected.power }].slice(-2400));
+        }
         return nextHeaters;
       } catch (error) {
         if (cachedHeaters.length === 0) {
@@ -2654,7 +3027,7 @@ export default function Home() {
         return undefined;
       }
     },
-    [cacheAndSetHeaters, t]
+    [cacheAndSetHeaters, pidOpen, pidJob, pidHeater, t]
   );
 
   const setHeaterTargetInputs = useCallback((nextHeaters: HeaterStatus[]) => {
@@ -3041,7 +3414,7 @@ export default function Home() {
 
   const setHeaterGroupTargetValues = useCallback((group: HeaterStatus[], value: string) => {
     const normalizedValue = value.trim();
-    if (!normalizedValue || group.length === 0) return;
+    if (group.length === 0) return;
 
     setHeaterTargets((targets) => ({
       ...targets,
@@ -3052,7 +3425,7 @@ export default function Home() {
   const submitHeaters = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
-      if (settingHeaters) return;
+      if (settingHeaters || pidBusyRef.current) return;
 
       const targets = Object.fromEntries(
         heaters.map((heater) => {
@@ -3085,6 +3458,97 @@ export default function Home() {
     },
     [cacheAndSetHeaters, heaterTargets, heaters, setHeaterTargetInputs, settingHeaters, t]
   );
+
+  const coolAllHeaters = async () => {
+    if (settingHeaters) return;
+    setSettingHeaters(true);
+    try {
+      const response = await fetch(apiPath("/api/printer/gcode"), {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ script: "TURN_OFF_HEATERS" })
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error);
+      setHeaterTargets(Object.fromEntries(heaters.map((heater) => [heater.name, "0"])));
+      await loadHeaters();
+    } catch (error) {
+      setPidMessage(String(error));
+    } finally {
+      setSettingHeaters(false);
+    }
+  };
+
+  const calibratePid = async (heater: HeaterStatus) => {
+    if (pidBusyRef.current || settingHeaters) return;
+    const target = Number(pidTarget);
+    if (!Number.isFinite(target) || target <= 0 || target > 350) return;
+    pidBusyRef.current = true;
+    setPidStarting(true);
+    setPidCompleted(null);
+    setPidSamples([]);
+    setPidMessage(t("heaters.pidRunning", { heater: heater.label }));
+    try {
+      const response = await fetch(apiPath("/api/printer/pid"), {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ heater: heater.name, target })
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error);
+      setPidJob(payload.job);
+    } catch (error) {
+      pidBusyRef.current = false;
+      setPidMessage(String(error));
+    } finally {
+      setPidStarting(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!pidJob) return;
+    let disposed = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const poll = async () => {
+      try {
+        const response = await fetch(apiPath("/api/printer/pid"), { cache: "no-store" });
+        const payload = await response.json();
+        if (disposed) return;
+        if (!response.ok) throw new Error(payload.error);
+        if (!payload.job || payload.job.id !== pidJob.id) throw new Error("PID: session lost; completion could not be confirmed.");
+        if (payload.job.state === "running") {
+          timer = setTimeout(() => void poll(), 2000);
+          return;
+        }
+        if (payload.job.state === "error") throw new Error(payload.job.error);
+        setPidMessage(t("pid.complete"));
+        setPidCompleted(pidJob);
+      } catch (error) {
+        setPidMessage(String(error));
+        setPrinterInitializing(false);
+      }
+      pidBusyRef.current = false;
+      setPidJob(null);
+    };
+    timer = setTimeout(() => void poll(), 2000);
+    return () => { disposed = true; clearTimeout(timer); };
+  }, [pidJob, t]);
+
+  const savePid = async () => {
+    if (!pidCompleted || pidSaving || pidBusyRef.current) return;
+    setPidSaving(true);
+    try {
+      const response = await fetch(apiPath("/api/printer/pid"), {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "save", id: pidCompleted.id })
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error);
+      setPidCompleted(null);
+      setPidMessage(t("pid.saved"));
+      setPrinterInitializing(true);
+      await loadPrinterStatus();
+    } catch (error) { setPidMessage(String(error)); }
+    finally { setPidSaving(false); }
+  };
 
   const openFile = useCallback(
     async (path: string) => {
@@ -3285,6 +3749,22 @@ export default function Home() {
     });
   }, []);
 
+  const toggleSelectedTreeDirectory = useCallback((paths: string[]) => {
+    if (paths.length === 0) return;
+    setSelectedTreeFiles((current) => {
+      const next = new Set(current);
+      const allSelected = paths.every((path) => next.has(path));
+      for (const path of paths) {
+        if (allSelected) {
+          next.delete(path);
+        } else {
+          next.add(path);
+        }
+      }
+      return next;
+    });
+  }, []);
+
   const downloadSelectedFiles = useCallback(async () => {
     if (selectedTreeFileList.length === 0) return;
 
@@ -3327,11 +3807,23 @@ export default function Home() {
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error ?? t("errors.deleteFile"));
 
-        const nextFiles = openFiles.filter((file) => file.path !== path);
+        const deletedIsDirectory = payload.type === "directory";
+        const nextFiles = openFiles.filter((file) =>
+          deletedIsDirectory ? file.path !== path && !file.path.startsWith(`${path}/`) : file.path !== path
+        );
         setOpenFiles(nextFiles);
-        if (activePath === path) {
+        if (activePath === path || (deletedIsDirectory && activePath?.startsWith(`${path}/`))) {
           setActivePath(nextFiles.at(-1)?.path);
         }
+        setSelectedTreeFiles((current) => {
+          const next = new Set(current);
+          for (const selectedPath of current) {
+            if (selectedPath === path || (deletedIsDirectory && selectedPath.startsWith(`${path}/`))) {
+              next.delete(selectedPath);
+            }
+          }
+          return next;
+        });
         await loadTree();
         setMessage(t("status.deleted", { path }));
       } catch (error) {
@@ -3358,34 +3850,94 @@ export default function Home() {
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error ?? t("errors.renameFile"));
 
+        const renamedPath = payload.newPath ?? newPath;
+        const renamedIsDirectory = payload.type === "directory";
+        const remapPath = (candidate: string) =>
+          renamedIsDirectory && candidate.startsWith(`${path}/`)
+            ? `${renamedPath}${candidate.slice(path.length)}`
+            : candidate === path
+              ? renamedPath
+              : candidate;
+
+        setOpenFiles((files) =>
+          files.map((file) => {
+            const nextPath = remapPath(file.path);
+            return nextPath !== file.path
+              ? {
+                  ...file,
+                  path: nextPath,
+                  modifiedAt: payload.modifiedAt ?? file.modifiedAt
+                }
+              : file;
+          })
+        );
+        if (activePath) {
+          setActivePath(remapPath(activePath));
+        }
+        setSelectedTreeFiles((current) => {
+          const next = new Set(current);
+          for (const selectedPath of current) {
+            const nextPath = remapPath(selectedPath);
+            if (nextPath !== selectedPath) {
+              next.delete(selectedPath);
+              next.add(nextPath);
+            }
+          }
+          return next;
+        });
+        await loadTree();
+        setMessage(t("status.renamed", { path, newPath: renamedPath }));
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : t("errors.renameFile"));
+      }
+    },
+    [activePath, loadTree, promptDialog, t]
+  );
+
+  const moveFileToDirectory = useCallback(
+    async (path: string, targetDirectory: string) => {
+      const cleanDirectory = targetDirectory.replace(/\/+$/, "");
+      const newPath = cleanDirectory ? `${cleanDirectory}/${basename(path)}` : basename(path);
+      if (!newPath || newPath === path || dirname(path) === cleanDirectory) return;
+
+      try {
+        const response = await fetch(apiPath("/api/file"), {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ path, newPath })
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error ?? t("errors.renameFile"));
+
+        const movedPath = payload.newPath ?? newPath;
         setOpenFiles((files) =>
           files.map((file) =>
             file.path === path
               ? {
                   ...file,
-                  path: payload.newPath ?? newPath,
+                  path: movedPath,
                   modifiedAt: payload.modifiedAt ?? file.modifiedAt
                 }
               : file
           )
         );
         if (activePath === path) {
-          setActivePath(payload.newPath ?? newPath);
+          setActivePath(movedPath);
         }
         setSelectedTreeFiles((current) => {
           if (!current.has(path)) return current;
           const next = new Set(current);
           next.delete(path);
-          next.add(payload.newPath ?? newPath);
+          next.add(movedPath);
           return next;
         });
         await loadTree();
-        setMessage(t("status.renamed", { path, newPath: payload.newPath ?? newPath }));
+        setMessage(t("status.renamed", { path, newPath: movedPath }));
       } catch (error) {
         setMessage(error instanceof Error ? error.message : t("errors.renameFile"));
       }
     },
-    [activePath, loadTree, promptDialog, t]
+    [activePath, loadTree, t]
   );
 
   const deleteSelectedFiles = useCallback(async () => {
@@ -3420,16 +3972,15 @@ export default function Home() {
     }
   }, [activePath, confirmDialog, loadTree, openFiles, selectedTreeFileList, t]);
 
-  const uploadFiles = useCallback(
-    async (event: ChangeEvent<HTMLInputElement>) => {
-      const files = Array.from(event.target.files ?? []);
-      event.target.value = "";
+  const uploadFilesToDirectory = useCallback(
+    async (files: File[], targetDirectory = activeDirectory) => {
       if (files.length === 0) return;
 
       const uploadedPaths: string[] = [];
+      const cleanDirectory = targetDirectory.replace(/\/+$/, "");
 
       for (const file of files) {
-        const targetPath = activeDirectory ? `${activeDirectory}/${file.name}` : file.name;
+        const targetPath = cleanDirectory ? `${cleanDirectory}/${file.name}` : file.name;
         setMessage(t("status.uploading", { path: targetPath }));
 
         try {
@@ -3457,6 +4008,15 @@ export default function Home() {
       setMessage(t("status.uploaded", { path: uploadedPaths.join(", ") }));
     },
     [activeDirectory, loadTree, openFile, t]
+  );
+
+  const uploadFiles = useCallback(
+    async (event: ChangeEvent<HTMLInputElement>) => {
+      const files = Array.from(event.target.files ?? []);
+      event.target.value = "";
+      await uploadFilesToDirectory(files);
+    },
+    [uploadFilesToDirectory]
   );
 
   const openMacro = useCallback(
@@ -3568,6 +4128,37 @@ export default function Home() {
       setStartingPrint(false);
     }
   }, [confirmDialog, loadPrinterStatus, selectedGcodeItem, startingPrint, t]);
+
+  const deleteSelectedGcode = useCallback(async () => {
+    if (!selectedGcodeItem || selectedGcodeItem.type !== "file" || deletingGcodePath) return;
+    if (printerStatus?.printing) {
+      setMessage(t("errors.restartPrinting"));
+      return;
+    }
+
+    const filename = selectedGcodeItem.item.path;
+    if (!(await confirmDialog(t("actions.deleteFile"), t("confirm.deleteFile", { path: filename })))) return;
+
+    setDeletingGcodePath(filename);
+
+    try {
+      const response = await fetch(apiPath("/api/printer/gcodes/delete"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ filename })
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? t("errors.deleteFile"));
+
+      setSelectedGcodeItem(null);
+      await loadGcodes();
+      setMessage(t("status.deleted", { path: filename }));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : t("errors.deleteFile"));
+    } finally {
+      setDeletingGcodePath(null);
+    }
+  }, [confirmDialog, deletingGcodePath, loadGcodes, printerStatus?.printing, selectedGcodeItem, t]);
 
   const runPrintControl = useCallback(
     async (action: PrintControlAction) => {
@@ -3892,10 +4483,71 @@ export default function Home() {
   }, [mcpTunnel.url, t]);
 
   useEffect(() => {
+    const href = useAccentLogo
+      ? kEditorFaviconDataUrl(mainsailTheme.primary)
+      : apiPath("/img/k-editor-mark.svg");
+    const links = Array.from(document.querySelectorAll<HTMLLinkElement>("link[rel~='icon'], link[rel='shortcut icon']"));
+    const faviconLinks = links.length > 0 ? links : [document.createElement("link")];
+
+    for (const link of faviconLinks) {
+      link.rel = link.rel || "icon";
+      link.type = "image/svg+xml";
+      link.href = href;
+      if (!link.parentNode) document.head.appendChild(link);
+    }
+  }, [mainsailTheme.primary, useAccentLogo]);
+
+  useEffect(() => {
     void loadPrinterStatus();
     const interval = window.setInterval(() => void loadPrinterStatus(), 5000);
     return () => window.clearInterval(interval);
   }, [loadPrinterStatus]);
+
+  useEffect(() => {
+    if (!xyRecorderEnabled) return;
+
+    let cancelled = false;
+    let timer: number | null = null;
+
+    const capture = async () => {
+      const status = await loadPrinterStatus();
+      if (cancelled) return;
+
+      if (status.printing && status.printState === "printing") {
+        const suggestedIntervalMs = suggestedXySnapshotInterval(status.speed);
+        setXySnapshots((current) => {
+          const next = [
+            ...current,
+            {
+              timestamp: Date.now(),
+              filename: status.filename,
+              layer: status.printDetails.info.currentLayer,
+              x: status.position.x,
+              y: status.position.y,
+              z: status.position.z,
+              speed: status.speed,
+              activeExtruder: status.activeExtruder,
+              filePosition: status.printDetails.filePosition,
+              suggestedIntervalMs,
+              excludeObject: status.excludeObject
+            }
+          ];
+          return next.slice(-1000);
+        });
+        timer = window.setTimeout(capture, suggestedIntervalMs);
+        return;
+      }
+
+      timer = window.setTimeout(capture, 1000);
+    };
+
+    void capture();
+
+    return () => {
+      cancelled = true;
+      if (timer !== null) window.clearTimeout(timer);
+    };
+  }, [loadPrinterStatus, xyRecorderEnabled]);
 
   useEffect(() => {
     if (!printerStatus) return;
@@ -4156,6 +4808,9 @@ export default function Home() {
           onDelete={deleteFile}
           onRename={renameFile}
           onToggleSelected={toggleSelectedTreeFile}
+          onToggleDirectorySelected={toggleSelectedTreeDirectory}
+          onMoveFile={(path, targetDirectory) => void moveFileToDirectory(path, targetDirectory)}
+          onUploadFiles={(files, targetDirectory) => void uploadFilesToDirectory(files, targetDirectory)}
           downloadLabel={t("actions.downloadFile")}
           deleteLabel={t("actions.deleteFile")}
           renameLabel={t("actions.renameFile")}
@@ -5210,6 +5865,18 @@ export default function Home() {
               <div className="modal-header">
                 <h2 id="heaters-title">{t("heaters.title")}</h2>
                 <div className="modal-header-actions">
+                  <button className="modal-icon-button" type="button" title={t("pid.title")} aria-label={t("pid.title")}
+                    onClick={() => { if (!pidHeater && heaters[0]) setPidHeater(heaters[0].name); setPidOpen(true); }}>PID</button>
+                  <button
+                    className="modal-icon-button"
+                    type="button"
+                    title={t("heaters.coolAll")}
+                    aria-label={t("heaters.coolAll")}
+                    disabled={settingHeaters}
+                    onClick={() => void coolAllHeaters()}
+                  >
+                    <MdAcUnit className="action-icon" style={{ color: "#65bdff" }} />
+                  </button>
                   <button
                     className="modal-icon-button"
                     type="button"
@@ -5253,7 +5920,11 @@ export default function Home() {
                                 value={bulkExtruderTarget}
                                 onFocus={(event) => event.currentTarget.select()}
                                 onClick={(event) => event.currentTarget.select()}
-                                onChange={(event) => setBulkExtruderTarget(event.target.value)}
+                                onChange={(event) => {
+                                  const nextValue = event.target.value;
+                                  setBulkExtruderTarget(nextValue);
+                                  setHeaterGroupTargetValues(extruderHeaters, nextValue);
+                                }}
                               />
                             </span>
                             <button
@@ -5279,7 +5950,11 @@ export default function Home() {
                                 value={bulkBedTarget}
                                 onFocus={(event) => event.currentTarget.select()}
                                 onClick={(event) => event.currentTarget.select()}
-                                onChange={(event) => setBulkBedTarget(event.target.value)}
+                                onChange={(event) => {
+                                  const nextValue = event.target.value;
+                                  setBulkBedTarget(nextValue);
+                                  setHeaterGroupTargetValues(bedHeaters, nextValue);
+                                }}
                               />
                             </span>
                             <button
@@ -5296,7 +5971,7 @@ export default function Home() {
                     )}
                     <div className="heater-list">
                       {heaters.map((heater) => (
-                        <label key={heater.name} className="heater-row">
+                        <div key={heater.name} className="heater-row">
                           <span className="heater-row-name">
                             <HeaterTypeIcon
                               heater={heater}
@@ -5319,12 +5994,14 @@ export default function Home() {
                               max="350"
                               step="1"
                               value={heaterTargets[heater.name] ?? ""}
+                              aria-label={`${heater.label} ${t("heaters.target")}`}
+                              disabled={Boolean(pidJob)}
                               onFocus={(event) => event.currentTarget.select()}
                               onClick={(event) => event.currentTarget.select()}
                               onChange={(event) => setHeaterTargetValue(heater.name, event.target.value)}
                             />
                           </span>
-                        </label>
+                        </div>
                       ))}
                     </div>
                   </>
@@ -5333,11 +6010,44 @@ export default function Home() {
                   <button className="dialog-button" type="button" onClick={() => setHeatersOpen(false)}>
                     {t("actions.cancel")}
                   </button>
-                  <button className="dialog-button primary" type="submit" disabled={settingHeaters || heaters.length === 0}>
+                  <button className="dialog-button primary" type="submit" disabled={Boolean(pidJob) || settingHeaters || heaters.length === 0}>
                     {settingHeaters ? t("actions.settingHeaters") : t("actions.setHeaters")}
                   </button>
                 </div>
               </form>
+            </section>
+          </div>
+        )}
+
+        {pidOpen && (
+          <div className="modal-backdrop pid-backdrop" role="presentation" onMouseDown={() => setPidOpen(false)}>
+            <section className="options-modal pid-modal" role="dialog" aria-modal="true" aria-labelledby="pid-title" onMouseDown={(event) => event.stopPropagation()}>
+              <div className="modal-header">
+                <h2 id="pid-title">{t("pid.title")}</h2>
+                <button className="modal-close" type="button" aria-label={t("options.close")} onClick={() => setPidOpen(false)}>x</button>
+              </div>
+              <div className="pid-body">
+                <form className="pid-controls" onSubmit={(event) => { event.preventDefault(); const heater = heaters.find((item) => item.name === pidHeater); if (heater) void calibratePid(heater); }}>
+                  <label>{t("pid.heater")}<select value={pidHeater} disabled={Boolean(pidJob) || pidStarting || pidSaving} onChange={(event) => { setPidHeater(event.target.value); setPidSamples([]); }}>
+                    {heaters.map((heater) => <option key={heater.name} value={heater.name}>{heater.label}</option>)}
+                  </select></label>
+                  <label>{t("heaters.target")} (°C)<input type="number" min="1" max="350" step="1" required value={pidTarget} disabled={Boolean(pidJob) || pidStarting || pidSaving} onChange={(event) => setPidTarget(event.target.value)} /></label>
+                  <button type="submit" className="dialog-button primary" disabled={Boolean(pidJob) || pidStarting || pidSaving || !pidHeater || Number(pidTarget) <= 0 || !Number.isFinite(Number(pidTarget)) || Number(pidTarget) > 350 || !printerStatus || printerStatus.printing || printerStatus.printState === "paused"}>
+                    <FaPlay /> {t(pidJob || pidStarting ? "pid.busy" : "pid.start")}
+                  </button>
+                </form>
+                <p className="pid-status" role="status">{pidMessage || t("pid.ready")}</p>
+                <div className="pid-legend">
+                  <span style={{ color: "#63c9ff" }}>{t("heaters.current")}: {pidSamples.length ? formatTemperature(pidSamples[pidSamples.length - 1].temperature) : "--"}</span>
+                  <span style={{ color: "#efb85c" }}>{t("heaters.target")}: {pidSamples.length ? formatTemperature(pidSamples[pidSamples.length - 1].target) : "--"}</span>
+                  <span style={{ color: "#cf8fee" }}>PWM: {pidSamples.at(-1)?.power !== undefined ? `${Math.round(pidSamples.at(-1)!.power! * 100)} %` : "--"}</span>
+                </div>
+                <PidChart samples={pidSamples} label={t("pid.chart")} />
+                <div className="dialog-actions">
+                  <button className="modal-icon-button" type="button" title={t("heaters.coolAll")} aria-label={t("heaters.coolAll")} disabled={settingHeaters} onClick={() => void coolAllHeaters()}><MdAcUnit className="action-icon" style={{ color: "#65bdff" }} /></button>
+                  <button className="dialog-button primary" type="button" disabled={!pidCompleted || Boolean(pidJob) || pidStarting || pidSaving} onClick={() => void savePid()}><FaFloppyDisk /> {t("heaters.pidSaveTitle")}</button>
+                </div>
+              </div>
             </section>
           </div>
         )}
@@ -5717,32 +6427,54 @@ export default function Home() {
                   </button>
                 </div>
               </div>
+              <input
+                ref={gcodeUploadInputRef}
+                className="hidden-file-input"
+                type="file"
+                multiple
+                accept=".gcode"
+                onChange={(event) => void uploadGcodesFromInput(event)}
+              />
               <div className="gcodes-modal-body">
-                <div className="gcodes-tabs" role="tablist">
-                  <button
-                    className={gcodeModalTab === "files" ? "gcodes-tab active" : "gcodes-tab"}
+                <div className="gcodes-toolbar">
+                  <div className="gcodes-tabs" role="tablist">
+                    <button
+                      className={gcodeModalTab === "files" ? "gcodes-tab active" : "gcodes-tab"}
+                      type="button"
+                      role="tab"
+                      aria-selected={gcodeModalTab === "files"}
+                      onClick={() => {
+                        setGcodeModalTab("files");
+                        setSelectedGcodeItem(null);
+                      }}
+                    >
+                      {t("gcodes.files")}
+                    </button>
+                    <button
+                      className={gcodeModalTab === "history" ? "gcodes-tab active" : "gcodes-tab"}
+                      type="button"
+                      role="tab"
+                      aria-selected={gcodeModalTab === "history"}
+                      onClick={() => {
+                        setGcodeModalTab("history");
+                        setSelectedGcodeItem(null);
+                      }}
+                    >
+                      {t("gcodes.history")}
+                    </button>
+                  </div>
+                  {gcodeModalTab === "files" && (
+                    <button
+                      className="dialog-button gcode-upload-button"
                     type="button"
-                    role="tab"
-                    aria-selected={gcodeModalTab === "files"}
-                    onClick={() => {
-                      setGcodeModalTab("files");
-                      setSelectedGcodeItem(null);
-                    }}
+                    disabled={gcodesUploading}
+                    onClick={() => gcodeUploadInputRef.current?.click()}
                   >
-                    {t("gcodes.files")}
+                    <FcUpload className="dialog-button-icon" />
+                    {gcodesUploading && <span className="button-indeterminate" aria-hidden="true" />}
+                    {gcodesUploading ? t("gcodes.uploading") : t("gcodes.upload")}
                   </button>
-                  <button
-                    className={gcodeModalTab === "history" ? "gcodes-tab active" : "gcodes-tab"}
-                    type="button"
-                    role="tab"
-                    aria-selected={gcodeModalTab === "history"}
-                    onClick={() => {
-                      setGcodeModalTab("history");
-                      setSelectedGcodeItem(null);
-                    }}
-                  >
-                    {t("gcodes.history")}
-                  </button>
+                  )}
                 </div>
                 <label className="gcode-search-field">
                   <FcSearch className="action-icon" />
@@ -5768,7 +6500,41 @@ export default function Home() {
                     </button>
                   )}
                 </label>
-                <div className="gcodes-browser">
+                <div
+                  className={
+                    gcodeModalTab === "files" && gcodesDragActive
+                      ? "gcodes-browser upload-active"
+                      : "gcodes-browser"
+                  }
+                  onDragEnter={(event) => {
+                    if (gcodeModalTab !== "files") return;
+                    event.preventDefault();
+                    setGcodesDragActive(true);
+                  }}
+                  onDragOver={(event) => {
+                    if (gcodeModalTab !== "files") return;
+                    event.preventDefault();
+                    setGcodesDragActive(true);
+                  }}
+                  onDragLeave={(event) => {
+                    if (gcodeModalTab !== "files") return;
+                    event.preventDefault();
+                    if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
+                    setGcodesDragActive(false);
+                  }}
+                  onDrop={(event) => {
+                    if (gcodeModalTab !== "files") return;
+                    event.preventDefault();
+                    setGcodesDragActive(false);
+                    void uploadGcodeFiles(Array.from(event.dataTransfer.files));
+                  }}
+                >
+                  {gcodeModalTab === "files" && (
+                    <div className={gcodesDragActive ? "gcode-drop-overlay active" : "gcode-drop-overlay"} aria-hidden="true">
+                      <FcUpload className="action-icon" />
+                      <span>{gcodesUploading ? t("gcodes.uploading") : t("gcodes.dropUpload")}</span>
+                    </div>
+                  )}
                   <div className="gcodes-list">
                     {gcodesLoading ? (
                       <div className="panel-loading-state" role="status" aria-live="polite">
@@ -5779,25 +6545,37 @@ export default function Home() {
                       filteredGcodeFiles.length === 0 ? (
                         <p className="empty-note">{t("gcodes.empty")}</p>
                       ) : (
-                        filteredGcodeFiles.map((file) => (
-                          <button
-                            key={file.path}
-                            className={
-                              selectedGcodeItem?.type === "file" && selectedGcodeItem.item.path === file.path
-                                ? "gcode-row active"
-                                : "gcode-row"
-                            }
-                            type="button"
-                            onClick={() => setSelectedGcodeItem({ type: "file", item: file })}
-                            title={file.path}
-                          >
-                            <GcodeListPreview thumbnails={file.thumbnails} />
-                            <span>
-                              <strong>{file.name}</strong>
-                              <small>{formatTimestamp(file.modified)}</small>
-                            </span>
-                          </button>
-                        ))
+                        filteredGcodeFiles.map((file) => {
+                          const lastJob =
+                            latestGcodeHistoryByFilename.get(file.path) ?? latestGcodeHistoryByFilename.get(file.name);
+
+                          return (
+                            <button
+                              key={file.path}
+                              className={
+                                selectedGcodeItem?.type === "file" && selectedGcodeItem.item.path === file.path
+                                  ? "gcode-row active"
+                                  : "gcode-row"
+                              }
+                              type="button"
+                              onClick={() => setSelectedGcodeItem({ type: "file", item: file })}
+                              title={file.path}
+                            >
+                              <GcodeListPreview thumbnails={file.thumbnails} />
+                              <span>
+                                <strong>{file.name}</strong>
+                                <small>{formatTimestamp(file.modified)}</small>
+                                {lastJob && (
+                                  <span className="gcode-row-status-line">
+                                    <span className={printStatusClassName(lastJob.status)}>
+                                      {printStatusLabel(lastJob.status)}
+                                    </span>
+                                  </span>
+                                )}
+                              </span>
+                            </button>
+                          );
+                        })
                       )
                     ) : filteredGcodeHistory.length === 0 ? (
                       <p className="empty-note">{t("gcodes.historyEmpty")}</p>
@@ -5818,8 +6596,11 @@ export default function Home() {
                           <span>
                             <strong>{basename(job.filename)}</strong>
                             <small>
-                              {job.status} · {formatTimestamp(job.startTime)}
+                              {formatTimestamp(job.startTime)}
                             </small>
+                            <span className="gcode-row-status-line">
+                              <span className={printStatusClassName(job.status)}>{printStatusLabel(job.status)}</span>
+                            </span>
                           </span>
                         </button>
                       ))
@@ -5829,9 +6610,9 @@ export default function Home() {
                     {selectedGcodeItem ? (
                       <>
                         <div className="gcode-detail-header">
-                          <div>
-                            <h3>{selectedGcodeName(selectedGcodeItem)}</h3>
-                            <p>{selectedGcodePath(selectedGcodeItem)}</p>
+                          <div className="gcode-detail-title">
+                            <h3 title={selectedGcodeName(selectedGcodeItem)}>{selectedGcodeName(selectedGcodeItem)}</h3>
+                            <p title={selectedGcodePath(selectedGcodeItem)}>{selectedGcodePath(selectedGcodeItem)}</p>
                           </div>
                           <div className="gcode-detail-actions">
                             <button
@@ -5844,6 +6625,22 @@ export default function Home() {
                               <FaPrint className="dialog-button-icon" />
                               {startingPrint ? t("actions.printingFile") : t("actions.printFile")}
                             </button>
+                            {selectedGcodeItem.type === "file" && (
+                              <button
+                                className="icon-button danger gcode-delete-button"
+                                type="button"
+                                disabled={
+                                  deletingGcodePath === selectedGcodeItem.item.path ||
+                                  startingPrint ||
+                                  printerStatus?.printing
+                                }
+                                title={printerStatus?.printing ? t("errors.restartPrinting") : t("actions.deleteFile")}
+                                aria-label={printerStatus?.printing ? t("errors.restartPrinting") : t("actions.deleteFile")}
+                                onClick={() => void deleteSelectedGcode()}
+                              >
+                                <MdDelete className="action-icon plain-action-icon" />
+                              </button>
+                            )}
                             <button
                               className="modal-close"
                               type="button"
@@ -5900,7 +6697,11 @@ export default function Home() {
                             <>
                               <div>
                                 <dt>{t("gcodes.status")}</dt>
-                                <dd>{selectedGcodeItem.item.status}</dd>
+                                <dd>
+                                  <span className={printStatusClassName(selectedGcodeItem.item.status)}>
+                                    {printStatusLabel(selectedGcodeItem.item.status)}
+                                  </span>
+                                </dd>
                               </div>
                               <div>
                                 <dt>{t("gcodes.started")}</dt>
@@ -6454,6 +7255,17 @@ export default function Home() {
             >
               <div className="modal-header">
                 <h2 id="print-status-title">{t("printStatus.title")}</h2>
+                {xyRecorderEnabled && (
+                  <button
+                    className={xyRecorderPanelOpen ? "xy-recorder-header-toggle active" : "xy-recorder-header-toggle"}
+                    type="button"
+                    title={xyRecorderPanelOpen ? t("printStatus.xyPanelClose") : t("printStatus.xyPanelOpen")}
+                    aria-label={xyRecorderPanelOpen ? t("printStatus.xyPanelClose") : t("printStatus.xyPanelOpen")}
+                    onClick={() => setXyRecorderPanelOpen((open) => !open)}
+                  >
+                    XY
+                  </button>
+                )}
                 <button
                   className="modal-close"
                   type="button"
@@ -6505,6 +7317,21 @@ export default function Home() {
                       >
                         <FaStop />
                       </button>
+                      <button
+                        className={xyRecorderEnabled ? "print-status-action active" : "print-status-action"}
+                        type="button"
+                        title={xyRecorderEnabled ? t("printStatus.xyRecorderStop") : t("printStatus.xyRecorderStart")}
+                        aria-label={xyRecorderEnabled ? t("printStatus.xyRecorderStop") : t("printStatus.xyRecorderStart")}
+                        onClick={() => {
+                          setXyRecorderEnabled((enabled) => {
+                            const nextEnabled = !enabled;
+                            setXyRecorderPanelOpen(nextEnabled);
+                            return nextEnabled;
+                          });
+                        }}
+                      >
+                        XY
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -6547,6 +7374,75 @@ export default function Home() {
                   </details>
                 </div>
               </div>
+              {xyRecorderEnabled && (
+                <aside className={xyRecorderPanelOpen ? "xy-recorder-drawer open" : "xy-recorder-drawer"}>
+                  <button
+                    className="xy-recorder-edge-toggle"
+                    type="button"
+                    title={xyRecorderPanelOpen ? t("printStatus.xyPanelClose") : t("printStatus.xyPanelOpen")}
+                    aria-label={xyRecorderPanelOpen ? t("printStatus.xyPanelClose") : t("printStatus.xyPanelOpen")}
+                    onClick={() => setXyRecorderPanelOpen((open) => !open)}
+                  >
+                    XY
+                  </button>
+                  <div className="print-status-recorder">
+                    <div className="print-status-recorder-header">
+                      <h3>{t("printStatus.xyRecorder")}</h3>
+                      <span className="recorder-state active">{t("printStatus.xyRecorderOn")}</span>
+                    </div>
+                    <div className="print-status-table compact" role="table">
+                      {[
+                        [t("printStatus.snapshots"), String(xySnapshots.length)],
+                        [
+                          t("printStatus.lastSnapshot"),
+                          latestXySnapshot ? new Date(latestXySnapshot.timestamp).toLocaleTimeString() : "-"
+                        ],
+                        [
+                          t("printStatus.xy"),
+                          latestXySnapshot
+                            ? `X ${formatCoordinate(latestXySnapshot.x)} / Y ${formatCoordinate(latestXySnapshot.y)}`
+                            : "-"
+                        ],
+                        [
+                          t("printStatus.recoveryZ"),
+                          latestXySnapshot
+                            ? `L${latestXySnapshot.layer ?? "-"} / Z ${formatCoordinate(latestXySnapshot.z)} mm`
+                            : "-"
+                        ],
+                        [
+                          t("printStatus.speed"),
+                          latestXySnapshot ? `${formatCoordinate(latestXySnapshot.speed)} mm/s` : "-"
+                        ],
+                        [
+                          t("printStatus.suggestedInterval"),
+                          latestXySnapshot ? `${latestXySnapshot.suggestedIntervalMs} ms` : "-"
+                        ],
+                        [
+                          t("printStatus.filePosition"),
+                          latestXySnapshot ? formatBytes(latestXySnapshot.filePosition) : "-"
+                        ],
+                        [
+                          t("printStatus.currentObject"),
+                          latestXySnapshot?.excludeObject.currentObject || "-"
+                        ],
+                        [
+                          t("printStatus.excludedObjects"),
+                          latestXySnapshot
+                            ? latestXySnapshot.excludeObject.excludedObjects.length > 0
+                              ? latestXySnapshot.excludeObject.excludedObjects.join(", ")
+                              : "-"
+                            : "-"
+                        ]
+                      ].map(([label, value]) => (
+                        <div className="print-status-row" role="row" key={label}>
+                          <div className="print-status-cell label" role="cell">{label}</div>
+                          <div className="print-status-cell value" role="cell">{value}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </aside>
+              )}
             </section>
           </div>
         )}

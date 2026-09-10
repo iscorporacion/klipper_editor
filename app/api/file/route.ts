@@ -156,13 +156,13 @@ export async function PATCH(request: NextRequest) {
     const absolutePath = resolveWorkspacePath(relativePath);
     const newAbsolutePath = resolveWorkspacePath(newRelativePath);
     const stat = await fs.stat(absolutePath);
-    if (!stat.isFile()) {
-      return NextResponse.json({ error: "Path is not a file" }, { status: 400 });
+    if (!stat.isFile() && !stat.isDirectory()) {
+      return NextResponse.json({ error: "Path is not a file or directory" }, { status: 400 });
     }
 
     try {
       await fs.stat(newAbsolutePath);
-      return NextResponse.json({ error: "Target file already exists" }, { status: 409 });
+      return NextResponse.json({ error: "Target path already exists" }, { status: 409 });
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
         throw error;
@@ -176,6 +176,7 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({
       path: relativePath,
       newPath: newRelativePath,
+      type: stat.isDirectory() ? "directory" : "file",
       modifiedAt: updatedStat.mtime.toISOString()
     });
   } catch (error) {
@@ -196,12 +197,16 @@ export async function DELETE(request: NextRequest) {
 
     const absolutePath = resolveWorkspacePath(relativePath);
     const stat = await fs.stat(absolutePath);
-    if (!stat.isFile()) {
-      return NextResponse.json({ error: "Path is not a file" }, { status: 400 });
+    if (!stat.isFile() && !stat.isDirectory()) {
+      return NextResponse.json({ error: "Path is not a file or directory" }, { status: 400 });
     }
 
-    await fs.unlink(absolutePath);
-    return NextResponse.json({ path: relativePath });
+    if (stat.isDirectory()) {
+      await fs.rm(absolutePath, { recursive: true, force: false });
+    } else {
+      await fs.unlink(absolutePath);
+    }
+    return NextResponse.json({ path: relativePath, type: stat.isDirectory() ? "directory" : "file" });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Unable to delete file" },

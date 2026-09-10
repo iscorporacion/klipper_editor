@@ -1,12 +1,15 @@
 #!/usr/bin/env node
-import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { spawn, spawnSync } from "node:child_process";
+import { homedir } from "node:os";
+import { join } from "node:path";
 
 const port = Number(process.env.KLIPPER_EDITOR_MCP_HTTP_PORT || 3001);
 const host = process.env.KLIPPER_EDITOR_MCP_HTTP_HOST || "127.0.0.1";
 const token = process.env.KLIPPER_EDITOR_MCP_TOKEN || "";
 const nodeBin = process.execPath;
-const cloudflaredBin = process.env.KLIPPER_EDITOR_CLOUDFLARED_BIN || (existsSync("/usr/local/bin/cloudflared") ? "/usr/local/bin/cloudflared" : "cloudflared");
+const cloudflaredBin = process.env.KLIPPER_EDITOR_CLOUDFLARED_BIN ||
+  [join(homedir(), ".local", "bin", "cloudflared"), "/usr/local/bin/cloudflared", "cloudflared"]
+    .find((candidate) => spawnSync(candidate, ["--version"], { timeout: 5000, windowsHide: true }).status === 0) || "cloudflared";
 const localMcpUrl = `http://${host}:${port}/mcp`;
 
 function writeEvent(event) {

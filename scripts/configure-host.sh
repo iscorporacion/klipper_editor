@@ -218,39 +218,19 @@ configure_mainsail_link() {
 }
 
 install_cloudflared() {
-  if command -v cloudflared >/dev/null 2>&1; then
-    log "cloudflared already installed: $(cloudflared --version 2>/dev/null || printf 'version unavailable')"
-    return 0
-  fi
-
   if [[ "${INSTALL_CLOUDFLARED}" != "true" ]]; then
     log "cloudflared install skipped: KLIPPER_EDITOR_INSTALL_CLOUDFLARED=${INSTALL_CLOUDFLARED}"
     return 0
   fi
 
-  if ! command -v wget >/dev/null 2>&1; then
-    log "cloudflared install skipped: wget is required."
-    log "Install cloudflared manually before using Options > MCP > Subir MCP."
-    return 0
+  log "Installing/verifying cloudflared for service user ${SERVICE_USER}."
+  if [[ "${EUID}" -eq 0 && "${SERVICE_USER}" != root ]]; then
+    runuser -u "${SERVICE_USER}" -- bash "${APP_DIR}/scripts/install-cloudflared.sh" ||
+      log "cloudflared install failed. Retry from Options > MCP."
+  else
+    bash "${APP_DIR}/scripts/install-cloudflared.sh" ||
+      log "cloudflared install failed. Retry from Options > MCP."
   fi
-
-  log "Installing cloudflared for temporary MCP tunnels from GitHub ARM binary."
-  local tmp_cloudflared
-  tmp_cloudflared="$(mktemp)"
-  if ! wget -O "${tmp_cloudflared}" https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm; then
-    rm -f "${tmp_cloudflared}"
-    log "cloudflared install skipped: could not download cloudflared-linux-arm."
-    return 0
-  fi
-
-  chmod +x "${tmp_cloudflared}"
-  if ! run_sudo mv "${tmp_cloudflared}" /usr/local/bin/cloudflared; then
-    rm -f "${tmp_cloudflared}"
-    log "cloudflared install skipped: could not move binary to /usr/local/bin/cloudflared."
-    return 0
-  fi
-
-  log "cloudflared installed: $(cloudflared --version 2>/dev/null || printf 'version unavailable')"
 }
 
 require_command node

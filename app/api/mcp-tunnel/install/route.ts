@@ -10,7 +10,7 @@ const host = globalThis as typeof globalThis & { cloudflaredInstalling?: boolean
 
 export async function POST() {
   if (process.platform !== "linux") {
-    return NextResponse.json({ error: "Instala cloudflared desde K-Editor en la impresora Linux ARM, no desde el modo local de Windows." }, { status: 400 });
+    return NextResponse.json({ error: "Instala cloudflared desde K-Editor en la impresora Linux, no desde el modo local de Windows." }, { status: 400 });
   }
   if (host.cloudflaredInstalling) {
     return NextResponse.json({ error: "Ya hay una instalacion de cloudflared en curso." }, { status: 409 });

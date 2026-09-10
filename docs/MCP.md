@@ -119,29 +119,33 @@ https://example.trycloudflare.com/mcp?token=temporary-token
 
 In ChatGPT, choose `No authentication` and paste the full URL, including the `token` query parameter.
 
-The tunnel helper uses `cloudflared`. On RatOS printer hosts, the Klipper Editor installer installs the ARM binary directly from Cloudflare's GitHub release. Set `KLIPPER_EDITOR_INSTALL_CLOUDFLARED=false` before running the installer if you want to skip that system dependency.
-
-Manual install uses the same flow:
+The tunnel helper uses `cloudflared`. The installer detects ARM64, ARM, AMD64,
+or x86 and downloads the matching binary from Cloudflare's GitHub release.
+New installations go into `~/.local/bin/cloudflared` for the K-Editor service
+user, without sudo. This location survives application updates.
+Set `KLIPPER_EDITOR_INSTALL_CLOUDFLARED=false` to skip installation during host setup.
 
 Options > MCP > Install / verify cloudflared runs `scripts/install-cloudflared.sh`
 on the printer host and displays the verified version or installation error.
-It requires Linux ARM, wget, and non-interactive sudo (or root). It does not
+It requires Linux, wget, and a writable user home directory. It does not
 start the tunnel automatically. In Windows local mode, open K-Editor on the
 printer to install there. The script can also be run with
 `bash scripts/install-cloudflared.sh` over SSH.
 
 ```bash
-wget https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm
-chmod +x cloudflared-linux-arm
-sudo mv cloudflared-linux-arm /usr/local/bin/cloudflared
-cloudflared --version
+cd "$(systemctl show klipper-editor -p WorkingDirectory --value)"
+bash scripts/install-cloudflared.sh
 ```
 
 You can verify it with:
 
 ```bash
-cloudflared --version
+~/.local/bin/cloudflared --version
 ```
+
+A working existing system installation is reused. The tunnel checks the user
+binary first, then `/usr/local/bin/cloudflared`, then PATH. An explicit
+`KLIPPER_EDITOR_CLOUDFLARED_BIN` overrides this selection.
 
 You can also run the bundled cloudflared helper manually:
 

@@ -30,7 +30,14 @@ mkdir -p "${DEST_DIR}/.next"
 cp -a "${APP_DIR}/.next/standalone/." "${DEST_DIR}/"
 cp -a "${APP_DIR}/.next/static" "${DEST_DIR}/.next/static"
 cp -a "${APP_DIR}/locales" "${DEST_DIR}/locales"
-cp -a "${APP_DIR}/scripts" "${DEST_DIR}/scripts"
+mkdir -p "${DEST_DIR}/scripts"
+cp -a "${APP_DIR}/scripts/." "${DEST_DIR}/scripts/"
+for required_script in klipper-editor-mcp.mjs klipper-editor-mcp-tunnel.mjs install-cloudflared.sh configure-host.sh; do
+  if [[ ! -f "${DEST_DIR}/scripts/${required_script}" ]]; then
+    printf 'Invalid package: missing scripts/%s\n' "${required_script}" >&2
+    exit 1
+  fi
+done
 cp "${APP_DIR}/install-release.sh" "${DEST_DIR}/install-release.sh"
 cp "${APP_DIR}/install.sh" "${DEST_DIR}/install.sh"
 cp "${APP_DIR}/package.json" "${DEST_DIR}/package.json"

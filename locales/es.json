@@ -4,6 +4,7 @@
     "name": "Español"
   },
   "messages": {
+    "mcp.copyFailed": "No se pudo copiar. Selecciona la URL y copiala manualmente.",
     "mcp.install": "Instalar / verificar cloudflared",
     "mcp.installing": "Instalando y verificando...",
     "mcp.installed": "Instalacion verificada",

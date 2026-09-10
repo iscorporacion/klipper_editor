@@ -4023,6 +4023,10 @@ body.is-resizing-row {
 }
 
 .cloudflared-install-result { margin: 12px 0; color: var(--text); overflow-wrap: anywhere; }
+.mcp-url-copy-row { display: grid; grid-template-columns: minmax(0, 1fr) 34px; gap: 8px; align-items: center; }
+.mcp-url-copy-row input { min-width: 0; width: 100%; }
+.mcp-url-copy-row .modal-icon-button { width: 34px; height: 34px; }
+.mcp-url-copy-row button:disabled { opacity: 0.45; cursor: not-allowed; }
 .mcp-tunnel-actions button:disabled { opacity: 0.5; cursor: not-allowed; filter: grayscale(1); }
 
 .welcome {

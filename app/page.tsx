@@ -38,6 +38,7 @@ import {
 } from "react-icons/fc";
 import {
   MdDelete,
+  MdContentCopy,
   MdAcUnit,
   MdEdit,
   MdFunctions,
@@ -222,6 +223,7 @@ type TerminalPayload = {
 };
 
 type McpTunnelStatus = {
+  cloudflaredInstalled?: boolean;
   running: boolean;
   starting: boolean;
   url: string;
@@ -634,6 +636,7 @@ const defaultMessages: Messages = {
   "actions.enableTerminal": "Habilitar terminal",
   "actions.startMcpTunnel": "Subir MCP",
   "mcp.install": "Instalar / verificar cloudflared",
+  "mcp.copyFailed": "No se pudo copiar. Selecciona la URL y copiala manualmente.",
   "mcp.installing": "Instalando y verificando...",
   "mcp.installed": "Instalacion verificada",
   "mcp.installFailed": "No se pudo verificar la instalacion",
@@ -2138,6 +2141,9 @@ export default function Home() {
   });
   const [mcpTunnelBusy, setMcpTunnelBusy] = useState(false);
   const [installingCloudflared, setInstallingCloudflared] = useState(false);
+  const [cloudflaredInstalled, setCloudflaredInstalled] = useState<boolean | null>(null);
+  const mcpUrlInputRef = useRef<HTMLInputElement>(null);
+  const [mcpCopyMessage, setMcpCopyMessage] = useState("");
   const [cloudflaredInstallResult, setCloudflaredInstallResult] = useState("");
   const [xyRecorderEnabled, setXyRecorderEnabled] = useState(false);
   const [xyRecorderPanelOpen, setXyRecorderPanelOpen] = useState(false);
@@ -2679,6 +2685,7 @@ export default function Home() {
 
       const nextStatus = normalizeMcpTunnelStatus(payload);
       setMcpTunnel(nextStatus);
+      if (typeof payload.cloudflaredInstalled === "boolean") setCloudflaredInstalled(payload.cloudflaredInstalled);
       return nextStatus;
     } catch (error) {
       const nextError = error instanceof Error ? error.message : t("errors.mcpTunnel");
@@ -2730,14 +2737,25 @@ export default function Home() {
 
   const copyMcpTunnelUrl = useCallback(async () => {
     if (!mcpTunnel.url) return;
-
+    let copied = false;
     try {
-      await navigator.clipboard.writeText(mcpTunnel.url);
-      setMessage(t("status.mcpTunnelUrlCopied"));
-    } catch {
-      setMessage(mcpTunnel.url);
+      if (window.isSecureContext && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(mcpTunnel.url);
+        copied = true;
+      }
+    } catch { /* Fall back to selecting the visible URL on local HTTP. */ }
+    if (!copied && mcpUrlInputRef.current) {
+      mcpUrlInputRef.current.focus();
+      mcpUrlInputRef.current.select();
+      mcpUrlInputRef.current.setSelectionRange(0, mcpTunnel.url.length);
+      try { copied = document.execCommand("copy"); } catch { copied = false; }
     }
+    const feedback = t(copied ? "status.mcpTunnelUrlCopied" : "mcp.copyFailed");
+    setMcpCopyMessage(feedback);
+    setMessage(feedback);
   }, [mcpTunnel.url, t]);
+
+  useEffect(() => { setMcpCopyMessage(""); }, [mcpTunnel.url]);
 
   const startTerminalSession = useCallback(async () => {
     if (terminalSessionId && terminalAlive) return terminalSessionId;
@@ -7145,10 +7163,16 @@ export default function Home() {
                               : t("options.mcpTunnelStopped")}
                         </span>
                       </div>
-                      <label className="setting-field mcp-tunnel-url">
-                        <span>{t("options.mcpTunnelUrl")}</span>
-                        <input readOnly value={mcpTunnel.url} placeholder="https://.../mcp" />
-                      </label>
+                      <div className="setting-field mcp-tunnel-url">
+                        <label htmlFor="mcp-tunnel-url-input">{t("options.mcpTunnelUrl")}</label>
+                        <div className="mcp-url-copy-row">
+                          <input id="mcp-tunnel-url-input" ref={mcpUrlInputRef} readOnly value={mcpTunnel.url} placeholder="https://.../mcp" />
+                          <button className="modal-icon-button" type="button" disabled={!mcpTunnel.url}
+                            title={t("actions.copyMcpUrl")} aria-label={t("actions.copyMcpUrl")}
+                            onClick={() => void copyMcpTunnelUrl()}><MdContentCopy className="action-icon" /></button>
+                        </div>
+                        {mcpCopyMessage && <span role="status">{mcpCopyMessage}</span>}
+                      </div>
                       <label className="setting-field mcp-tunnel-url">
                         <span>{t("options.mcpTunnelToken")}</span>
                         <input readOnly value={mcpTunnel.token} placeholder="-" />
@@ -7156,7 +7180,7 @@ export default function Home() {
                       {mcpTunnel.error && <p className="mcp-tunnel-error">{mcpTunnel.error}</p>}
                       {cloudflaredInstallResult && <p role="status" className="cloudflared-install-result">{cloudflaredInstallResult}</p>}
                       <div className="mcp-tunnel-actions">
-                        <button type="button" className="dialog-button" disabled={installingCloudflared || mcpTunnelBusy || mcpTunnel.running || mcpTunnel.starting}
+                        {(cloudflaredInstalled === false || installingCloudflared) && <button type="button" className="dialog-button" disabled={installingCloudflared || mcpTunnelBusy || mcpTunnel.running || mcpTunnel.starting}
                           onClick={async () => {
                             setInstallingCloudflared(true);
                             setCloudflaredInstallResult(t("mcp.installing"));
@@ -7165,11 +7189,12 @@ export default function Home() {
                               const payload = await response.json();
                               if (!response.ok || !payload.installed) throw new Error(payload.error);
                               setCloudflaredInstallResult(`${t("mcp.installed")}: ${payload.version}`);
+                              setCloudflaredInstalled(true);
                               setMcpTunnel((current) => ({ ...current, error: "" }));
                             } catch (error) {
                               setCloudflaredInstallResult(`${t("mcp.installFailed")}: ${error instanceof Error ? error.message : String(error)}`);
                             } finally { setInstallingCloudflared(false); }
-                          }}><FcDownload className="action-icon" />{t(installingCloudflared ? "mcp.installing" : "mcp.install")}</button>
+                          }}><FcDownload className="action-icon" />{t(installingCloudflared ? "mcp.installing" : "mcp.install")}</button>}
                         <button
                           className="dialog-button"
                           type="button"
@@ -7187,14 +7212,6 @@ export default function Home() {
                         >
                           <FcDownload className="dialog-button-icon" />
                           {t("actions.stopMcpTunnel")}
-                        </button>
-                        <button
-                          className="dialog-button primary"
-                          type="button"
-                          disabled={!mcpTunnel.url}
-                          onClick={() => void copyMcpTunnelUrl()}
-                        >
-                          {t("actions.copyMcpUrl")}
                         </button>
                       </div>
                     </section>

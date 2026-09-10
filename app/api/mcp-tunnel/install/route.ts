@@ -3,6 +3,7 @@ import { promisify } from "node:util";
 import path from "node:path";
 import { NextResponse } from "next/server";
 import { clearMcpTunnelInstallError } from "@/lib/mcp-tunnel";
+import { invalidateCloudflaredStatus } from "@/lib/cloudflared-status";
 
 export const runtime = "nodejs";
 const execute = promisify(execFile);
@@ -21,6 +22,7 @@ export async function POST() {
     const version = stdout.trim().split(/\r?\n/).at(-1) ?? "";
     if (!version.startsWith("cloudflared version")) throw new Error("No se pudo verificar cloudflared --version.");
     clearMcpTunnelInstallError();
+    invalidateCloudflaredStatus();
     return NextResponse.json({ installed: true, version });
   } catch (error) {
     const failure = error as Error & { stderr?: string };

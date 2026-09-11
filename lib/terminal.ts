@@ -20,7 +20,8 @@ type TerminalSession = {
   lastAccess: number;
 };
 
-const sessions = new Map<string, TerminalSession>();
+const terminalHost = globalThis as typeof globalThis & { editorBasicTerminalSessions?: Map<string, TerminalSession> };
+const sessions = terminalHost.editorBasicTerminalSessions ??= new Map<string, TerminalSession>();
 const idleTimeoutMs = 30 * 60 * 1000;
 const maxBufferedCharacters = 80_000;
 const ansiPattern =
@@ -93,9 +94,10 @@ function terminalWorkingDirectory() {
 }
 
 export function createTerminalSession() {
+  if (readAppSettingsSync().terminalMode === "pty") throw new Error("Select Basic terminal mode before opening a basic session.");
   if (!isTerminalEnabled()) {
     throw new Error(
-      "La terminal esta deshabilitada en este host. Habilitala en Opciones > Habilitar terminal SSH basica o con KLIPPER_EDITOR_ENABLE_TERMINAL=true en el servicio."
+      "La terminal esta deshabilitada. Habilitala en Opciones > Terminal o con KLIPPER_EDITOR_ENABLE_TERMINAL=true en el servicio."
     );
   }
 
@@ -183,4 +185,8 @@ export function closeTerminalSession(id: string) {
   }
 
   sessions.delete(id);
+}
+
+export function closeAllTerminalSessions() {
+  for (const id of sessions.keys()) closeTerminalSession(id);
 }

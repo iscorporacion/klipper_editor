@@ -5,6 +5,7 @@ import { WORKSPACE_ROOT } from "@/lib/workspace";
 
 export type AppSettings = {
   terminalEnabled?: boolean;
+  terminalMode?: "basic" | "pty";
 };
 
 const settingsPath = path.join(WORKSPACE_ROOT, ".klipper-editor-settings.json");
@@ -13,7 +14,8 @@ function normalizeSettings(value: unknown): AppSettings {
   if (!value || typeof value !== "object") return {};
   const record = value as Record<string, unknown>;
   return {
-    terminalEnabled: typeof record.terminalEnabled === "boolean" ? record.terminalEnabled : undefined
+    terminalEnabled: typeof record.terminalEnabled === "boolean" ? record.terminalEnabled : undefined,
+    terminalMode: record.terminalMode === "pty" ? "pty" : "basic"
   };
 }
 

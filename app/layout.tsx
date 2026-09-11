@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import "@xterm/xterm/css/xterm.css";
 
 const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 const faviconPath = `${basePath}/img/k-editor-mark.svg`;

@@ -58,6 +58,7 @@ import { klipperConfigParser } from "@/lib/codemirror/klipper-config";
 import { bundledLocaleOptions, bundledLocales } from "@/lib/locales";
 
 const CodeMirror = dynamic(() => import("@uiw/react-codemirror"), { ssr: false });
+const PtyTerminal = dynamic(() => import("@/components/PtyTerminal"), { ssr: false });
 const appBasePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 const mainsailUrl = process.env.NEXT_PUBLIC_MAINSAIL_URL ?? "/";
 const heaterCacheKey = "klipper-editor-heater-cache";
@@ -735,7 +736,7 @@ const defaultMessages: Messages = {
   "errors.saveGeneric": "Error al guardar",
   "errors.restartFirmware": "No se pudo reiniciar el firmware",
   "errors.restartPrinting": "No se puede reiniciar firmware mientras hay una impresion en curso",
-  "errors.terminalDisabled": "La terminal esta deshabilitada en este host. Habilitala en Opciones > Habilitar terminal SSH basica o con KLIPPER_EDITOR_ENABLE_TERMINAL=true en el servicio.",
+  "errors.terminalDisabled": "La terminal esta deshabilitada. Habilitala en Opciones > Terminal o con KLIPPER_EDITOR_ENABLE_TERMINAL=true en el servicio.",
   "errors.terminalConnection": "No se pudo conectar la terminal",
   "errors.terminalCommand": "No se pudo enviar el comando",
   "errors.terminalUnsupportedCommand": "{command} no funciona en esta terminal. Usa SSH o una terminal TTY real para herramientas interactivas.",
@@ -749,7 +750,7 @@ const defaultMessages: Messages = {
   "confirm.restartFirmware": "Reiniciar firmware ahora?",
   "confirm.executeMacro": "Ejecutar macro {name} en la impresora?",
   "confirm.printFile": "Imprimir {name} ahora?",
-  "confirm.enableTerminal": "Habilitar la terminal permite ejecutar comandos del sistema desde el navegador en el host de la impresora. Usala solo en redes y equipos de confianza. Esta terminal es basica: no soporta herramientas interactivas como make menuconfig o raspi-config, no es una TTY completa y puede exponer informacion sensible en pantalla. Quieres habilitarla?",
+  "confirm.enableTerminal": "La terminal permite ejecutar comandos con los permisos del usuario de K-Editor. En HTTP, el texto y las contrasenas viajan sin cifrar. Habilitala solo en una red local de confianza, sin publicar este acceso en Internet. Quieres habilitarla?",
   "confirm.cancelPrint": "Cancelar la impresion actual?",
   "confirm.updateAll": "Ejecutar todas las actualizaciones pendientes?",
   "confirm.updateComponent": "Actualizar {name}?",
@@ -791,8 +792,16 @@ const defaultMessages: Messages = {
   "options.startCollapsedSidebarHelp": "Al abrir K-Editor, muestra solo la barra lateral de iconos hasta pasar el mouse encima.",
   "options.useAccentLogo": "Usar acento en logo K-Editor",
   "options.useAccentLogoHelp": "Usa el logo propio de K-Editor y pinta la K con el color de enfasis configurado.",
-  "options.enableTerminal": "Habilitar terminal SSH basica",
-  "options.enableTerminalHelp": "Permite abrir una terminal basica del host desde K-Editor. Usa esta opcion solo en una red de confianza.",
+  "options.enableTerminal": "Habilitar terminal",
+  "options.enableTerminalHelp": "Acceso a la shell del usuario del servicio. Solo para una red de confianza.",
+  "pty.mode": "Modo de terminal",
+  "pty.basic": "Basica",
+  "pty.interactive": "Interactiva (PTY)",
+  "pty.changeConfirm": "Cambiar de modo cerrara la sesion activa y sus procesos. Continuar?",
+  "pty.connecting": "Conectando...",
+  "pty.unsupported": "PTY requiere Linux y Python 3 en la impresora. Usa el modo basico en Windows.",
+  "pty.http": "HTTP sin cifrar: usa solo una red local de confianza; no introduzcas contrasenas sensibles.",
+  "pty.settingsHelp": "PTY permite aplicaciones interactivas. Cerrar el panel termina su sesion; las sesiones inactivas se cierran a los 30 minutos. HTTP esta permitido solo para uso en una red local de confianza.",
   "options.enableTerminalEnvHelp": "La terminal esta habilitada por KLIPPER_EDITOR_ENABLE_TERMINAL=true en el servicio.",
   "options.mcpTunnelTitle": "MCP para ChatGPT",
   "options.mcpTunnelHelp": "Levanta el MCP HTTP local y crea un tunel HTTPS temporal con cloudflared. Usa la URL /mcp generada en ChatGPT solo mientras necesites acceso externo a los archivos de la impresora.",
@@ -2036,7 +2045,7 @@ export default function Home() {
   const [localesLoading, setLocalesLoading] = useState(true);
   const [mainsailTheme, setMainsailTheme] = useState<MainsailVisualTheme>(fallbackMainsailTheme);
   const [optionsOpen, setOptionsOpen] = useState(false);
-  const [optionsTab, setOptionsTab] = useState<"general" | "mcp">("general");
+  const [optionsTab, setOptionsTab] = useState<"general" | "mcp" | "terminal">("general");
   const [macrosOpen, setMacrosOpen] = useState(false);
   const [movementOpen, setMovementOpen] = useState(false);
   const [moveStep, setMoveStep] = useState(50);
@@ -2126,6 +2135,10 @@ export default function Home() {
   const [terminalHistoryIndex, setTerminalHistoryIndex] = useState<number | null>(null);
   const [terminalCursor, setTerminalCursor] = useState(0);
   const [terminalAlive, setTerminalAlive] = useState(false);
+  const [terminalMode, setTerminalMode] = useState<"basic" | "pty">("basic");
+  const [ptySupported, setPtySupported] = useState(false);
+  const [ptyActive, setPtyActive] = useState(false);
+  const [terminalModeSaving, setTerminalModeSaving] = useState(false);
   const [terminalBusy, setTerminalBusy] = useState(false);
   const [terminalError, setTerminalError] = useState<string | null>(null);
   const [terminalWarning, setTerminalWarning] = useState<string | null>(null);
@@ -2646,12 +2659,16 @@ export default function Home() {
         configuredEnabled?: boolean;
         envEnabled?: boolean;
         shell?: string;
+        terminalMode?: "basic" | "pty";
+        ptySupported?: boolean;
         error?: string;
       };
       if (!response.ok) throw new Error(payload.error ?? t("errors.terminalConnection"));
 
       const enabled = Boolean(payload.enabled);
       setTerminalEnabled(enabled);
+      setTerminalMode(payload.terminalMode === "pty" ? "pty" : "basic");
+      setPtySupported(Boolean(payload.ptySupported));
       setTerminalConfiguredEnabled(Boolean(payload.configuredEnabled));
       setTerminalEnvEnabled(Boolean(payload.envEnabled));
       setTerminalError(enabled ? null : t("errors.terminalDisabled"));
@@ -2758,6 +2775,7 @@ export default function Home() {
   useEffect(() => { setMcpCopyMessage(""); }, [mcpTunnel.url]);
 
   const startTerminalSession = useCallback(async () => {
+    if (terminalMode !== "basic") return undefined;
     if (terminalSessionId && terminalAlive) return terminalSessionId;
 
     const enabled = terminalEnabled || (await loadTerminalStatus());
@@ -2783,7 +2801,7 @@ export default function Home() {
     } finally {
       setTerminalBusy(false);
     }
-  }, [applyTerminalPayload, loadTerminalStatus, t, terminalAlive, terminalEnabled, terminalSessionId]);
+  }, [applyTerminalPayload, loadTerminalStatus, t, terminalAlive, terminalEnabled, terminalSessionId, terminalMode]);
 
   const updateTerminalEnabledSetting = useCallback(
     async (enabled: boolean) => {
@@ -2843,10 +2861,10 @@ export default function Home() {
 
     setTerminalOpen(true);
     const enabled = terminalEnabled || (await loadTerminalStatus());
-    if (enabled && !terminalSessionId) {
+    if (enabled && terminalMode === "basic" && !terminalSessionId) {
       await startTerminalSession();
     }
-  }, [loadTerminalStatus, startTerminalSession, terminalEnabled, terminalOpen, terminalSessionId]);
+  }, [loadTerminalStatus, startTerminalSession, terminalEnabled, terminalOpen, terminalSessionId, terminalMode]);
 
   const disconnectTerminal = useCallback(async () => {
     const id = terminalSessionId;
@@ -2865,6 +2883,28 @@ export default function Home() {
       setMessage(t("status.terminalDisconnected"));
     }
   }, [t, terminalSessionId]);
+
+  const changeTerminalMode = useCallback(async (mode: "basic" | "pty") => {
+    if (mode === terminalMode || terminalModeSaving) return;
+    if ((terminalAlive || ptyActive || terminalBusy) && !(await confirmDialog(t("pty.mode"), t("pty.changeConfirm")))) return;
+    setTerminalModeSaving(true);
+    try {
+      const response = await fetch(apiPath("/api/terminal/settings"), {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ terminalMode: mode })
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error);
+      setTerminalOpen(false);
+      setTerminalSessionId(null);
+      setTerminalAlive(false);
+      setTerminalOutput("");
+      setTerminalCursor(0);
+      setTerminalMode(mode);
+      setMessage(t("status.terminalSettingSaved"));
+    } catch (error) { setMessage(error instanceof Error ? error.message : String(error)); }
+    finally { setTerminalModeSaving(false); }
+  }, [terminalMode, terminalModeSaving, terminalAlive, ptyActive, terminalBusy, confirmDialog, t]);
 
   const rememberTerminalCommand = useCallback((command: string) => {
     setTerminalHistory((current) => {
@@ -4641,12 +4681,12 @@ export default function Home() {
   }, [machinePowerMenuOpen]);
 
   useEffect(() => {
-    if (!terminalOpen || !terminalSessionId) return;
+    if (!terminalOpen || !terminalSessionId || terminalMode !== "basic") return;
 
     void pollTerminalSession();
     const interval = window.setInterval(() => void pollTerminalSession(), 1000);
     return () => window.clearInterval(interval);
-  }, [pollTerminalSession, terminalOpen, terminalSessionId]);
+  }, [pollTerminalSession, terminalOpen, terminalSessionId, terminalMode]);
 
   useEffect(() => {
     if (!terminalOpen) return;
@@ -4673,6 +4713,7 @@ export default function Home() {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if (event.target instanceof Element && event.target.closest(".pty-terminal")) return;
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
         event.preventDefault();
         void saveActiveFile();
@@ -5417,13 +5458,18 @@ export default function Home() {
         </div>
 
         {terminalOpen && (
-          <section className="terminal-panel" style={{ height: terminalHeight }} aria-label={t("panels.terminal")}>
+          <section className={terminalMode === "pty" ? "terminal-panel terminal-panel-pty" : "terminal-panel"} style={{ height: terminalHeight }} aria-label={t("panels.terminal")}>
             <button
               className="panel-resizer terminal-resizer-height"
               type="button"
               aria-label={t("resize.height")}
               onMouseDown={startTerminalHeightResize}
             />
+            {terminalMode === "pty" ? <PtyTerminal endpoint={apiPath("/api/terminal/pty")} enabled={terminalEnabled} supported={ptySupported}
+              onClose={() => setTerminalOpen(false)} onActive={setPtyActive}
+              labels={{ connect: t("actions.connectTerminal"), disconnect: t("actions.disconnectTerminal"), connected: t("status.terminalConnected"),
+                disconnected: t("status.terminalDisconnected"), connecting: t("pty.connecting"), close: t("actions.closeTerminal"),
+                disabled: t("errors.terminalDisabled"), unsupported: t("pty.unsupported"), http: t("pty.http") }} /> : <>
             <div className="terminal-header">
               <div className="terminal-title">
                 <MdTerminal className="terminal-title-icon" />
@@ -5507,6 +5553,7 @@ export default function Home() {
                 {t("actions.runTerminalCommand")}
               </button>
             </form>
+            </>}
           </section>
         )}
 
@@ -7049,6 +7096,8 @@ export default function Home() {
                   >
                     {t("options.mcpTab")}
                   </button>
+                  <button className={optionsTab === "terminal" ? "options-tab active" : "options-tab"} type="button" role="tab"
+                    aria-selected={optionsTab === "terminal"} onClick={() => setOptionsTab("terminal")}>{t("panels.terminal")}</button>
                 </div>
                 {optionsTab === "general" ? (
                   <div className="options-tab-panel" role="tabpanel">
@@ -7117,18 +7166,6 @@ export default function Home() {
                       <span>{t("options.useAccentLogo")}</span>
                     </label>
                     <p className="setting-help">{t("options.useAccentLogoHelp")}</p>
-                    <label className="setting-checkbox">
-                      <input
-                        type="checkbox"
-                        checked={terminalEnvEnabled || terminalConfiguredEnabled}
-                        disabled={terminalEnvEnabled}
-                        onChange={(event) => void updateTerminalEnabledSetting(event.target.checked)}
-                      />
-                      <span>{t("options.enableTerminal")}</span>
-                    </label>
-                    <p className="setting-help">
-                      {terminalEnvEnabled ? t("options.enableTerminalEnvHelp") : t("options.enableTerminalHelp")}
-                    </p>
                     <label className="setting-field">
                       <span>{t("options.sectionPreviewDelay")}</span>
                       <input
@@ -7149,7 +7186,21 @@ export default function Home() {
                   </div>
                 ) : (
                   <div className="options-tab-panel" role="tabpanel">
-                    <section className="mcp-tunnel-card" aria-label={t("options.mcpTunnelTitle")}>
+                    {optionsTab === "terminal" ? <>
+                      <label className="setting-checkbox">
+                        <input type="checkbox" checked={terminalEnvEnabled || terminalConfiguredEnabled} disabled={terminalEnvEnabled || terminalModeSaving}
+                          onChange={(event) => void updateTerminalEnabledSetting(event.target.checked)} />
+                        <span>{t("options.enableTerminal")}</span>
+                      </label>
+                      <p className="setting-help">{terminalEnvEnabled ? t("options.enableTerminalEnvHelp") : t("options.enableTerminalHelp")}</p>
+                      <label className="setting-field"><span>{t("pty.mode")}</span>
+                        <select value={terminalMode} disabled={terminalModeSaving} onChange={(event) => void changeTerminalMode(event.target.value as "basic" | "pty")}>
+                          <option value="basic">{t("pty.basic")}</option><option value="pty" disabled={!ptySupported}>{t("pty.interactive")}</option>
+                        </select>
+                      </label>
+                      {!ptySupported && <p className="setting-help">{t("pty.unsupported")}</p>}
+                      <p className="setting-help">{t("pty.settingsHelp")}</p>
+                    </> : <section className="mcp-tunnel-card" aria-label={t("options.mcpTunnelTitle")}>
                       <div className="mcp-tunnel-heading">
                         <div>
                           <strong>{t("options.mcpTunnelTitle")}</strong>
@@ -7214,7 +7265,7 @@ export default function Home() {
                           {t("actions.stopMcpTunnel")}
                         </button>
                       </div>
-                    </section>
+                    </section>}
                   </div>
                 )}
               </div>

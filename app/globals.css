@@ -1251,6 +1251,16 @@ h1 {
   background: var(--panel-soft);
 }
 
+.terminal-panel-pty { display: flex; flex-direction: column; }
+.terminal-panel-pty > .panel-resizer { flex: 0 0 7px; }
+.pty-terminal { display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; }
+.pty-terminal .terminal-header { flex: 0 0 auto; flex-wrap: wrap; }
+.pty-terminal-screen { flex: 1; min-height: 0; min-width: 0; padding: 6px 10px; overflow: hidden; }
+.pty-terminal-screen .xterm { height: 100%; }
+.pty-http-warning, .pty-error { flex: 0 0 auto; margin: 0; padding: 5px 10px; font-size: 12px; line-height: 1.4; overflow-wrap: anywhere; }
+.pty-http-warning { color: #e2bd7b; background: #25221b; }
+.pty-error { color: #ff8f8f; }
+
 .terminal-title,
 .terminal-actions {
   display: inline-flex;
@@ -3874,7 +3884,7 @@ body.is-resizing-row {
 
 .options-tabs {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   overflow: hidden;
   border: 1px solid var(--border);
   border-radius: var(--control-radius);

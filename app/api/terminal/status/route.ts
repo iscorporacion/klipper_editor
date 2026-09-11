@@ -9,6 +9,8 @@ export async function GET() {
   const settings = await readAppSettings();
   return NextResponse.json({
     enabled: isTerminalEnabled(),
+    terminalMode: settings.terminalMode ?? "basic",
+    ptySupported: process.platform === "linux",
     configuredEnabled: settings.terminalEnabled === true,
     envEnabled: process.env.KLIPPER_EDITOR_ENABLE_TERMINAL === "true",
     shell: terminalShell()

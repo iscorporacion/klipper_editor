@@ -19,6 +19,13 @@ export default function PreferencesGate({ children }: { children: ReactNode }) {
       Configuracion sin sincronizar: {error}. No cierres esta pagina.
       <button type="button" onClick={ready ? retryPreferences : load}>Reintentar</button>
     </div>}
-    {ready ? children : <p role="status">Cargando configuracion...</p>}
+    {ready ? children : (
+      <main className="preferences-loading" role="status" aria-live="polite">
+        <div className="preferences-loading-card">
+          <span>Cargando configuracion...</span>
+          <div className="panel-loading-bar" />
+        </div>
+      </main>
+    )}
   </>;
 }

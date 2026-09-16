@@ -16,7 +16,7 @@ import type {
 } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import MdiIcon from "@mdi/react";
-import { mdiArrowCollapseLeft, mdiArrowCollapseRight, mdiConsoleLine } from "@mdi/js";
+import { mdiArrowCollapseLeft, mdiArrowCollapseRight, mdiConsoleLine, mdiFan, mdiLedStripVariant } from "@mdi/js";
 import type { Range } from "@codemirror/state";
 import { Decoration, DecorationSet, EditorView, ViewPlugin, ViewUpdate, WidgetType } from "@codemirror/view";
 import { HighlightStyle, StreamLanguage, syntaxHighlighting } from "@codemirror/language";
@@ -365,6 +365,7 @@ const fallbackMainsailTheme: MainsailVisualTheme = {
 
 const availableThemeLogos = [
   { theme: "k-editor", label: "K-Editor", logoUrl: "/img/k-editor-mark.svg", logoMask: false },
+  { theme: "orbys", label: "Orbys", logoUrl: "/img/orbys.svg", logoMask: true },
   { theme: "mainsail", label: "Mainsail", logoUrl: "/mainsail-themes/logo.svg", logoMask: true },
   { theme: "btt", label: "BTT", logoUrl: "/mainsail-themes/sidebarLogo-btt.svg", logoMask: true },
   { theme: "klipper", label: "Klipper", logoUrl: "/mainsail-themes/sidebarLogo-klipper.svg", logoMask: true },
@@ -597,6 +598,16 @@ type HeaterStatus = {
   color?: string;
 };
 
+type AuxiliaryControl = {
+  name: string;
+  label: string;
+  type: "fan" | "led";
+  source: string;
+  controllable: boolean;
+  value: number;
+  color?: string;
+};
+
 type MacroEntry = {
   name: string;
   title: string;
@@ -692,6 +703,8 @@ const defaultMessages: Messages = {
   "actions.homeY": "Home Y",
   "actions.homeZ": "Home Z",
   "actions.zTilt": "Z Tilt",
+  "actions.auxiliaries": "Varios",
+  "actions.refreshAuxiliaries": "Actualizar varios",
   "actions.save": "Guardar",
   "actions.saving": "Guardando",
   "actions.saveAndClose": "Guardar y cerrar",
@@ -747,6 +760,10 @@ const defaultMessages: Messages = {
   "status.extruded": "Extrusion ejecutada",
   "status.settingHeaters": "Aplicando temperaturas",
   "status.heatersSet": "Temperaturas aplicadas",
+  "status.loadingAuxiliaries": "Cargando varios",
+  "status.auxiliariesRefreshed": "Varios actualizados",
+  "status.settingAuxiliary": "Ajustando {name}",
+  "status.auxiliarySet": "{name} ajustado",
   "status.emergencyStopping": "Ejecutando parada de emergencia",
   "status.emergencyStopped": "Parada de emergencia enviada",
   "status.runningCommand": "Ejecutando {command}",
@@ -775,7 +792,9 @@ const defaultMessages: Messages = {
   "status.resolvingInclude": "Resolviendo include {include}",
   "status.wildcardInclude": "Include con comodin: abierto {path}; {count} coincidencias",
   "status.modified": "modificado",
+  "status.themeImported": "Tema importado de Mainsail",
   "errors.loadTree": "No se pudo cargar el arbol",
+  "errors.importTheme": "No se pudo importar el tema de Mainsail",
   "errors.openFile": "No se pudo abrir el archivo",
   "errors.openGeneric": "Error al abrir",
   "errors.createFile": "No se pudo crear el archivo",
@@ -794,6 +813,8 @@ const defaultMessages: Messages = {
   "errors.loadHeaters": "No se pudieron cargar los calentadores",
   "errors.coolHeater": "No se pudo enfriar el calentador",
   "errors.setHeaters": "No se pudieron aplicar las temperaturas",
+  "errors.loadAuxiliaries": "No se pudieron cargar ventiladores y LEDs",
+  "errors.setAuxiliary": "No se pudo ajustar {name}",
   "errors.movePrinter": "No se pudo mover la impresora",
   "errors.extrudeFilament": "No se pudo extruir filamento",
   "errors.moveHoming": "Haz home de X/Y/Z antes de mover la impresora",
@@ -855,15 +876,21 @@ const defaultMessages: Messages = {
   "preview.jump": "Ir a esta sesion",
   "options.title": "Opciones",
   "options.generalTab": "General",
+  "options.themeTab": "Tema",
   "options.mcpTab": "MCP",
+  "options.themeLogo": "Logo",
+  "options.themeLogoHelp": "Elige el logo que se muestra en la barra superior y en la pagina de bienvenida.",
+  "options.themeColor": "Color de enfasis",
+  "options.themeColorHelp": "Color de acento usado en botones, resaltados y en el logo K-Editor.",
+  "options.importFromMainsail": "Importar de Mainsail",
+  "options.importingFromMainsail": "Importando de Mainsail...",
+  "options.importFromMainsailHelp": "Copia el logo y el color de enfasis configurados actualmente en Mainsail a este tema.",
   "options.language": "Idioma",
   "options.languageHelp": "Los idiomas disponibles salen de los archivos JSON en la carpeta `locales`.",
   "options.createBackupOnSave": "Crear copia de seguridad al guardar",
   "options.createBackupOnSaveHelp": "Antes de sobrescribir un archivo, crea una copia con fecha junto al original.",
   "options.startCollapsedSidebar": "Iniciar con barra colapsada",
   "options.startCollapsedSidebarHelp": "Al abrir K-Editor, muestra solo la barra lateral de iconos hasta pasar el mouse encima.",
-  "options.useAccentLogo": "Usar acento en logo K-Editor",
-  "options.useAccentLogoHelp": "Usa el logo propio de K-Editor y pinta la K con el color de enfasis configurado.",
   "options.enableTerminal": "Habilitar terminal",
   "options.enableTerminalHelp": "Acceso a la shell del usuario del servicio. Solo para una red de confianza.",
   "pty.mode": "Modo de terminal",
@@ -996,6 +1023,11 @@ const defaultMessages: Messages = {
   "heaters.extruders": "Extrusores",
   "heaters.beds": "Camas",
   "heaters.groupTarget": "Valor para todos",
+  "auxiliaries.title": "Varios",
+  "auxiliaries.fans": "Ventiladores",
+  "auxiliaries.leds": "LEDs",
+  "auxiliaries.empty": "Sin ventiladores ni LEDs detectados.",
+  "auxiliaries.readOnly": "Controlado por Klipper",
   "movement.title": "Movimiento",
   "movement.absolutePosition": "Posicion: absoluta",
   "movement.zOffset": "Z-Offset: {offset}",
@@ -1238,6 +1270,10 @@ function HeaterTypeIcon({
 
 function formatProgress(value: number) {
   return `${Math.round(Math.min(Math.max(value, 0), 1) * 100)}%`;
+}
+
+function formatPercent(value: number) {
+  return `${Math.round(Math.min(Math.max(value, 0), 1) * 100)} %`;
 }
 
 function formatBytes(value: number) {
@@ -1580,6 +1616,23 @@ function kEditorFaviconDataUrl(accent: string) {
   const safeAccent = normalizeCssColor(accent, "#7bff33");
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="22 8 180 204"><defs><linearGradient id="markShade" x1="48" y1="24" x2="176" y2="180" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#566879"/><stop offset="1" stop-color="#202a34"/></linearGradient></defs><path fill="url(#markShade)" d="M112 14 196 62v96l-84 48-84-48V62Z"/><path fill="#151b22" d="M112 30 181 70v80l-69 40-69-40V70Z" opacity="0.72"/><path fill="${safeAccent}" d="M72 58h28v45l42-45h35l-50 52 54 58h-37l-44-50v50H72Z"/><path fill="#f2f6fb" d="M139 86h33v13h-33Zm-15 28h48v13h-48Zm15 28h33v13h-33Z" opacity="0.95"/><path fill="#78d6ff" d="M55 78 35 110l20 32h16l-20-32 20-32Zm114 0 20 32-20 32h-16l20-32-20-32Z"/></svg>`;
   return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+}
+
+function recolorSvg(svgText: string, color: string) {
+  const safeColor = normalizeCssColor(color, "#7bff33");
+  const cleanedSvg = svgText
+    .replace(/<\?xml[\s\S]*?\?>/gi, "")
+    .replace(/<!DOCTYPE[\s\S]*?>/gi, "")
+    .replace(/\sfill=(["'])(?!none\b|transparent\b|url\()[^"']*\1/gi, ` fill="${safeColor}"`)
+    .replace(/\sstroke=(["'])(?!none\b|transparent\b|url\()[^"']*\1/gi, ` stroke="${safeColor}"`)
+    .replace(/fill:\s*(?!none\b|transparent\b|url\()[^;"'}]+/gi, `fill:${safeColor}`)
+    .replace(/stroke:\s*(?!none\b|transparent\b|url\()[^;"'}]+/gi, `stroke:${safeColor}`);
+
+  return cleanedSvg.replace(/<svg\b(?![^>]*xmlns=)/i, '<svg xmlns="http://www.w3.org/2000/svg"');
+}
+
+function maskFaviconDataUrl(svgText: string, accent: string) {
+  return `data:image/svg+xml,${encodeURIComponent(recolorSvg(svgText, accent))}`;
 }
 
 function fallbackIconForPath(path: string) {
@@ -2155,7 +2208,6 @@ export default function Home() {
 function Editor() {
   const [tree, setTree] = useState<TreeNode[]>([]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [useAccentLogo, setUseAccentLogo] = useState(false);
   const [hideBackupFiles, setHideBackupFiles] = useState(true);
   const [selectedTreeFiles, setSelectedTreeFiles] = useState<Set<string>>(() => new Set());
   const [openFiles, setOpenFiles] = useState<OpenFile[]>([]);
@@ -2206,6 +2258,10 @@ function Editor() {
   const [pidCompleted, setPidCompleted] = useState<{ id: string; heater: string } | null>(null);
   const [pidSamples, setPidSamples] = useState<PidSample[]>([]);
   const [settingHeaters, setSettingHeaters] = useState(false);
+  const [auxiliariesOpen, setAuxiliariesOpen] = useState(false);
+  const [auxiliaryControls, setAuxiliaryControls] = useState<AuxiliaryControl[]>([]);
+  const [auxiliariesLoading, setAuxiliariesLoading] = useState(false);
+  const [settingAuxiliary, setSettingAuxiliary] = useState<string | null>(null);
   const [macros, setMacros] = useState<MacroEntry[]>([]);
   const [macroTab, setMacroTab] = useState<MacroTab>("favorites");
   const [macroFavorites, setMacroFavorites] = useState<string[]>([]);
@@ -2363,6 +2419,8 @@ function Editor() {
   const anyHeaterActive = heaters.some((heater) => heater.target > 0);
   const extruderHeaters = useMemo(() => heaters.filter(isExtruderHeater), [heaters]);
   const bedHeaters = useMemo(() => heaters.filter(isBedHeater), [heaters]);
+  const fanControls = useMemo(() => auxiliaryControls.filter((control) => control.type === "fan"), [auxiliaryControls]);
+  const ledControls = useMemo(() => auxiliaryControls.filter((control) => control.type === "led"), [auxiliaryControls]);
   const currentPrintThumbnail = bestThumbnail(printerStatus?.printDetails.metadata?.thumbnails ?? []);
   const currentPrintThumbnailUrl = currentPrintThumbnail
     ? apiPath(`/api/printer/gcode-thumbnail?path=${encodeURIComponent(currentPrintThumbnail.relativePath)}`)
@@ -2441,7 +2499,7 @@ function Editor() {
       "--mainsail-logo-color": logo
     };
   }, [mainsailTheme.logo, mainsailTheme.primary]);
-  const showKEditorLogo = useAccentLogo || mainsailTheme.theme === "k-editor";
+  const showKEditorLogo = mainsailTheme.theme === "k-editor";
   const mainsailLogoUrl = showKEditorLogo
     ? "/img/k-editor-mark.svg"
     : mainsailTheme.logoPath
@@ -2840,7 +2898,6 @@ function Editor() {
   const saveEditorTheme = useCallback((nextTheme: MainsailVisualTheme) => {
     const normalized = normalizeEditorTheme(nextTheme);
     setMainsailTheme(normalized);
-    setUseAccentLogo(normalized.theme === "k-editor");
     preferences.setItem(useAccentLogoKey, String(normalized.theme === "k-editor"));
     preferences.setItem(themePreferenceKey, JSON.stringify(normalized));
   }, []);
@@ -3349,6 +3406,76 @@ function Editor() {
 
     await refreshHeaterCatalog();
   }, [cacheAndSetHeaters, refreshHeaterCatalog, setHeaterTargetInputs]);
+
+  const updateAuxiliaryControlLocal = useCallback((name: string, patch: Partial<AuxiliaryControl>) => {
+    setAuxiliaryControls((controls) =>
+      controls.map((control) => control.name === name ? { ...control, ...patch } : control)
+    );
+  }, []);
+
+  const loadAuxiliaryControls = useCallback(
+    async (showError = false) => {
+      setAuxiliariesLoading(true);
+      setMessage(t("status.loadingAuxiliaries"));
+
+      try {
+        const response = await fetch(apiPath("/api/printer/auxiliary"), { cache: "no-store" });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error ?? t("errors.loadAuxiliaries"));
+
+        const controls = Array.isArray(payload.controls) ? payload.controls as AuxiliaryControl[] : [];
+        setAuxiliaryControls(controls);
+        setMessage(t("status.auxiliariesRefreshed"));
+        return controls;
+      } catch (error) {
+        if (showError) {
+          setMessage(error instanceof Error ? error.message : t("errors.loadAuxiliaries"));
+        }
+        return undefined;
+      } finally {
+        setAuxiliariesLoading(false);
+      }
+    },
+    [t]
+  );
+
+  const openAuxiliariesModal = useCallback(async () => {
+    setAuxiliariesOpen(true);
+    await loadAuxiliaryControls(true);
+  }, [loadAuxiliaryControls]);
+
+  const setAuxiliaryControl = useCallback(
+    async (control: AuxiliaryControl, patch: Partial<Pick<AuxiliaryControl, "value" | "color">>) => {
+      if (!control.controllable || settingAuxiliary) return;
+
+      const nextValue = Math.min(Math.max(Number(patch.value ?? control.value), 0), 1);
+      const nextColor = patch.color ?? control.color;
+      updateAuxiliaryControlLocal(control.name, { value: nextValue, color: nextColor });
+      setSettingAuxiliary(control.name);
+      setMessage(t("status.settingAuxiliary", { name: control.label }));
+
+      try {
+        const response = await fetch(apiPath("/api/printer/auxiliary"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: control.name, value: nextValue, color: nextColor })
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error ?? t("errors.setAuxiliary", { name: control.label }));
+
+        if (Array.isArray(payload.controls)) {
+          setAuxiliaryControls(payload.controls as AuxiliaryControl[]);
+        }
+        setMessage(t("status.auxiliarySet", { name: control.label }));
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : t("errors.setAuxiliary", { name: control.label }));
+        await loadAuxiliaryControls(false);
+      } finally {
+        setSettingAuxiliary(null);
+      }
+    },
+    [loadAuxiliaryControls, settingAuxiliary, t, updateAuxiliaryControlLocal]
+  );
 
   const reloadOpenTextFiles = useCallback(async () => {
     const reloadableFiles = openFiles.filter(
@@ -4665,9 +4792,16 @@ function Editor() {
     }
 
     setSidebarCollapsed(preferences.getItem(sidebarCollapsedKey) === "true");
-    const storedTheme = readStoredEditorTheme();
+    const hasStoredTheme = preferences.getItem(themePreferenceKey) !== null;
+    const storedTheme = hasStoredTheme
+      ? readStoredEditorTheme()
+      : preferences.getItem(useAccentLogoKey) === "true"
+        ? normalizeEditorTheme({ ...fallbackMainsailTheme, theme: "k-editor", logoUrl: "/img/k-editor-mark.svg", logoMask: false })
+        : fallbackMainsailTheme;
     setMainsailTheme(storedTheme);
-    setUseAccentLogo(storedTheme.theme === "k-editor" || preferences.getItem(useAccentLogoKey) === "true");
+    if (!hasStoredTheme && storedTheme.theme === "k-editor") {
+      preferences.setItem(themePreferenceKey, JSON.stringify(storedTheme));
+    }
 
     try {
       const savedTerminalHistory = JSON.parse(preferences.getItem(terminalHistoryKey) ?? "[]") as unknown;
@@ -4766,19 +4900,43 @@ function Editor() {
   }, [mcpTunnel.url, t]);
 
   useEffect(() => {
-    const href = showKEditorLogo
-      ? kEditorFaviconDataUrl(mainsailTheme.primary)
-      : apiPath("/img/k-editor-mark.svg");
+    let cancelled = false;
     const links = Array.from(document.querySelectorAll<HTMLLinkElement>("link[rel~='icon'], link[rel='shortcut icon']"));
     const faviconLinks = links.length > 0 ? links : [document.createElement("link")];
 
-    for (const link of faviconLinks) {
-      link.rel = link.rel || "icon";
-      link.type = "image/svg+xml";
-      link.href = href;
-      if (!link.parentNode) document.head.appendChild(link);
+    const applyFavicon = (href: string) => {
+      if (cancelled) return;
+      for (const link of faviconLinks) {
+        link.rel = link.rel || "icon";
+        link.type = "image/svg+xml";
+        link.href = href;
+        if (!link.parentNode) document.head.appendChild(link);
+      }
+    };
+
+    if (showKEditorLogo) {
+      applyFavicon(kEditorFaviconDataUrl(mainsailTheme.primary));
+      return () => {
+        cancelled = true;
+      };
     }
-  }, [mainsailTheme.primary, showKEditorLogo]);
+
+    if (mainsailLogoUrl && mainsailTheme.logoMask) {
+      applyFavicon(mainsailLogoUrl);
+      void fetch(mainsailLogoUrl)
+        .then((response) => response.ok ? response.text() : Promise.reject(new Error(response.statusText)))
+        .then((svgText) => applyFavicon(maskFaviconDataUrl(svgText, mainsailTheme.primary)))
+        .catch(() => applyFavicon(mainsailLogoUrl));
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    applyFavicon(mainsailLogoUrl ?? apiPath("/img/k-editor-mark.svg"));
+    return () => {
+      cancelled = true;
+    };
+  }, [mainsailLogoUrl, mainsailTheme.logoMask, mainsailTheme.primary, showKEditorLogo]);
 
   useEffect(() => {
     void loadPrinterStatus();
@@ -5294,6 +5452,15 @@ function Editor() {
               >
                 <MdGridOn className="home-button-icon" />
               </button>
+              <button
+                className="home-button auxiliaries-open-button"
+                type="button"
+                title={t("actions.auxiliaries")}
+                aria-label={t("actions.auxiliaries")}
+                onClick={() => void openAuxiliariesModal()}
+              >
+                <MdiIcon className="home-button-icon" path={mdiFan} size={1} />
+              </button>
             </div>
             <div className="heater-toolbar">
               <button
@@ -5520,6 +5687,10 @@ function Editor() {
             <div className="welcome">
               {showKEditorLogo ? (
                 <KEditorAccentLogo className="welcome-logo" />
+              ) : mainsailLogoUrl && mainsailTheme.logoMask ? (
+                <span className="welcome-logo welcome-logo-mask" aria-hidden="true" style={mainsailLogoMaskStyle} />
+              ) : mainsailLogoUrl ? (
+                <img className="welcome-logo" src={mainsailLogoUrl} alt="" />
               ) : (
                 <img className="welcome-logo" src={apiPath("/img/k-editor-logo.svg")} alt="" />
               )}
@@ -5527,9 +5698,9 @@ function Editor() {
               <p>{t("welcome.description")}</p>
             </div>
           ) : activeFile.loading ? (
-            <div className="welcome editor-loading">
+            <div className="welcome editor-loading" role="status" aria-live="polite">
               <h2>{t("loading.title")}</h2>
-              <p>{activeFile.path}</p>
+              <p className="editor-loading-path">{activeFile.path}</p>
               <div className="panel-loading-bar" />
             </div>
           ) : activeFile.error ? (
@@ -6468,6 +6639,166 @@ function Editor() {
                   </button>
                 </div>
               </form>
+            </section>
+          </div>
+        )}
+
+        {auxiliariesOpen && (
+          <div className="modal-backdrop" role="presentation" onMouseDown={() => setAuxiliariesOpen(false)}>
+            <section
+              className="options-modal auxiliaries-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="auxiliaries-title"
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <div className="modal-header">
+                <h2 id="auxiliaries-title">{t("auxiliaries.title")}</h2>
+                <div className="modal-header-actions">
+                  <button
+                    className="modal-icon-button"
+                    type="button"
+                    title={t("actions.refreshAuxiliaries")}
+                    aria-label={t("actions.refreshAuxiliaries")}
+                    disabled={auxiliariesLoading || settingAuxiliary !== null}
+                    onClick={() => void loadAuxiliaryControls(true)}
+                  >
+                    <FcRefresh className="action-icon" />
+                  </button>
+                  <button
+                    className="modal-close"
+                    type="button"
+                    title={t("options.close")}
+                    aria-label={t("options.close")}
+                    onClick={() => setAuxiliariesOpen(false)}
+                  >
+                    x
+                  </button>
+                </div>
+              </div>
+              <div className="auxiliaries-modal-body">
+                {auxiliariesLoading && auxiliaryControls.length === 0 ? (
+                  <div className="panel-loading-state" role="status" aria-live="polite">
+                    <span>{t("status.loadingAuxiliaries")}</span>
+                    <div className="panel-loading-bar" />
+                  </div>
+                ) : auxiliaryControls.length === 0 ? (
+                  <p className="empty-note">{t("auxiliaries.empty")}</p>
+                ) : (
+                  <>
+                    {fanControls.length > 0 && (
+                      <section className="auxiliary-section">
+                        <div className="auxiliary-section-title">
+                          <MdiIcon className="auxiliary-section-icon" path={mdiFan} size={1} />
+                          <span>{t("auxiliaries.fans")}</span>
+                        </div>
+                        <div className="auxiliary-list">
+                          {fanControls.map((control) => {
+                            const busy = settingAuxiliary === control.name;
+                            const valuePercent = Math.round(control.value * 100);
+
+                            return (
+                              <div key={control.name} className={control.controllable ? "auxiliary-row" : "auxiliary-row readonly"}>
+                                <div className="auxiliary-row-main">
+                                  <span className="auxiliary-row-name">
+                                    <MdiIcon className="auxiliary-row-icon" path={mdiFan} size={0.85} />
+                                    <span>{control.label}</span>
+                                  </span>
+                                  <span className="auxiliary-row-value">
+                                    {control.controllable ? (
+                                      <>
+                                        <input
+                                          type="number"
+                                          min="0"
+                                          max="100"
+                                          step="1"
+                                          value={valuePercent}
+                                          disabled={busy}
+                                          aria-label={`${control.label} %`}
+                                          onFocus={(event) => event.currentTarget.select()}
+                                          onChange={(event) => updateAuxiliaryControlLocal(control.name, { value: Math.min(Math.max(Number(event.target.value), 0), 100) / 100 })}
+                                          onBlur={(event) => void setAuxiliaryControl(control, { value: Number(event.target.value) / 100 })}
+                                          onKeyDown={(event) => {
+                                            if (event.key === "Enter") void setAuxiliaryControl(control, { value: Number(event.currentTarget.value) / 100 });
+                                          }}
+                                        />
+                                        <span>%</span>
+                                      </>
+                                    ) : (
+                                      <span title={t("auxiliaries.readOnly")}>{formatPercent(control.value)}</span>
+                                    )}
+                                  </span>
+                                </div>
+                                {control.controllable ? (
+                                  <div className="auxiliary-slider-row">
+                                    <button className="auxiliary-step-button" type="button" disabled={busy} onClick={() => void setAuxiliaryControl(control, { value: Math.max(control.value - 0.05, 0) })}>-</button>
+                                    <input
+                                      className="auxiliary-slider"
+                                      type="range"
+                                      min="0"
+                                      max="100"
+                                      step="1"
+                                      value={valuePercent}
+                                      disabled={busy}
+                                      aria-label={`${control.label} ${formatPercent(control.value)}`}
+                                      onChange={(event) => updateAuxiliaryControlLocal(control.name, { value: Number(event.target.value) / 100 })}
+                                      onPointerUp={(event) => void setAuxiliaryControl(control, { value: Number(event.currentTarget.value) / 100 })}
+                                      onKeyUp={(event) => {
+                                        if (["ArrowLeft", "ArrowRight", "Home", "End", "PageUp", "PageDown"].includes(event.key)) {
+                                          void setAuxiliaryControl(control, { value: Number(event.currentTarget.value) / 100 });
+                                        }
+                                      }}
+                                    />
+                                    <button className="auxiliary-step-button" type="button" disabled={busy} onClick={() => void setAuxiliaryControl(control, { value: Math.min(control.value + 0.05, 1) })}>+</button>
+                                  </div>
+                                ) : (
+                                  <p className="auxiliary-readonly-note">{t("auxiliaries.readOnly")}</p>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </section>
+                    )}
+
+                    {ledControls.length > 0 && (
+                      <section className="auxiliary-section">
+                        <div className="auxiliary-section-title">
+                          <MdiIcon className="auxiliary-section-icon" path={mdiLedStripVariant} size={1} />
+                          <span>{t("auxiliaries.leds")}</span>
+                        </div>
+                        <div className="auxiliary-list">
+                          {ledControls.map((control) => {
+                            const busy = settingAuxiliary === control.name;
+                            const color = control.color ?? "#000000";
+
+                            return (
+                              <div key={control.name} className="auxiliary-row led-row">
+                                <div className="auxiliary-row-main">
+                                  <span className="auxiliary-row-name">
+                                    <MdiIcon className="auxiliary-row-icon" path={mdiLedStripVariant} size={0.85} />
+                                    <span>{control.label}</span>
+                                  </span>
+                                  <label className="auxiliary-color-control" title={color}>
+                                    <input
+                                      type="color"
+                                      value={color}
+                                      disabled={busy || !control.controllable}
+                                      aria-label={control.label}
+                                      onChange={(event) => updateAuxiliaryControlLocal(control.name, { color: event.target.value, value: 1 })}
+                                      onBlur={(event) => void setAuxiliaryControl(control, { color: event.target.value, value: 1 })}
+                                    />
+                                  </label>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </section>
+                    )}
+                  </>
+                )}
+              </div>
             </section>
           </div>
         )}
@@ -7439,7 +7770,7 @@ function Editor() {
         {optionsOpen && (
           <div className="modal-backdrop" role="presentation" onMouseDown={() => setOptionsOpen(false)}>
             <section
-              className="options-modal"
+              className="options-modal settings-modal"
               role="dialog"
               aria-modal="true"
               aria-labelledby="options-title"
@@ -7467,6 +7798,15 @@ function Editor() {
                     onClick={() => setOptionsTab("general")}
                   >
                     {t("options.generalTab")}
+                  </button>
+                  <button
+                    className={optionsTab === "theme" ? "options-tab active" : "options-tab"}
+                    type="button"
+                    role="tab"
+                    aria-selected={optionsTab === "theme"}
+                    onClick={() => setOptionsTab("theme")}
+                  >
+                    {t("options.themeTab")}
                   </button>
                   <button
                     className={optionsTab === "mcp" ? "options-tab active" : "options-tab"}
@@ -7534,19 +7874,6 @@ function Editor() {
                       <span>{t("options.startCollapsedSidebar")}</span>
                     </label>
                     <p className="setting-help">{t("options.startCollapsedSidebarHelp")}</p>
-                    <label className="setting-checkbox">
-                      <input
-                        type="checkbox"
-                        checked={useAccentLogo}
-                        onChange={(event) => {
-                          const checked = event.target.checked;
-                          setUseAccentLogo(checked);
-                          preferences.setItem(useAccentLogoKey, String(checked));
-                        }}
-                      />
-                      <span>{t("options.useAccentLogo")}</span>
-                    </label>
-                    <p className="setting-help">{t("options.useAccentLogoHelp")}</p>
                     <label className="setting-field">
                       <span>{t("options.sectionPreviewDelay")}</span>
                       <input
@@ -7581,6 +7908,77 @@ function Editor() {
                       </label>
                       {!ptySupported && <p className="setting-help">{t("pty.unsupported")}</p>}
                       <p className="setting-help">{t("pty.settingsHelp")}</p>
+                    </> : optionsTab === "theme" ? <>
+                      <div className="setting-field">
+                        <span>{t("options.themeLogo")}</span>
+                        <div className="theme-logo-grid">
+                          {availableThemeLogos.map((logoOption) => {
+                            const isActive = mainsailTheme.theme === logoOption.theme;
+                            return (
+                              <button
+                                key={logoOption.theme}
+                                type="button"
+                                className={isActive ? "theme-logo-option active" : "theme-logo-option"}
+                                aria-pressed={isActive}
+                                onClick={() =>
+                                  saveEditorTheme({
+                                    ...mainsailTheme,
+                                    theme: logoOption.theme,
+                                    logo: logoOption.theme === "orbys" ? mainsailTheme.primary : mainsailTheme.logo,
+                                    logoUrl: logoOption.logoUrl,
+                                    logoMask: logoOption.logoMask,
+                                    logoPath: null
+                                  })
+                                }
+                              >
+                                <span
+                                  className="theme-logo-option-preview"
+                                  style={
+                                    logoOption.logoMask
+                                      ? {
+                                          maskImage: `url(${apiPath(logoOption.logoUrl)})`,
+                                          WebkitMaskImage: `url(${apiPath(logoOption.logoUrl)})`,
+                                          maskPosition: "center",
+                                          WebkitMaskPosition: "center",
+                                          maskRepeat: "no-repeat",
+                                          WebkitMaskRepeat: "no-repeat",
+                                          maskSize: "contain",
+                                          WebkitMaskSize: "contain",
+                                          background: mainsailTheme.primary
+                                        }
+                                      : undefined
+                                  }
+                                >
+                                  {!logoOption.logoMask && <img src={apiPath(logoOption.logoUrl)} alt="" />}
+                                </span>
+                                <span className="theme-logo-option-label">{logoOption.label}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                      <p className="setting-help">{t("options.themeLogoHelp")}</p>
+                      <label className="setting-field">
+                        <span>{t("options.themeColor")}</span>
+                        <input
+                          type="color"
+                          value={normalizeCssColor(mainsailTheme.primary, fallbackMainsailTheme.primary)}
+                          onChange={(event) => {
+                            const nextColor = event.target.value;
+                            saveEditorTheme({ ...mainsailTheme, primary: nextColor, logo: nextColor });
+                          }}
+                        />
+                      </label>
+                      <p className="setting-help">{t("options.themeColorHelp")}</p>
+                      <button
+                        className="dialog-button"
+                        type="button"
+                        disabled={themeImporting}
+                        onClick={() => void importMainsailTheme()}
+                      >
+                        {themeImporting ? t("options.importingFromMainsail") : t("options.importFromMainsail")}
+                      </button>
+                      <p className="setting-help">{t("options.importFromMainsailHelp")}</p>
                     </> : <section className="mcp-tunnel-card" aria-label={t("options.mcpTunnelTitle")}>
                       <div className="mcp-tunnel-heading">
                         <div>

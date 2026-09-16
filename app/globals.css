@@ -1900,6 +1900,10 @@ body.is-resizing-row {
   box-shadow: 0 22px 58px rgba(0, 0, 0, 0.46);
 }
 
+.settings-modal {
+  width: min(560px, 100%);
+}
+
 .modal-header {
   display: flex;
   align-items: center;
@@ -1966,6 +1970,10 @@ body.is-resizing-row {
 
 .heaters-modal {
   width: min(640px, 100%);
+}
+
+.auxiliaries-modal {
+  width: min(460px, 100%);
 }
 
 .movement-modal {
@@ -2328,6 +2336,172 @@ body.is-resizing-row {
   font-size: 12px;
   line-height: 1.45;
   padding: 9px 10px;
+}
+
+.auxiliaries-modal-body {
+  display: grid;
+  gap: 12px;
+  max-height: min(620px, calc(100vh - 140px));
+  min-height: 0;
+  overflow: auto;
+  padding: 12px;
+}
+
+.auxiliary-section {
+  display: grid;
+  border: 1px solid var(--border-soft);
+  background: var(--panel-soft);
+}
+
+.auxiliary-section-title {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 42px;
+  border-bottom: 1px solid var(--border-soft);
+  background: rgba(255, 255, 255, 0.045);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 800;
+  padding: 0 12px;
+}
+
+.auxiliary-section-icon {
+  width: 18px;
+  height: 18px;
+  color: var(--text);
+}
+
+.auxiliary-list {
+  display: grid;
+}
+
+.auxiliary-row {
+  display: grid;
+  gap: 8px;
+  min-height: 58px;
+  border-bottom: 1px solid var(--border-soft);
+  padding: 9px 12px 11px;
+}
+
+.auxiliary-row:last-child {
+  border-bottom: 0;
+}
+
+.auxiliary-row-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+}
+
+.auxiliary-row-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.auxiliary-row-icon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  color: #d8e9ff;
+}
+
+.auxiliary-row-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.auxiliary-row-value input {
+  width: 66px;
+  height: 30px;
+  border: 1px solid var(--border);
+  border-radius: var(--control-radius);
+  background: var(--panel);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  padding: 0 8px;
+  text-align: right;
+}
+
+.auxiliary-slider-row {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) 28px;
+  gap: 10px;
+  align-items: center;
+}
+
+.auxiliary-slider {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+.auxiliary-step-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.auxiliary-step-button:hover,
+.auxiliary-step-button:focus-visible {
+  color: var(--accent);
+  outline: 0;
+}
+
+.auxiliary-step-button:disabled,
+.auxiliary-row-value input:disabled,
+.auxiliary-slider:disabled,
+.auxiliary-color-control input:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.auxiliary-readonly-note {
+  margin: -2px 0 0 24px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.auxiliary-color-control {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+}
+
+.auxiliary-color-control input {
+  width: 26px;
+  height: 26px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
 }
 
 .heater-group-controls {
@@ -3255,6 +3429,26 @@ button.bed-mesh-profile {
   animation: printer-initializing-slide 1.15s ease-in-out infinite;
 }
 
+.preferences-loading {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 24px;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.preferences-loading-card {
+  display: grid;
+  width: min(360px, 82vw);
+  gap: 14px;
+  justify-items: stretch;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 700;
+  text-align: center;
+}
+
 .update-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -4123,7 +4317,7 @@ button.bed-mesh-profile {
 
 .options-tabs {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   overflow: hidden;
   border: 1px solid var(--border);
   border-radius: var(--control-radius);
@@ -4207,6 +4401,58 @@ button.bed-mesh-profile {
   color: var(--muted);
   font-size: 12px;
   line-height: 1.45;
+}
+
+.setting-field input[type="color"] {
+  padding: 2px;
+  cursor: pointer;
+}
+
+.theme-logo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  gap: 8px;
+}
+
+.theme-logo-option {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 10px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--control-radius);
+  background: var(--panel-soft);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.theme-logo-option:hover {
+  border-color: var(--accent);
+}
+
+.theme-logo-option.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.theme-logo-option-preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+}
+
+.theme-logo-option-preview img {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+}
+
+.theme-logo-option-label {
+  font-size: 11px;
+  text-align: center;
+  color: var(--muted);
 }
 
 .mcp-tunnel-card {
@@ -4297,6 +4543,12 @@ button.bed-mesh-profile {
   opacity: 0.92;
 }
 
+.welcome-logo-mask {
+  display: block;
+  height: min(160px, 35vw);
+  background: var(--mainsail-logo-color);
+}
+
 .welcome h2 {
   margin-bottom: 8px;
   color: var(--text);
@@ -4336,12 +4588,22 @@ button.bed-mesh-profile {
 }
 
 .editor-loading {
-  gap: 12px;
+  align-content: center;
+  gap: 14px;
+  min-height: 100%;
 }
 
 .editor-loading .panel-loading-bar {
   width: min(360px, 72vw);
-  margin-top: 4px;
+  margin-top: 2px;
+}
+
+.editor-loading-path {
+  max-width: min(520px, 80vw);
+  overflow: hidden;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .empty-note {

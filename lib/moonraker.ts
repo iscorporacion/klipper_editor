@@ -83,6 +83,16 @@ export type HeaterStatus = {
   color?: string;
 };
 
+export type AuxiliaryControl = {
+  name: string;
+  label: string;
+  type: "fan" | "led";
+  source: "fan" | "fan_generic" | "heater_fan" | "controller_fan" | "temperature_fan" | "output_pin" | "led";
+  controllable: boolean;
+  value: number;
+  color?: string;
+};
+
 export type MainsailUiSettings = {
   mode: string;
   theme: string;
@@ -652,6 +662,53 @@ function heaterLabel(name: string) {
   return name.replace(/^heater_generic\s+/i, "").toUpperCase();
 }
 
+function displayNameFromObject(name: string) {
+  return name
+    .replace(/^(fan_generic|heater_fan|controller_fan|temperature_fan|output_pin|neopixel|dotstar|pca9533|pca9632|led)\s+/i, "")
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function configNameFromObject(name: string) {
+  return name
+    .replace(/^(fan_generic|heater_fan|controller_fan|temperature_fan|output_pin|neopixel|dotstar|pca9533|pca9632|led)\s+/i, "")
+    .trim();
+}
+
+function auxiliarySource(name: string): AuxiliaryControl["source"] | undefined {
+  if (name === "fan") return "fan";
+  if (/^fan_generic\s+/i.test(name)) return "fan_generic";
+  if (/^heater_fan\s+/i.test(name)) return "heater_fan";
+  if (/^controller_fan\s+/i.test(name)) return "controller_fan";
+  if (/^temperature_fan\s+/i.test(name)) return "temperature_fan";
+  if (/^output_pin\s+/i.test(name)) return "output_pin";
+  if (/^(neopixel|dotstar|pca9533|pca9632|led)\s+/i.test(name)) return "led";
+  return undefined;
+}
+
+function colorFromLedData(value: unknown) {
+  const firstColor = Array.isArray(value) ? value.find((item) => Array.isArray(item)) : undefined;
+  if (!Array.isArray(firstColor) || firstColor.length < 3) return undefined;
+
+  const channels = firstColor.slice(0, 3).map((channel) => {
+    const number = Number(channel);
+    if (!Number.isFinite(number)) return 0;
+    return Math.min(Math.max(Math.round(number <= 1 ? number * 255 : number), 0), 255);
+  });
+
+  return `#${channels.map((channel) => channel.toString(16).padStart(2, "0")).join("")}`;
+}
+
+function ledBrightness(value: unknown) {
+  const firstColor = Array.isArray(value) ? value.find((item) => Array.isArray(item)) : undefined;
+  if (!Array.isArray(firstColor) || firstColor.length < 3) return 0;
+  const channels = firstColor.slice(0, 3).map((channel) => {
+    const number = Number(channel);
+    return Number.isFinite(number) ? Math.min(Math.max(number, 0), 1) : 0;
+  });
+  return Math.max(...channels);
+}
+
 function extruderIndex(name: string) {
   if (name === "extruder") return 0;
   const match = name.match(/^extruder(\d+)$/);
@@ -738,6 +795,83 @@ export async function setHeaterTarget(name: string, target: number) {
   const safeName = name.replace(/"/g, "");
   const safeTarget = Math.max(0, target);
   return runGcodeScript(`SET_HEATER_TEMPERATURE HEATER="${safeName}" TARGET=${safeTarget}`);
+}
+
+export async function getAuxiliaryControls(): Promise<AuxiliaryControl[]> {
+  const objectsPayload = await moonrakerFetch("/printer/objects/list");
+  const objects = objectsPayload?.result?.objects ?? objectsPayload?.objects ?? [];
+  if (!Array.isArray(objects) || objects.length === 0) return [];
+
+  const names = Array.from(new Set(objects.filter((name): name is string => typeof name === "string")));
+  const auxiliaryNames = names.filter((name) => auxiliarySource(name));
+  if (auxiliaryNames.length === 0) return [];
+
+  const params = new URLSearchParams();
+  for (const name of auxiliaryNames) {
+    const source = auxiliarySource(name);
+    if (source === "output_pin") {
+      params.append(name, "value");
+    } else if (source === "led") {
+      params.append(name, "color_data");
+    } else {
+      params.append(name, "speed,rpm");
+    }
+  }
+
+  const statusPayload = await moonrakerFetch(`/printer/objects/query?${params.toString()}`);
+  const status = statusPayload?.result?.status ?? statusPayload?.status ?? {};
+
+  return auxiliaryNames.map((name) => {
+    const source = auxiliarySource(name)!;
+    const objectStatus = status[name] ?? {};
+    const isLed = source === "led";
+    const value = isLed
+      ? ledBrightness(objectStatus.color_data)
+      : source === "output_pin"
+        ? toNumber(objectStatus.value)
+        : toNumber(objectStatus.speed);
+
+    return {
+      name,
+      label: name === "fan" ? "Fan" : displayNameFromObject(name),
+      type: isLed ? "led" : "fan",
+      source,
+      controllable: source === "fan" || source === "fan_generic" || source === "output_pin" || source === "led",
+      value: Math.min(Math.max(value, 0), 1),
+      color: isLed ? colorFromLedData(objectStatus.color_data) : undefined
+    };
+  });
+}
+
+export async function setAuxiliaryControl(name: string, value?: number, color?: string) {
+  const source = auxiliarySource(name);
+  if (!source) throw new Error("Unsupported auxiliary control");
+  if (source === "heater_fan" || source === "controller_fan" || source === "temperature_fan") {
+    throw new Error("This fan is controlled automatically by Klipper");
+  }
+
+  const safeName = name.replace(/["\r\n]/g, "");
+  const safeValue = Math.min(Math.max(Number(value ?? 0), 0), 1);
+
+  if (source === "fan") {
+    return runGcodeScript(safeValue <= 0 ? "M107" : `M106 S${Math.round(safeValue * 255)}`);
+  }
+
+  if (source === "fan_generic") {
+    return runGcodeScript(`SET_FAN_SPEED FAN="${configNameFromObject(safeName)}" SPEED=${formatGcodeNumber(safeValue)}`);
+  }
+
+  if (source === "output_pin") {
+    return runGcodeScript(`SET_PIN PIN="${configNameFromObject(safeName)}" VALUE=${formatGcodeNumber(safeValue)}`);
+  }
+
+  const safeColor = typeof color === "string" && /^#[0-9a-f]{6}$/i.test(color) ? color : "#000000";
+  const red = parseInt(safeColor.slice(1, 3), 16) / 255;
+  const green = parseInt(safeColor.slice(3, 5), 16) / 255;
+  const blue = parseInt(safeColor.slice(5, 7), 16) / 255;
+  return runGcodeScript(
+    `SET_LED LED="${configNameFromObject(safeName)}" RED=${formatGcodeNumber(red)} GREEN=${formatGcodeNumber(green)} BLUE=${formatGcodeNumber(blue)}`
+  );
 }
 
 export async function extrudeFilament(extruder: string, distance: number, speed: number) {

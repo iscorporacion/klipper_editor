@@ -147,6 +147,29 @@ export type GcodeStoreEntry = {
   type: "command" | "response";
 };
 
+export type BedMeshProfile = {
+  name: string;
+  points: number[][];
+  meshParams: Record<string, unknown>;
+};
+
+export type BedMeshCurrent = {
+  name: string;
+  probedMatrix: number[][];
+  meshMatrix: number[][];
+  meshParams: Record<string, unknown>;
+};
+
+export type BedMeshDump = {
+  current: BedMeshCurrent | null;
+  profiles: BedMeshProfile[];
+  calibration: unknown;
+  probeOffsets: number[];
+  axisMinimum: number[];
+  axisMaximum: number[];
+  raw: unknown;
+};
+
 function moonrakerPath(path: string) {
   return `${moonrakerUrl}${path}`;
 }
@@ -387,6 +410,73 @@ export async function runGcodeScript(script: string) {
     body: JSON.stringify({ script })
   });
   return payload?.result ?? payload;
+}
+
+function matrixFrom(value: unknown): number[][] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((row): row is unknown[] => Array.isArray(row))
+    .map((row) => row.map(toNumber));
+}
+
+function readMeshParams(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" ? value as Record<string, unknown> : {};
+}
+
+export async function getBedMeshDump(): Promise<BedMeshDump> {
+  const payload = await moonrakerFetch("/printer/bed_mesh/dump_mesh");
+  const result = payload?.result ?? payload ?? {};
+  const currentMesh = result.current_mesh && typeof result.current_mesh === "object"
+    ? result.current_mesh as Record<string, unknown>
+    : {};
+  const profilesSource = result.profiles && typeof result.profiles === "object"
+    ? result.profiles as Record<string, unknown>
+    : {};
+
+  const currentProbed = matrixFrom(currentMesh.probed_matrix);
+  const currentMeshMatrix = matrixFrom(currentMesh.mesh_matrix);
+  const currentName = String(currentMesh.name ?? currentMesh.profile_name ?? "");
+  const current = currentName || currentProbed.length || currentMeshMatrix.length
+    ? {
+        name: currentName,
+        probedMatrix: currentProbed,
+        meshMatrix: currentMeshMatrix,
+        meshParams: readMeshParams(currentMesh.mesh_params)
+      }
+    : null;
+
+  return {
+    current,
+    profiles: Object.entries(profilesSource).map(([name, value]) => {
+      const profile = value && typeof value === "object" ? value as Record<string, unknown> : {};
+      return {
+        name,
+        points: matrixFrom(profile.points),
+        meshParams: readMeshParams(profile.mesh_params)
+      };
+    }),
+    calibration: result.calibration,
+    probeOffsets: Array.isArray(result.probe_offsets) ? result.probe_offsets.map(toNumber) : [],
+    axisMinimum: Array.isArray(result.axis_minimum) ? result.axis_minimum.map(toNumber) : [],
+    axisMaximum: Array.isArray(result.axis_maximum) ? result.axis_maximum.map(toNumber) : [],
+    raw: result
+  };
+}
+
+function formatProfileName(name: string) {
+  const trimmed = name.trim();
+  if (!/^[A-Za-z0-9_.-]+$/.test(trimmed)) throw new Error("Invalid mesh profile name");
+  return trimmed;
+}
+
+export async function runBedMeshAction(action: string, profileName?: string) {
+  if (action === "clear") return runGcodeScript("BED_MESH_CLEAR");
+  if (action === "calibrate") return runGcodeScript(profileName ? `BED_MESH_CALIBRATE PROFILE=${formatProfileName(profileName)}` : "BED_MESH_CALIBRATE");
+  if (action === "load") return runGcodeScript(`BED_MESH_PROFILE LOAD=${formatProfileName(profileName ?? "")}`);
+  if (action === "save-profile") return runGcodeScript(`BED_MESH_PROFILE SAVE=${formatProfileName(profileName ?? "")}`);
+  if (action === "remove") return runGcodeScript(`BED_MESH_PROFILE REMOVE=${formatProfileName(profileName ?? "")}`);
+  if (action === "save-config") return runGcodeScript("SAVE_CONFIG");
+  throw new Error("Invalid bed mesh action");
 }
 
 // PID can take longer than fetch's default response-header timeout.

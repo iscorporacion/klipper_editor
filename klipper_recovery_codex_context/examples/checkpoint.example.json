@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "checkpointId": "cp-example-layer-69",
+  "session": {
+    "sessionId": "session-example",
+    "printerId": "printer-idex",
+    "filename": "orbys_green_Configuracion 1_idler_housing_x2_0.2mm_PETG_4h18m.gcode",
+    "filePath": "orbys_green_Configuracion 1_idler_housing_x2_0.2mm_PETG_4h18m.gcode",
+    "slicer": "OrcaSlicer"
+  },
+  "layer": {
+    "number": 69,
+    "z": 13.9,
+    "height": 0.2
+  },
+  "machine": {
+    "activeTool": "T1",
+    "idexMode": "SINGLE",
+    "absoluteCoordinates": true,
+    "absoluteExtrude": false,
+    "heaterTargets": {
+      "heater_bed": 80,
+      "extruder1": 250
+    },
+    "excludedObjects": [
+      "orbys_green_Configuración_1_Cuerpo1_LEFT.stl_id_2_copy_0",
+      "orbys_green_Configuración_1_Cuerpo1_LEFT.stl_id_3_copy_0"
+    ]
+  },
+  "integrity": {
+    "fileIdentityVerified": false,
+    "complete": false,
+    "warnings": [
+      "Example only: populate file hash and full runtime state in production."
+    ]
+  }
+}

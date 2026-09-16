@@ -1,8 +1,11 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import PreferencesGate from "@/components/PreferencesGate";
+import { preferences } from "@/lib/preferences-client";
 import Image from "next/image";
 import PidChart, { type PidSample } from "@/components/PidChart";
+import type { BedMeshViewerData } from "@/components/BedMeshViewer";
 import type {
   ChangeEvent,
   CSSProperties,
@@ -42,6 +45,7 @@ import {
   MdAcUnit,
   MdEdit,
   MdFunctions,
+  MdGridOn,
   MdHome,
   MdKeyboardArrowDown,
   MdKeyboardArrowLeft,
@@ -59,6 +63,7 @@ import { bundledLocaleOptions, bundledLocales } from "@/lib/locales";
 
 const CodeMirror = dynamic(() => import("@uiw/react-codemirror"), { ssr: false });
 const PtyTerminal = dynamic(() => import("@/components/PtyTerminal"), { ssr: false });
+const BedMeshViewer = dynamic(() => import("@/components/BedMeshViewer"), { ssr: false });
 const appBasePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 const mainsailUrl = process.env.NEXT_PUBLIC_MAINSAIL_URL ?? "/";
 const heaterCacheKey = "klipper-editor-heater-cache";
@@ -71,6 +76,7 @@ const macroFavoritesKey = "klipper-editor-macro-favorites";
 const sectionPreviewDelayKey = "klipper-editor-section-preview-delay";
 const sidebarCollapsedKey = "klipper-editor-sidebar-collapsed";
 const useAccentLogoKey = "klipper-editor-use-accent-logo";
+const themePreferenceKey = "klipper-editor-theme";
 
 function apiPath(path: string) {
   return `${appBasePath}${path}`;
@@ -179,6 +185,29 @@ type ExcludeObjectStatus = {
   }>;
   excludedObjects: string[];
   currentObject: string;
+};
+
+type BedMeshProfile = {
+  name: string;
+  points: number[][];
+  meshParams: Record<string, unknown>;
+};
+
+type BedMeshCurrent = {
+  name: string;
+  probedMatrix: number[][];
+  meshMatrix: number[][];
+  meshParams: Record<string, unknown>;
+};
+
+type BedMeshDump = {
+  current: BedMeshCurrent | null;
+  profiles: BedMeshProfile[];
+  calibration: unknown;
+  probeOffsets: number[];
+  axisMinimum: number[];
+  axisMaximum: number[];
+  raw: unknown;
 };
 
 type XySnapshot = {
@@ -334,6 +363,19 @@ const fallbackMainsailTheme: MainsailVisualTheme = {
   logoMask: true
 };
 
+const availableThemeLogos = [
+  { theme: "k-editor", label: "K-Editor", logoUrl: "/img/k-editor-mark.svg", logoMask: false },
+  { theme: "mainsail", label: "Mainsail", logoUrl: "/mainsail-themes/logo.svg", logoMask: true },
+  { theme: "btt", label: "BTT", logoUrl: "/mainsail-themes/sidebarLogo-btt.svg", logoMask: true },
+  { theme: "klipper", label: "Klipper", logoUrl: "/mainsail-themes/sidebarLogo-klipper.svg", logoMask: true },
+  { theme: "ldo", label: "LDO", logoUrl: "/mainsail-themes/sidebarLogo-ldo.svg", logoMask: true },
+  { theme: "multec", label: "Multec", logoUrl: "/mainsail-themes/sidebarLogo-multec.svg", logoMask: true },
+  { theme: "prusa", label: "Prusa", logoUrl: "/mainsail-themes/sidebarLogo-prusa.svg", logoMask: true },
+  { theme: "voron", label: "Voron", logoUrl: "/mainsail-themes/sidebarLogo-voron.svg", logoMask: true },
+  { theme: "vzbot", label: "VzBot", logoUrl: "/mainsail-themes/sidebarLogo-vzbot.svg", logoMask: true },
+  { theme: "yumi", label: "Yumi", logoUrl: "/mainsail-themes/sidebarLogo-yumi.svg", logoMask: true }
+];
+
 type ThemeVariables = CSSProperties & Record<`--${string}`, string>;
 type LogoMaskStyle = CSSProperties & {
   WebkitMaskImage?: string;
@@ -354,6 +396,36 @@ function normalizeCssColor(value: unknown, fallback: string) {
   if (/^#[0-9a-f]{3,8}$/i.test(color)) return color;
   if (/^(rgb|rgba|hsl|hsla)\(/i.test(color)) return color;
   return fallback;
+}
+
+function logoOptionForTheme(theme: unknown) {
+  const value = typeof theme === "string" ? theme.trim().toLowerCase() : "";
+  return availableThemeLogos.find((logo) => logo.theme === value) ?? availableThemeLogos[1];
+}
+
+function normalizeEditorTheme(value: unknown): MainsailVisualTheme {
+  const source = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  const logoOption = logoOptionForTheme(source.theme);
+  const isKEditor = logoOption.theme === "k-editor";
+
+  return {
+    mode: typeof source.mode === "string" && source.mode.trim() ? source.mode.trim() : fallbackMainsailTheme.mode,
+    theme: logoOption.theme,
+    logo: normalizeCssColor(source.logo, fallbackMainsailTheme.logo),
+    primary: normalizeCssColor(source.primary, fallbackMainsailTheme.primary),
+    logoPath: typeof source.logoPath === "string" && source.logoPath.trim() && !isKEditor ? source.logoPath.trim() : null,
+    logoUrl: isKEditor ? logoOption.logoUrl : typeof source.logoUrl === "string" && source.logoUrl.trim() ? source.logoUrl.trim() : logoOption.logoUrl,
+    logoMask: isKEditor ? false : Boolean(source.logoMask ?? logoOption.logoMask)
+  };
+}
+
+function readStoredEditorTheme() {
+  try {
+    const stored = preferences.getItem(themePreferenceKey);
+    return stored ? normalizeEditorTheme(JSON.parse(stored)) : fallbackMainsailTheme;
+  } catch {
+    return fallbackMainsailTheme;
+  }
 }
 
 function rgbaFromHex(value: string, alpha: number) {
@@ -1010,7 +1082,7 @@ function createConsoleEntry(script: string, status: KlipperConsoleEntry["status"
 
 function readKlipperConsoleFavorites() {
   try {
-    const cached = JSON.parse(window.localStorage.getItem(klipperConsoleFavoritesKey) ?? "[]") as unknown;
+    const cached = JSON.parse(preferences.getItem(klipperConsoleFavoritesKey) ?? "[]") as unknown;
     if (!Array.isArray(cached)) return [];
 
     return cached
@@ -1019,32 +1091,31 @@ function readKlipperConsoleFavorites() {
         script: typeof entry.script === "string" ? entry.script : "",
         updatedAt: numericValue(entry.updatedAt)
       }))
-      .filter((entry) => entry.script.trim())
-      .slice(0, 100);
+      .filter((entry) => entry.script.trim());
   } catch {
-    window.localStorage.removeItem(klipperConsoleFavoritesKey);
+    preferences.removeItem(klipperConsoleFavoritesKey);
     return [];
   }
 }
 
 function writeKlipperConsoleFavorites(favorites: KlipperConsoleFavorite[]) {
-  window.localStorage.setItem(klipperConsoleFavoritesKey, JSON.stringify(favorites.slice(0, 100)));
+  preferences.setItem(klipperConsoleFavoritesKey, JSON.stringify(favorites));
 }
 
 function readMacroFavorites() {
   try {
-    const cached = JSON.parse(window.localStorage.getItem(macroFavoritesKey) ?? "[]") as unknown;
+    const cached = JSON.parse(preferences.getItem(macroFavoritesKey) ?? "[]") as unknown;
     if (!Array.isArray(cached)) return [];
 
-    return cached.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0).slice(0, 100);
+    return cached.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0);
   } catch {
-    window.localStorage.removeItem(macroFavoritesKey);
+    preferences.removeItem(macroFavoritesKey);
     return [];
   }
 }
 
 function writeMacroFavorites(favorites: string[]) {
-  window.localStorage.setItem(macroFavoritesKey, JSON.stringify(favorites.slice(0, 100)));
+  preferences.setItem(macroFavoritesKey, JSON.stringify(favorites));
 }
 
 function isHtmlLikeMessage(message: string) {
@@ -1208,6 +1279,56 @@ function formatCoordinate(value: number | undefined) {
   return Number.isFinite(Number(value)) ? Number(value).toFixed(2) : "-";
 }
 
+function numberFromParam(params: Record<string, unknown>, key: string, fallback: number) {
+  const number = Number(params[key]);
+  return Number.isFinite(number) ? number : fallback;
+}
+
+function meshDataFromProfile(profile: BedMeshProfile | BedMeshCurrent | null, source: "probed" | "mesh" = "probed"): BedMeshViewerData | null {
+  if (!profile) return null;
+  const params = profile.meshParams ?? {};
+  const points = "points" in profile
+    ? profile.points
+    : source === "mesh" && profile.meshMatrix.length
+      ? profile.meshMatrix
+      : profile.probedMatrix;
+  if (!points.length || !points[0]?.length) return null;
+
+  return {
+    points,
+    minX: numberFromParam(params, "min_x", 0),
+    maxX: numberFromParam(params, "max_x", points[0].length - 1),
+    minY: numberFromParam(params, "min_y", 0),
+    maxY: numberFromParam(params, "max_y", points.length - 1)
+  };
+}
+
+function meshStats(data: BedMeshViewerData | null) {
+  const values = data?.points.flat().filter((value) => Number.isFinite(value)) ?? [];
+  if (!data || !values.length) return null;
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const minIndex = values.indexOf(min);
+  const maxIndex = values.indexOf(max);
+  const cols = data.points[0]?.length ?? 1;
+  const pointAt = (index: number) => {
+    const xIndex = index % cols;
+    const yIndex = Math.floor(index / cols);
+    const x = cols <= 1 ? data.minX : data.minX + ((data.maxX - data.minX) * xIndex) / (cols - 1);
+    const rows = data.points.length;
+    const y = rows <= 1 ? data.minY : data.minY + ((data.maxY - data.minY) * yIndex) / (rows - 1);
+    return `${formatCoordinate(x)}, ${formatCoordinate(y)}`;
+  };
+  return {
+    min,
+    max,
+    range: max - min,
+    size: `${data.points[0]?.length ?? 0}x${data.points.length}`,
+    minPoint: pointAt(minIndex),
+    maxPoint: pointAt(maxIndex)
+  };
+}
+
 function suggestedXySnapshotInterval(speed: number) {
   const targetDistanceMm = 25;
   const defaultIntervalMs = 1000;
@@ -1300,7 +1421,7 @@ function readHeaterColors() {
   if (typeof window === "undefined") return {};
 
   try {
-    const cached = JSON.parse(window.localStorage.getItem(heaterColorCacheKey) ?? "{}") as unknown;
+    const cached = JSON.parse(preferences.getItem(heaterColorCacheKey) ?? "{}") as unknown;
     if (!cached || typeof cached !== "object" || Array.isArray(cached)) return {};
 
     return Object.fromEntries(
@@ -1315,7 +1436,7 @@ function readHeaterColors() {
 
 function writeHeaterColors(colors: Record<string, string>) {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(heaterColorCacheKey, JSON.stringify(colors));
+  preferences.setItem(heaterColorCacheKey, JSON.stringify(colors));
 }
 
 function randomHeaterColor() {
@@ -1362,7 +1483,7 @@ function readCachedHeaters() {
   if (typeof window === "undefined") return [];
 
   try {
-    const cached = JSON.parse(window.localStorage.getItem(heaterCacheKey) ?? "[]") as unknown;
+    const cached = JSON.parse(preferences.getItem(heaterCacheKey) ?? "[]") as unknown;
     return Array.isArray(cached) ? cached.map(cachedHeater).filter((heater): heater is HeaterStatus => Boolean(heater)) : [];
   } catch {
     return [];
@@ -1371,11 +1492,7 @@ function readCachedHeaters() {
 
 function writeCachedHeaters(heaters: HeaterStatus[]) {
   if (typeof window === "undefined") return;
-  if (heaters.length === 0) {
-    window.localStorage.removeItem(heaterCacheKey);
-    return;
-  }
-  window.localStorage.setItem(heaterCacheKey, JSON.stringify(heaters));
+  preferences.setItem(heaterCacheKey, JSON.stringify(heaters.map(({ name, label, color }) => ({ name, label, color }))));
 }
 
 function heaterQueryPath(heaters: HeaterStatus[], refreshCatalog = false) {
@@ -2032,6 +2149,10 @@ function TreeItem({
 }
 
 export default function Home() {
+  return <PreferencesGate><Editor /></PreferencesGate>;
+}
+
+function Editor() {
   const [tree, setTree] = useState<TreeNode[]>([]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [useAccentLogo, setUseAccentLogo] = useState(false);
@@ -2045,9 +2166,21 @@ export default function Home() {
   const [localesLoading, setLocalesLoading] = useState(true);
   const [mainsailTheme, setMainsailTheme] = useState<MainsailVisualTheme>(fallbackMainsailTheme);
   const [optionsOpen, setOptionsOpen] = useState(false);
-  const [optionsTab, setOptionsTab] = useState<"general" | "mcp" | "terminal">("general");
+  const [optionsTab, setOptionsTab] = useState<"general" | "theme" | "mcp" | "terminal">("general");
   const [macrosOpen, setMacrosOpen] = useState(false);
   const [movementOpen, setMovementOpen] = useState(false);
+  const [bedMeshOpen, setBedMeshOpen] = useState(false);
+  const [bedMesh, setBedMesh] = useState<BedMeshDump | null>(null);
+  const [bedMeshLoading, setBedMeshLoading] = useState(false);
+  const [bedMeshAction, setBedMeshAction] = useState<string | null>(null);
+  const [bedMeshPreviewName, setBedMeshPreviewName] = useState("__current__");
+  const [bedMeshProfileName, setBedMeshProfileName] = useState("default");
+  const [bedMeshShowProbed, setBedMeshShowProbed] = useState(true);
+  const [bedMeshShowMesh, setBedMeshShowMesh] = useState(false);
+  const [bedMeshShowFlat, setBedMeshShowFlat] = useState(false);
+  const [bedMeshWireframe, setBedMeshWireframe] = useState(true);
+  const [bedMeshScaleGradient, setBedMeshScaleGradient] = useState(false);
+  const [bedMeshZScale, setBedMeshZScale] = useState(0.5);
   const [moveStep, setMoveStep] = useState(50);
   const [movingAction, setMovingAction] = useState<string | null>(null);
   const [positionInputs, setPositionInputs] = useState<Record<JogAxis, string>>({ x: "", y: "", z: "" });
@@ -2153,6 +2286,7 @@ export default function Home() {
     log: []
   });
   const [mcpTunnelBusy, setMcpTunnelBusy] = useState(false);
+  const [themeImporting, setThemeImporting] = useState(false);
   const [installingCloudflared, setInstallingCloudflared] = useState(false);
   const [cloudflaredInstalled, setCloudflaredInstalled] = useState<boolean | null>(null);
   const mcpUrlInputRef = useRef<HTMLInputElement>(null);
@@ -2233,6 +2367,16 @@ export default function Home() {
   const currentPrintThumbnailUrl = currentPrintThumbnail
     ? apiPath(`/api/printer/gcode-thumbnail?path=${encodeURIComponent(currentPrintThumbnail.relativePath)}`)
     : "";
+  const bedMeshProfiles = bedMesh?.profiles ?? [];
+  const previewBedMeshProfile = useMemo(() => {
+    if (!bedMesh || bedMeshPreviewName === "__current__") return bedMesh?.current ?? null;
+    return bedMesh.profiles.find((profile) => profile.name === bedMeshPreviewName) ?? bedMesh.current;
+  }, [bedMesh, bedMeshPreviewName]);
+  const previewBedMeshData = useMemo(
+    () => meshDataFromProfile(previewBedMeshProfile, bedMeshShowMesh ? "mesh" : "probed"),
+    [bedMeshShowMesh, previewBedMeshProfile]
+  );
+  const previewBedMeshStats = useMemo(() => meshStats(previewBedMeshData), [previewBedMeshData]);
   const latestXySnapshot = xySnapshots.at(-1);
   const latestGcodeHistoryByFilename = useMemo(() => {
     const jobsByFilename = new Map<string, GcodeHistoryEntry>();
@@ -2297,7 +2441,10 @@ export default function Home() {
       "--mainsail-logo-color": logo
     };
   }, [mainsailTheme.logo, mainsailTheme.primary]);
-  const mainsailLogoUrl = mainsailTheme.logoPath
+  const showKEditorLogo = useAccentLogo || mainsailTheme.theme === "k-editor";
+  const mainsailLogoUrl = showKEditorLogo
+    ? "/img/k-editor-mark.svg"
+    : mainsailTheme.logoPath
     ? apiPath(`/api/download?path=${encodeURIComponent(mainsailTheme.logoPath)}&inline=1`)
     : mainsailTheme.logoUrl
       ? apiPath(mainsailTheme.logoUrl)
@@ -2429,7 +2576,7 @@ export default function Home() {
     setMessages(nextMessages);
     setLocaleCode(payload.code ?? code);
     setMessage(translate(nextMessages, "status.ready"));
-    window.localStorage.setItem("ratos-viewer-locale", payload.code ?? code);
+    preferences.setItem("ratos-viewer-locale", payload.code ?? code);
   }, []);
 
   const loadTree = useCallback(async () => {
@@ -2490,6 +2637,69 @@ export default function Home() {
     setSelectedGcodeItem(null);
     void loadGcodes();
   }, [loadGcodes]);
+
+  const loadBedMesh = useCallback(async () => {
+    setBedMeshLoading(true);
+
+    try {
+      const response = await fetch(apiPath("/api/printer/bed-mesh"), { cache: "no-store" });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? t("errors.loadBedMesh"));
+      setBedMesh(payload);
+      setBedMeshPreviewName((current) => {
+        if (current === "__current__") return current;
+        return payload.profiles?.some((profile: BedMeshProfile) => profile.name === current) ? current : "__current__";
+      });
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : t("errors.loadBedMesh"));
+    } finally {
+      setBedMeshLoading(false);
+    }
+  }, [t]);
+
+  const openBedMeshModal = useCallback(() => {
+    setBedMeshOpen(true);
+    void loadBedMesh();
+  }, [loadBedMesh]);
+
+  const runBedMeshAction = useCallback(
+    async (action: string, profile?: string) => {
+      if (bedMeshAction) return;
+      if (printerStatus?.printing || printerStatus?.printState === "paused") {
+        setMessage(t("errors.bedMeshPrinting"));
+        return;
+      }
+
+      const profileName = profile?.trim();
+      const confirmationKey =
+        action === "calibrate" ? "confirm.bedMeshCalibrate"
+          : action === "clear" ? "confirm.bedMeshClear"
+            : action === "save-config" ? "confirm.bedMeshSaveConfig"
+              : "";
+      if (confirmationKey && !(await confirmDialog(t("bedMesh.title"), t(confirmationKey)))) return;
+
+      setBedMeshAction(action);
+
+      try {
+        const response = await fetch(apiPath("/api/printer/bed-mesh"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action, profile: profileName })
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error ?? t("errors.bedMeshAction"));
+        setBedMesh(payload.mesh ?? null);
+        if (action === "load" && profileName) setBedMeshPreviewName(profileName);
+        setMessage(t("status.bedMeshActionDone"));
+        if (action === "save-config") setPrinterInitializing(true);
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : t("errors.bedMeshAction"));
+      } finally {
+        setBedMeshAction(null);
+      }
+    },
+    [bedMeshAction, confirmDialog, printerStatus?.printState, printerStatus?.printing, t]
+  );
 
   const uploadGcodeFiles = useCallback(
     async (files: File[]) => {
@@ -2627,13 +2837,22 @@ export default function Home() {
     }
   }, [t]);
 
-  const loadMainsailTheme = useCallback(async () => {
+  const saveEditorTheme = useCallback((nextTheme: MainsailVisualTheme) => {
+    const normalized = normalizeEditorTheme(nextTheme);
+    setMainsailTheme(normalized);
+    setUseAccentLogo(normalized.theme === "k-editor");
+    preferences.setItem(useAccentLogoKey, String(normalized.theme === "k-editor"));
+    preferences.setItem(themePreferenceKey, JSON.stringify(normalized));
+  }, []);
+
+  const importMainsailTheme = useCallback(async () => {
+    setThemeImporting(true);
     try {
       const response = await fetch(apiPath("/api/mainsail/theme"), { cache: "no-store" });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? "Unable to load Mainsail theme");
 
-      setMainsailTheme({
+      const imported = normalizeEditorTheme({
         mode: typeof payload.mode === "string" ? payload.mode : fallbackMainsailTheme.mode,
         theme: typeof payload.theme === "string" ? payload.theme : fallbackMainsailTheme.theme,
         logo: typeof payload.logo === "string" ? payload.logo : fallbackMainsailTheme.logo,
@@ -2643,13 +2862,14 @@ export default function Home() {
         logoMask: Boolean(payload.logoMask),
         error: typeof payload.error === "string" ? payload.error : undefined
       });
+      saveEditorTheme(imported);
+      setMessage(t("status.themeImported"));
     } catch (error) {
-      setMainsailTheme({
-        ...fallbackMainsailTheme,
-        error: error instanceof Error ? error.message : "Unable to load Mainsail theme"
-      });
+      setMessage(error instanceof Error ? error.message : t("errors.importTheme"));
+    } finally {
+      setThemeImporting(false);
     }
-  }, []);
+  }, [saveEditorTheme, t]);
 
   const loadTerminalStatus = useCallback(async () => {
     try {
@@ -2910,7 +3130,7 @@ export default function Home() {
     setTerminalHistory((current) => {
       const withoutDuplicateTail = current.at(-1) === command ? current : [...current, command];
       const nextHistory = withoutDuplicateTail.slice(-80);
-      window.localStorage.setItem(terminalHistoryKey, JSON.stringify(nextHistory));
+      preferences.setItem(terminalHistoryKey, JSON.stringify(nextHistory));
       return nextHistory;
     });
     setTerminalHistoryIndex(null);
@@ -4392,7 +4612,7 @@ export default function Home() {
       const onMouseUp = () => {
         document.body.classList.remove("is-resizing");
         document.body.classList.remove("is-resizing-row");
-        window.localStorage.setItem(terminalHeightKey, String(Math.round(latestHeight)));
+        preferences.setItem(terminalHeightKey, String(Math.round(latestHeight)));
         window.removeEventListener("mousemove", onMouseMove);
         window.removeEventListener("mouseup", onMouseUp);
       };
@@ -4424,36 +4644,38 @@ export default function Home() {
   useEffect(() => {
     let cancelled = false;
 
-    const savedBackupPreference = window.localStorage.getItem("klipper-editor-create-backup-on-save");
+    const savedBackupPreference = preferences.getItem("klipper-editor-create-backup-on-save");
     if (savedBackupPreference !== null) {
       setCreateBackupOnSave(savedBackupPreference === "true");
     }
 
-    const savedHideBackupFiles = window.localStorage.getItem(hideBackupFilesKey);
+    const savedHideBackupFiles = preferences.getItem(hideBackupFilesKey);
     if (savedHideBackupFiles !== null) {
       setHideBackupFiles(savedHideBackupFiles === "true");
     }
 
-    const savedTerminalHeight = Number(window.localStorage.getItem(terminalHeightKey));
+    const savedTerminalHeight = Number(preferences.getItem(terminalHeightKey));
     if (Number.isFinite(savedTerminalHeight) && savedTerminalHeight > 0) {
       setTerminalHeight(clamp(savedTerminalHeight, 140, maxTerminalHeight(window.innerHeight)));
     }
 
-    const savedSectionPreviewDelay = Number(window.localStorage.getItem(sectionPreviewDelayKey));
+    const savedSectionPreviewDelay = Number(preferences.getItem(sectionPreviewDelayKey));
     if (Number.isFinite(savedSectionPreviewDelay) && savedSectionPreviewDelay >= 0) {
       setSectionPreviewDelay(clamp(savedSectionPreviewDelay, 0, 10));
     }
 
-    setSidebarCollapsed(window.localStorage.getItem(sidebarCollapsedKey) === "true");
-    setUseAccentLogo(window.localStorage.getItem(useAccentLogoKey) === "true");
+    setSidebarCollapsed(preferences.getItem(sidebarCollapsedKey) === "true");
+    const storedTheme = readStoredEditorTheme();
+    setMainsailTheme(storedTheme);
+    setUseAccentLogo(storedTheme.theme === "k-editor" || preferences.getItem(useAccentLogoKey) === "true");
 
     try {
-      const savedTerminalHistory = JSON.parse(window.localStorage.getItem(terminalHistoryKey) ?? "[]") as unknown;
+      const savedTerminalHistory = JSON.parse(preferences.getItem(terminalHistoryKey) ?? "[]") as unknown;
       if (Array.isArray(savedTerminalHistory)) {
         setTerminalHistory(savedTerminalHistory.filter((entry): entry is string => typeof entry === "string").slice(-80));
       }
     } catch {
-      window.localStorage.removeItem(terminalHistoryKey);
+      preferences.removeItem(terminalHistoryKey);
     }
 
     setKlipperConsoleFavorites(readKlipperConsoleFavorites());
@@ -4470,7 +4692,7 @@ export default function Home() {
         if (cancelled) return;
 
         setLocales(nextLocales);
-        const savedLocale = window.localStorage.getItem("ratos-viewer-locale");
+        const savedLocale = preferences.getItem("ratos-viewer-locale");
         const nextLocale =
           (savedLocale && nextLocales.some((locale) => locale.code === savedLocale) ? savedLocale : undefined) ??
           (nextLocales.some((locale) => locale.code === defaultLocaleCode) ? defaultLocaleCode : nextLocales[0]?.code);
@@ -4482,7 +4704,7 @@ export default function Home() {
         if (!cancelled) {
           const nextLocales = bundledLocaleOptions();
           setLocales(nextLocales);
-          const savedLocale = window.localStorage.getItem("ratos-viewer-locale");
+          const savedLocale = preferences.getItem("ratos-viewer-locale");
           const nextLocale =
             (savedLocale && nextLocales.some((locale) => locale.code === savedLocale) ? savedLocale : undefined) ??
             (nextLocales.some((locale) => locale.code === defaultLocaleCode) ? defaultLocaleCode : nextLocales[0]?.code);
@@ -4518,10 +4740,6 @@ export default function Home() {
   }, [loadTree]);
 
   useEffect(() => {
-    void loadMainsailTheme();
-  }, [loadMainsailTheme]);
-
-  useEffect(() => {
     void loadTerminalStatus();
   }, [loadTerminalStatus]);
 
@@ -4548,7 +4766,7 @@ export default function Home() {
   }, [mcpTunnel.url, t]);
 
   useEffect(() => {
-    const href = useAccentLogo
+    const href = showKEditorLogo
       ? kEditorFaviconDataUrl(mainsailTheme.primary)
       : apiPath("/img/k-editor-mark.svg");
     const links = Array.from(document.querySelectorAll<HTMLLinkElement>("link[rel~='icon'], link[rel='shortcut icon']"));
@@ -4560,7 +4778,7 @@ export default function Home() {
       link.href = href;
       if (!link.parentNode) document.head.appendChild(link);
     }
-  }, [mainsailTheme.primary, useAccentLogo]);
+  }, [mainsailTheme.primary, showKEditorLogo]);
 
   useEffect(() => {
     void loadPrinterStatus();
@@ -4700,7 +4918,7 @@ export default function Home() {
       setTerminalHeight((current) => {
         const nextHeight = clamp(current, 140, maxTerminalHeight(window.innerHeight));
         if (nextHeight !== current) {
-          window.localStorage.setItem(terminalHeightKey, String(Math.round(nextHeight)));
+          preferences.setItem(terminalHeightKey, String(Math.round(nextHeight)));
         }
         return nextHeight;
       });
@@ -4803,10 +5021,10 @@ export default function Home() {
         <div className="sidebar-header">
           <div className="sidebar-brand">
             <div
-              className={useAccentLogo ? "sidebar-brand-logo keditor-brand-logo" : "sidebar-brand-logo"}
-              title={useAccentLogo ? t("app.title") : mainsailTheme.theme}
+              className={showKEditorLogo ? "sidebar-brand-logo keditor-brand-logo" : "sidebar-brand-logo"}
+              title={showKEditorLogo ? t("app.title") : mainsailTheme.theme}
             >
-              {useAccentLogo ? (
+              {showKEditorLogo ? (
                 <KEditorAccentMark className="sidebar-theme-logo sidebar-keditor-logo" />
               ) : mainsailLogoUrl && mainsailTheme.logoMask ? (
                 <span className="sidebar-theme-logo sidebar-theme-logo-mask" aria-hidden="true" style={mainsailLogoMaskStyle} />
@@ -4839,7 +5057,7 @@ export default function Home() {
               onClick={() => {
                 const nextValue = !hideBackupFiles;
                 setHideBackupFiles(nextValue);
-                window.localStorage.setItem(hideBackupFilesKey, String(nextValue));
+                preferences.setItem(hideBackupFilesKey, String(nextValue));
               }}
               title={hideBackupFiles ? t("actions.showBackupFiles") : t("actions.hideBackupFiles")}
               aria-pressed={hideBackupFiles}
@@ -4970,7 +5188,7 @@ export default function Home() {
                 onClick={() => {
                   const nextValue = !sidebarCollapsed;
                   setSidebarCollapsed(nextValue);
-                  window.localStorage.setItem(sidebarCollapsedKey, String(nextValue));
+                  preferences.setItem(sidebarCollapsedKey, String(nextValue));
                 }}
                 title={sidebarCollapsed ? t("actions.expandSidebar") : t("actions.collapseSidebar")}
                 aria-label={sidebarCollapsed ? t("actions.expandSidebar") : t("actions.collapseSidebar")}
@@ -5066,6 +5284,15 @@ export default function Home() {
                 onClick={() => setMovementOpen(true)}
               >
                 <BsArrowsMove className="home-button-icon" />
+              </button>
+              <button
+                className="home-button bed-mesh-open-button"
+                type="button"
+                title={t("actions.bedMesh")}
+                aria-label={t("actions.bedMesh")}
+                onClick={openBedMeshModal}
+              >
+                <MdGridOn className="home-button-icon" />
               </button>
             </div>
             <div className="heater-toolbar">
@@ -5291,7 +5518,7 @@ export default function Home() {
         <div className="editor-panel">
           {!activeFile ? (
             <div className="welcome">
-              {useAccentLogo ? (
+              {showKEditorLogo ? (
                 <KEditorAccentLogo className="welcome-logo" />
               ) : (
                 <img className="welcome-logo" src={apiPath("/img/k-editor-logo.svg")} alt="" />
@@ -5626,6 +5853,160 @@ export default function Home() {
                   </div>
                 </form>
               )}
+            </section>
+          </div>
+        )}
+
+        {bedMeshOpen && (
+          <div className="modal-backdrop" role="presentation" onMouseDown={() => setBedMeshOpen(false)}>
+            <section
+              className="options-modal bed-mesh-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="bed-mesh-title"
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <div className="modal-header">
+                <h2 id="bed-mesh-title">
+                  <MdGridOn className="modal-title-icon" />
+                  {t("bedMesh.title")}
+                </h2>
+                <div className="modal-header-actions">
+                  <button
+                    className="modal-icon-button"
+                    type="button"
+                    title={t("actions.refresh")}
+                    aria-label={t("actions.refresh")}
+                    disabled={bedMeshLoading}
+                    onClick={() => void loadBedMesh()}
+                  >
+                    <FcRefresh className="modal-action-icon" />
+                  </button>
+                  <button
+                    className="modal-close"
+                    type="button"
+                    title={t("options.close")}
+                    aria-label={t("options.close")}
+                    onClick={() => setBedMeshOpen(false)}
+                  >
+                    <IoClose />
+                  </button>
+                </div>
+              </div>
+              <div className="bed-mesh-body">
+                <div className="bed-mesh-stage">
+                  <div className="bed-mesh-viewer-shell">
+                    {bedMeshLoading && <div className="bed-mesh-loading">{t("bedMesh.loading")}</div>}
+                    {!bedMeshLoading && !previewBedMeshData && <div className="bed-mesh-empty">{t("bedMesh.empty")}</div>}
+                    <BedMeshViewer
+                      data={previewBedMeshData}
+                      showSurface={bedMeshShowProbed || bedMeshShowMesh}
+                      showPoints={bedMeshShowProbed}
+                      showFlat={bedMeshShowFlat}
+                      showWireframe={bedMeshWireframe}
+                      scaleGradient={bedMeshScaleGradient}
+                      zScale={bedMeshZScale}
+                      accent={mainsailTheme.primary}
+                    />
+                  </div>
+                  <div className="bed-mesh-controls">
+                    <label className="bed-mesh-toggle">
+                      <input type="checkbox" checked={bedMeshScaleGradient} onChange={(event) => setBedMeshScaleGradient(event.target.checked)} />
+                      <span>{t("bedMesh.scaleGradient")}</span>
+                    </label>
+                    <label className="bed-mesh-toggle">
+                      <input type="checkbox" checked={bedMeshShowProbed} onChange={(event) => setBedMeshShowProbed(event.target.checked)} />
+                      <span>{t("bedMesh.probed")}</span>
+                    </label>
+                    <label className="bed-mesh-toggle">
+                      <input type="checkbox" checked={bedMeshShowMesh} onChange={(event) => setBedMeshShowMesh(event.target.checked)} />
+                      <span>{t("bedMesh.mesh")}</span>
+                    </label>
+                    <label className="bed-mesh-toggle">
+                      <input type="checkbox" checked={bedMeshShowFlat} onChange={(event) => setBedMeshShowFlat(event.target.checked)} />
+                      <span>{t("bedMesh.flat")}</span>
+                    </label>
+                    <label className="bed-mesh-toggle">
+                      <input type="checkbox" checked={bedMeshWireframe} onChange={(event) => setBedMeshWireframe(event.target.checked)} />
+                      <span>{t("bedMesh.wireframe")}</span>
+                    </label>
+                    <label className="bed-mesh-slider">
+                      <span>{t("bedMesh.scaleZ")}</span>
+                      <input
+                        type="range"
+                        min="0.1"
+                        max="3"
+                        step="0.1"
+                        value={bedMeshZScale}
+                        onChange={(event) => setBedMeshZScale(Number(event.target.value))}
+                      />
+                    </label>
+                  </div>
+                </div>
+                <aside className="bed-mesh-side">
+                  <section className="bed-mesh-panel">
+                    <h3>{t("bedMesh.current")}</h3>
+                    <dl className="bed-mesh-list">
+                      <div><dt>{t("bedMesh.name")}</dt><dd>{bedMesh?.current?.name || "-"}</dd></div>
+                      <div><dt>{t("bedMesh.preview")}</dt><dd>{bedMeshPreviewName === "__current__" ? t("bedMesh.current") : bedMeshPreviewName}</dd></div>
+                      <div><dt>{t("bedMesh.size")}</dt><dd>{previewBedMeshStats?.size ?? "-"}</dd></div>
+                      <div><dt>{t("bedMesh.max")}</dt><dd>{previewBedMeshStats ? `${previewBedMeshStats.maxPoint} / ${previewBedMeshStats.max.toFixed(3)} mm` : "-"}</dd></div>
+                      <div><dt>{t("bedMesh.min")}</dt><dd>{previewBedMeshStats ? `${previewBedMeshStats.minPoint} / ${previewBedMeshStats.min.toFixed(3)} mm` : "-"}</dd></div>
+                      <div><dt>{t("bedMesh.range")}</dt><dd>{previewBedMeshStats ? `${previewBedMeshStats.range.toFixed(3)} mm` : "-"}</dd></div>
+                    </dl>
+                  </section>
+                  <section className="bed-mesh-panel">
+                    <h3>{t("bedMesh.profiles")}</h3>
+                    <label className="bed-mesh-field">
+                      <span>{t("bedMesh.profileName")}</span>
+                      <input value={bedMeshProfileName} onChange={(event) => setBedMeshProfileName(event.target.value)} />
+                    </label>
+                    <div className="bed-mesh-profile-list">
+                      <button
+                        className={bedMeshPreviewName === "__current__" ? "bed-mesh-profile active" : "bed-mesh-profile"}
+                        type="button"
+                        onClick={() => setBedMeshPreviewName("__current__")}
+                      >
+                        <span>{t("bedMesh.current")}</span>
+                      </button>
+                      {bedMeshProfiles.length === 0 ? (
+                        <p className="empty-note">{t("bedMesh.noProfiles")}</p>
+                      ) : bedMeshProfiles.map((profile) => (
+                        <div key={profile.name} className={bedMeshPreviewName === profile.name ? "bed-mesh-profile active" : "bed-mesh-profile"}>
+                          <button type="button" onClick={() => setBedMeshPreviewName(profile.name)}>
+                            <span>{profile.name}</span>
+                            <small>{meshStats(meshDataFromProfile(profile))?.range.toFixed(3) ?? "-"} mm</small>
+                          </button>
+                          <button
+                            className="bed-mesh-profile-action"
+                            type="button"
+                            title={t("bedMesh.activate")}
+                            aria-label={t("bedMesh.activate")}
+                            disabled={Boolean(bedMeshAction)}
+                            onClick={() => void runBedMeshAction("load", profile.name)}
+                          >
+                            <MdHome />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                  <section className="bed-mesh-actions">
+                    <button className="dialog-button" type="button" disabled={Boolean(bedMeshAction)} onClick={() => void runBedMeshAction("calibrate", bedMeshProfileName)}>
+                      {bedMeshAction === "calibrate" ? t("bedMesh.working") : t("bedMesh.calibrate")}
+                    </button>
+                    <button className="dialog-button" type="button" disabled={Boolean(bedMeshAction)} onClick={() => void runBedMeshAction("save-profile", bedMeshProfileName)}>
+                      {t("bedMesh.saveProfile")}
+                    </button>
+                    <button className="dialog-button" type="button" disabled={Boolean(bedMeshAction)} onClick={() => void runBedMeshAction("clear")}>
+                      {t("bedMesh.clear")}
+                    </button>
+                    <button className="dialog-button primary" type="button" disabled={Boolean(bedMeshAction)} onClick={() => void runBedMeshAction("save-config")}>
+                      {t("bedMesh.saveConfig")}
+                    </button>
+                  </section>
+                </aside>
+              </div>
             </section>
           </div>
         )}
@@ -7134,7 +7515,7 @@ export default function Home() {
                         onChange={(event) => {
                           const checked = event.target.checked;
                           setCreateBackupOnSave(checked);
-                          window.localStorage.setItem("klipper-editor-create-backup-on-save", String(checked));
+                          preferences.setItem("klipper-editor-create-backup-on-save", String(checked));
                         }}
                       />
                       <span>{t("options.createBackupOnSave")}</span>
@@ -7147,7 +7528,7 @@ export default function Home() {
                         onChange={(event) => {
                           const checked = event.target.checked;
                           setSidebarCollapsed(checked);
-                          window.localStorage.setItem(sidebarCollapsedKey, String(checked));
+                          preferences.setItem(sidebarCollapsedKey, String(checked));
                         }}
                       />
                       <span>{t("options.startCollapsedSidebar")}</span>
@@ -7160,7 +7541,7 @@ export default function Home() {
                         onChange={(event) => {
                           const checked = event.target.checked;
                           setUseAccentLogo(checked);
-                          window.localStorage.setItem(useAccentLogoKey, String(checked));
+                          preferences.setItem(useAccentLogoKey, String(checked));
                         }}
                       />
                       <span>{t("options.useAccentLogo")}</span>
@@ -7178,7 +7559,7 @@ export default function Home() {
                         onChange={(event) => {
                           const nextDelay = clamp(Number(event.target.value), 0, 10);
                           setSectionPreviewDelay(nextDelay);
-                          window.localStorage.setItem(sectionPreviewDelayKey, String(nextDelay));
+                          preferences.setItem(sectionPreviewDelayKey, String(nextDelay));
                         }}
                       />
                     </label>

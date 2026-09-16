@@ -1,0 +1,86 @@
+{
+  "package": "klipper-recovery-codex-context",
+  "generatedAt": "2026-09-09T17:03:31.667841+00:00",
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "bytes": 2250,
+      "sha256": "69b4c7d6b0860210d61b93a899e33a3ab03ea681b3a534b355c08b2800783fd4"
+    },
+    {
+      "path": "CODEX_MASTER_CONTEXT.md",
+      "bytes": 2288,
+      "sha256": "9dd5e1c6f70eca787414fd2e618936ee2966f13c613ec4d88f1ff6bcbc60799e"
+    },
+    {
+      "path": "README.md",
+      "bytes": 1844,
+      "sha256": "35e267b6eafcf7b2b3314746b5cf826775da9bb03f564a134d18c7ec1559d31a"
+    },
+    {
+      "path": "docs/00-context-and-requirements.md",
+      "bytes": 2850,
+      "sha256": "37ef6564c799f4cad28f0cd63eecfc0bd53a3879293347e39201e77c25dc6b69"
+    },
+    {
+      "path": "docs/01-architecture.md",
+      "bytes": 1745,
+      "sha256": "97b74629db3a2b4b53b7b4856e1223f5b6958cd9fb18b840e3738e81d421bbca"
+    },
+    {
+      "path": "docs/02-checkpointing.md",
+      "bytes": 1974,
+      "sha256": "9c69a33525da9b7ee164f88f45d68742999d3b70e3c2c35b498335ba93f32add"
+    },
+    {
+      "path": "docs/03-gcode-parser.md",
+      "bytes": 2225,
+      "sha256": "36183371c3918a7b5663ca08fff4db5205dfefeb1a2bd243712c412a836b15ac"
+    },
+    {
+      "path": "docs/04-recovery-engine.md",
+      "bytes": 2179,
+      "sha256": "7ab1a7cb10a11af8c6b254b1a478d4e9c05cc33b9288ff68a827f4e5e511873a"
+    },
+    {
+      "path": "docs/05-moonraker-integration.md",
+      "bytes": 1894,
+      "sha256": "2fcbfba7bb57fc8297b3358eef129e52cc8ea0082f8d5271fc3534cc4c4578eb"
+    },
+    {
+      "path": "docs/06-safety-and-ui.md",
+      "bytes": 1633,
+      "sha256": "78faf21c175216750a711de1cb7014ffd11d09bff691e41ae9b7ef41008a402b"
+    },
+    {
+      "path": "docs/07-testing-and-roadmap.md",
+      "bytes": 1729,
+      "sha256": "52d45e2b54badbfbadcdf8e72dd242bb6d7ed96ef0bd40a722d37a366047584f"
+    },
+    {
+      "path": "docs/08-domain-contracts.md",
+      "bytes": 3981,
+      "sha256": "373e569133b48bbd963fd8bbf2e38e822632b768ea9c756676cb66ffdc96ba13"
+    },
+    {
+      "path": "docs/09-adrs.md",
+      "bytes": 1120,
+      "sha256": "dad5fb1c6dd93b49e335c3f7585da7d3c28f698f7c9f7f1e0f006a6673ffd27f"
+    },
+    {
+      "path": "examples/checkpoint.example.json",
+      "bytes": 982,
+      "sha256": "7e43b57df82509db74117b1f890d070bc2b8497e28a3f50db4aa29db16da6e17"
+    },
+    {
+      "path": "examples/klipper-recovery-macro.example.cfg",
+      "bytes": 500,
+      "sha256": "1c1186e683e3aa5ee109c1e1313f97efb4aad33e547682a475b9aaa2a10cb489"
+    },
+    {
+      "path": "examples/recovery-header.example.gcode",
+      "bytes": 422,
+      "sha256": "d78b8c937753ebd2591a15583aea595e3d1fbe64783ce6fa86b7632233d9a36d"
+    }
+  ]
+}

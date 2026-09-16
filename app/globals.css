@@ -2643,6 +2643,245 @@ body.is-resizing-row {
 .pid-body .dialog-actions { flex-wrap: wrap; }
 .pid-body .dialog-button { white-space: normal; min-height: 36px; }
 .pid-body .dialog-actions .modal-icon-button { width: 36px; height: 36px; align-self: stretch; }
+
+.bed-mesh-modal {
+  width: min(1180px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  overflow: hidden;
+}
+
+.modal-title-icon {
+  width: 18px;
+  height: 18px;
+  margin-right: 8px;
+  vertical-align: -3px;
+}
+
+.bed-mesh-body {
+  display: grid;
+  grid-template-columns: minmax(520px, 1fr) 330px;
+  gap: 16px;
+  min-height: min(660px, calc(100dvh - 120px));
+  overflow: auto;
+  padding: 14px;
+}
+
+.bed-mesh-stage {
+  display: grid;
+  grid-template-rows: minmax(360px, 1fr) auto;
+  min-width: 0;
+  min-height: 0;
+}
+
+.bed-mesh-viewer-shell {
+  position: relative;
+  min-height: 360px;
+  overflow: hidden;
+  border: 1px solid var(--border-soft);
+  background: #090d12;
+}
+
+.bed-mesh-canvas {
+  width: 100%;
+  height: 100%;
+  min-height: 360px;
+}
+
+.bed-mesh-canvas canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.bed-mesh-loading,
+.bed-mesh-empty {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  background: rgba(9, 13, 18, 0.74);
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.bed-mesh-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 18px;
+  border: 1px solid var(--border-soft);
+  border-top: 0;
+  background: var(--panel-soft);
+  padding: 10px 12px;
+}
+
+.bed-mesh-toggle,
+.bed-mesh-slider,
+.bed-mesh-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #c8d2de;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.bed-mesh-toggle input {
+  width: 17px;
+  height: 17px;
+  accent-color: var(--accent);
+}
+
+.bed-mesh-slider {
+  flex: 1 1 210px;
+  margin-left: auto;
+}
+
+.bed-mesh-slider input {
+  flex: 1;
+  accent-color: var(--accent);
+}
+
+.bed-mesh-side {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  min-width: 0;
+}
+
+.bed-mesh-panel {
+  border: 1px solid var(--border-soft);
+  background: var(--panel-soft);
+}
+
+.bed-mesh-panel h3 {
+  border-bottom: 1px solid var(--border-soft);
+  color: #d7e2ee;
+  font-size: 16px;
+  padding: 12px;
+}
+
+.bed-mesh-list {
+  display: grid;
+}
+
+.bed-mesh-list div {
+  display: grid;
+  grid-template-columns: minmax(94px, 0.78fr) minmax(0, 1fr);
+  min-height: 40px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.bed-mesh-list div:last-child {
+  border-bottom: 0;
+}
+
+.bed-mesh-list dt,
+.bed-mesh-list dd {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  padding: 8px 10px;
+  font-size: 12px;
+}
+
+.bed-mesh-list dt {
+  color: #b4c0cc;
+  font-weight: 800;
+}
+
+.bed-mesh-list dd {
+  color: var(--text);
+  font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+  overflow-wrap: anywhere;
+}
+
+.bed-mesh-field {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+}
+
+.bed-mesh-field input {
+  width: 100%;
+  min-width: 0;
+  height: 34px;
+  border: 1px solid var(--border);
+  border-radius: var(--control-radius);
+  background: var(--panel);
+  color: var(--text);
+  padding: 0 9px;
+}
+
+.bed-mesh-profile-list {
+  display: grid;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.bed-mesh-profile {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 34px;
+  min-height: 40px;
+  border: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  background: transparent;
+  color: var(--text);
+}
+
+.bed-mesh-profile > button,
+button.bed-mesh-profile {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  padding: 8px 10px;
+  text-align: left;
+}
+
+button.bed-mesh-profile {
+  display: flex;
+  width: 100%;
+  min-height: 40px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.bed-mesh-profile span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bed-mesh-profile small {
+  color: var(--muted);
+  font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+  font-size: 11px;
+}
+
+.bed-mesh-profile.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.bed-mesh-profile-action {
+  width: 34px;
+  min-width: 34px;
+  justify-content: center;
+  color: var(--accent);
+}
+
+.bed-mesh-actions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
 .pid-body button:disabled,
 .pid-body button:disabled:hover,
 .pid-body button:disabled:focus-visible {
@@ -4763,6 +5002,28 @@ body.is-resizing-row {
 
   .toolbar-actions {
     justify-content: flex-start;
+  }
+
+  .bed-mesh-modal {
+    width: calc(100vw - 18px);
+  }
+
+  .bed-mesh-body {
+    grid-template-columns: minmax(0, 1fr);
+    min-height: 0;
+  }
+
+  .bed-mesh-stage {
+    grid-template-rows: minmax(300px, 52vh) auto;
+  }
+
+  .bed-mesh-viewer-shell,
+  .bed-mesh-canvas {
+    min-height: 300px;
+  }
+
+  .bed-mesh-side {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 

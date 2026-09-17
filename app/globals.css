@@ -1471,6 +1471,90 @@ h1 {
   overflow: hidden;
 }
 
+.home-grid {
+  height: 100%;
+  overflow: auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 330px), 1fr));
+  align-content: start;
+  align-items: start;
+  gap: 16px;
+  padding: 20px;
+}
+
+.home-widget {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--panel);
+}
+
+.home-widget-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.home-widget-header h2 { margin: 0; font-size: 14px; color: var(--text); }
+.home-widget-body { padding: 14px; min-width: 0; display: grid; gap: 12px; }
+.home-macro-list { display: grid; gap: 8px; max-height: 420px; overflow: auto; }
+.home-macro-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  min-height: 36px;
+  border: 1px solid var(--border);
+  border-radius: var(--control-radius);
+  background: var(--panel-strong);
+  padding-left: 12px;
+}
+.home-macro-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.home-macro-run {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: stretch;
+  gap: 6px;
+  min-width: 38px;
+  border: 0;
+  border-left: 1px solid var(--border);
+  background: transparent;
+  color: var(--accent);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 120ms ease, background 120ms ease;
+}
+.home-macro-item:hover .home-macro-run,
+.home-macro-item:focus-within .home-macro-run { opacity: 1; }
+.home-macro-run:hover, .home-macro-run:focus-visible { background: var(--accent-soft); outline: 0; }
+.home-macro-parameter-badge { min-width: 18px; color: var(--accent); font-size: 11px; font-weight: 800; text-align: center; }
+@media (hover: none) { .home-macro-run { opacity: 1; } }
+.home-console-log { height: 240px; overflow: auto; background: var(--bg); padding: 8px; }
+.home-console-log pre { margin: 0 0 8px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; }
+.home-console-entry { margin-bottom: 8px; overflow-wrap: anywhere; font-size: 12px; }
+.home-console-form { display: grid; grid-template-columns: minmax(0, 1fr) 34px; gap: 8px; }
+.home-console-form input { min-width: 0; width: 100%; background: var(--panel-soft); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 8px; }
+.home-console-favorites { display: flex; flex-wrap: wrap; gap: 6px; max-height: 120px; overflow: auto; }
+.home-console-favorites button { max-width: 100%; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.home-position-strip { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.home-position-strip strong { color: var(--text); }
+.home-jog-controls { display: flex; align-items: center; justify-content: space-evenly; gap: 16px; }
+.home-z-controls { display: grid; gap: 6px; justify-items: center; }
+.home-z-controls .jog-button { width: 38px; height: 32px; }
+.home-widget .offset-button { min-width: 0; padding: 5px 2px; font-size: 12px; }
+.home-widget button:disabled { opacity: 0.4; cursor: not-allowed; }
+.home-widget-order { display: grid; gap: 8px; margin-top: 16px; }
+.home-widget-order > div { display: flex; align-items: center; gap: 8px; }
+.home-widget-order label { flex: 1; }
+@media (max-width: 600px) {
+  .home-grid { padding: 8px; gap: 10px; }
+  .options-tabs { display: flex; flex-wrap: wrap; }
+  .options-tab { flex: 1 0 90px; }
+}
+
 .editor-grid {
   position: absolute;
   inset: 0;
@@ -3272,6 +3356,29 @@ button.bed-mesh-profile {
   font-size: 12px;
 }
 
+.macro-parameter-count {
+  width: fit-content;
+  color: var(--accent);
+  font-size: 11px;
+}
+
+.macro-parameters-modal { width: min(560px, calc(100vw - 32px)); }
+.macro-parameters-body { display: grid; gap: 16px; padding: 16px; }
+.macro-parameter-list { display: grid; gap: 12px; max-height: min(520px, calc(100vh - 250px)); overflow: auto; padding-right: 4px; }
+.macro-parameter-field { display: grid; gap: 6px; }
+.macro-parameter-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.macro-parameter-heading small, .macro-parameter-default { color: var(--muted); }
+.macro-parameter-field input, .macro-parameter-field select {
+  width: 100%;
+  height: 36px;
+  border: 1px solid var(--border);
+  border-radius: var(--control-radius);
+  background: var(--panel-soft);
+  color: var(--text);
+  padding: 0 10px;
+}
+.macro-parameter-field input:focus-visible, .macro-parameter-field select:focus-visible { border-color: var(--accent); outline: 0; }
+
 .macro-list {
   min-height: 0;
   overflow: auto;
@@ -4317,7 +4424,7 @@ button.bed-mesh-profile {
 
 .options-tabs {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   overflow: hidden;
   border: 1px solid var(--border);
   border-radius: var(--control-radius);

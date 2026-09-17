@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { NextResponse } from "next/server";
 import { isBlockedPath, resolveIncludePath, resolveWorkspacePath, toRelativePath } from "@/lib/workspace";
+import { getMacroParameters } from "@/lib/macro-parameters";
 
 type MacroEntry = {
   name: string;
@@ -9,6 +10,15 @@ type MacroEntry = {
   path: string;
   line: number;
   description?: string;
+  parameters: MacroParameter[];
+};
+
+type MacroParameter = {
+  name: string;
+  required: boolean;
+  kind: "text" | "number" | "boolean";
+  defaultValue?: string;
+  defaultExpression?: string;
 };
 
 const maxDepth = 12;
@@ -35,7 +45,8 @@ function getMacrosFromContent(relativePath: string, content: string): MacroEntry
       title: `[gcode_macro ${name}]`,
       path: relativePath,
       line: index + 1,
-      description: getMacroDescription(blockLines)
+      description: getMacroDescription(blockLines),
+      parameters: getMacroParameters(blockLines)
     });
   }
 

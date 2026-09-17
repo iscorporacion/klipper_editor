@@ -46,6 +46,7 @@ import {
   MdEdit,
   MdFunctions,
   MdGridOn,
+  MdOpenInFull,
   MdHome,
   MdKeyboardArrowDown,
   MdKeyboardArrowLeft,
@@ -77,6 +78,10 @@ const sectionPreviewDelayKey = "klipper-editor-section-preview-delay";
 const sidebarCollapsedKey = "klipper-editor-sidebar-collapsed";
 const useAccentLogoKey = "klipper-editor-use-accent-logo";
 const themePreferenceKey = "klipper-editor-theme";
+const homeWidgetsKey = "klipper-editor-home-widgets";
+const availableHomeWidgets = ["macros", "console", "movement"] as const;
+type HomeWidget = typeof availableHomeWidgets[number];
+const defaultHomeWidgets: HomeWidget[] = ["macros", "console", "movement"];
 
 function apiPath(path: string) {
   return `${appBasePath}${path}`;
@@ -429,6 +434,23 @@ function readStoredEditorTheme() {
   }
 }
 
+function readHomeWidgets() {
+  try {
+    const stored = JSON.parse(preferences.getItem(homeWidgetsKey) ?? "null") as unknown;
+    if (!Array.isArray(stored)) return defaultHomeWidgets;
+    const widgets = stored.filter((item): item is HomeWidget =>
+      typeof item === "string" && availableHomeWidgets.includes(item as HomeWidget)
+    );
+    return widgets.length > 0 ? Array.from(new Set(widgets)) : [];
+  } catch {
+    return defaultHomeWidgets;
+  }
+}
+
+function writeHomeWidgets(widgets: HomeWidget[]) {
+  preferences.setItem(homeWidgetsKey, JSON.stringify(widgets));
+}
+
 function rgbaFromHex(value: string, alpha: number) {
   const hex = value.trim();
   const match = hex.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
@@ -614,6 +636,15 @@ type MacroEntry = {
   path: string;
   line: number;
   description?: string;
+  parameters: MacroParameter[];
+};
+
+type MacroParameter = {
+  name: string;
+  required: boolean;
+  kind: "text" | "number" | "boolean";
+  defaultValue?: string;
+  defaultExpression?: string;
 };
 
 type MacroTab = "favorites" | "all";
@@ -919,6 +950,23 @@ const defaultMessages: Messages = {
   "macros.loading": "Cargando macros.",
   "macros.empty": "Sin macros detectadas.",
   "macros.emptyFavorites": "Sin macros favoritas.",
+  "homeGrid.widgetMacros": "Macros favoritas",
+  "homeGrid.widgetConsole": "Consola Klipper",
+  "homeGrid.widgetMovement": "Movimiento XY/Z",
+  "homeGrid.openFull": "Abrir ventana completa",
+  "homeGrid.send": "Enviar G-code",
+  "homeGrid.moveUp": "Mover antes",
+  "homeGrid.moveDown": "Mover despues",
+  "homeGrid.tab": "Home Grid",
+  "macros.parameters": "Parametros",
+  "macros.parametersFor": "Parametros de {name}",
+  "macros.parameterRequired": "Obligatorio",
+  "macros.parameterOptional": "Opcional",
+  "macros.parameterDefault": "Predeterminado: {value}",
+  "macros.parameterDynamicDefault": "Predeterminado calculado por la macro: {value}",
+  "macros.useDefault": "Usar valor predeterminado",
+  "macros.booleanTrue": "Verdadero",
+  "macros.booleanFalse": "Falso",
   "macros.favorites": "Favoritos",
   "macros.all": "Todas",
   "macros.count": "{count} macros",
@@ -1172,6 +1220,19 @@ function sanitizeKlipperHtml(message: string) {
 
       if (name === "target") {
         element.setAttribute("rel", "noopener noreferrer");
+      }
+
+      if (element.tagName === "IMG" && name === "src") {
+        try {
+          const sourceUrl = new URL(value, window.location.origin);
+          const configPrefix = "/server/files/config/";
+          if (sourceUrl.pathname.startsWith(configPrefix)) {
+            const configPath = decodeURIComponent(sourceUrl.pathname.slice(configPrefix.length));
+            element.setAttribute("src", apiPath(`/api/printer/config-asset?path=${encodeURIComponent(configPath)}`));
+          }
+        } catch {
+          element.removeAttribute("src");
+        }
       }
     }
   });
@@ -2218,7 +2279,8 @@ function Editor() {
   const [localesLoading, setLocalesLoading] = useState(true);
   const [mainsailTheme, setMainsailTheme] = useState<MainsailVisualTheme>(fallbackMainsailTheme);
   const [optionsOpen, setOptionsOpen] = useState(false);
-  const [optionsTab, setOptionsTab] = useState<"general" | "theme" | "mcp" | "terminal">("general");
+  const [optionsTab, setOptionsTab] = useState<"general" | "home" | "theme" | "mcp" | "terminal">("general");
+  const [homeWidgets, setHomeWidgets] = useState<HomeWidget[]>(defaultHomeWidgets);
   const [macrosOpen, setMacrosOpen] = useState(false);
   const [movementOpen, setMovementOpen] = useState(false);
   const [bedMeshOpen, setBedMeshOpen] = useState(false);
@@ -2271,6 +2333,8 @@ function Editor() {
   const [sectionPreviewDelay, setSectionPreviewDelay] = useState(1);
   const [macrosLoading, setMacrosLoading] = useState(false);
   const [executingMacro, setExecutingMacro] = useState<string | null>(null);
+  const [macroParameterTarget, setMacroParameterTarget] = useState<MacroEntry | null>(null);
+  const [macroParameterValues, setMacroParameterValues] = useState<Record<string, string>>({});
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
   const [globalSearchQuery, setGlobalSearchQuery] = useState("");
   const [globalSearchResults, setGlobalSearchResults] = useState<SearchResult[]>([]);
@@ -2421,6 +2485,8 @@ function Editor() {
   const bedHeaters = useMemo(() => heaters.filter(isBedHeater), [heaters]);
   const fanControls = useMemo(() => auxiliaryControls.filter((control) => control.type === "fan"), [auxiliaryControls]);
   const ledControls = useMemo(() => auxiliaryControls.filter((control) => control.type === "led"), [auxiliaryControls]);
+  const homeWidgetSet = useMemo(() => new Set(homeWidgets), [homeWidgets]);
+  const hasHomeWidgets = homeWidgets.length > 0;
   const currentPrintThumbnail = bestThumbnail(printerStatus?.printDetails.metadata?.thumbnails ?? []);
   const currentPrintThumbnailUrl = currentPrintThumbnail
     ? apiPath(`/api/printer/gcode-thumbnail?path=${encodeURIComponent(currentPrintThumbnail.relativePath)}`)
@@ -3438,6 +3504,25 @@ function Editor() {
     },
     [t]
   );
+
+  const homeWidgetLabel = useCallback(
+    (widget: HomeWidget) => {
+      if (widget === "macros") return t("homeGrid.widgetMacros");
+      if (widget === "console") return t("homeGrid.widgetConsole");
+      return t("homeGrid.widgetMovement");
+    },
+    [t]
+  );
+
+  const toggleHomeWidget = useCallback((widget: HomeWidget) => {
+    setHomeWidgets((current) => {
+      const next = current.includes(widget)
+        ? current.filter((item) => item !== widget)
+        : [...current, widget].filter((item, index, array) => array.indexOf(item) === index);
+      writeHomeWidgets(next);
+      return next;
+    });
+  }, []);
 
   const openAuxiliariesModal = useCallback(async () => {
     setAuxiliariesOpen(true);
@@ -4477,10 +4562,9 @@ function Editor() {
     [openFile, t]
   );
 
-  const executeMacro = useCallback(
-    async (macro: MacroEntry) => {
+  const runMacro = useCallback(
+    async (macro: MacroEntry, parameters: Record<string, string> = {}) => {
       if (executingMacro) return;
-      if (!(await confirmDialog(t("actions.executeMacro"), t("confirm.executeMacro", { name: macro.name })))) return;
 
       setExecutingMacro(macro.name);
       setMessage(t("status.executingMacro", { name: macro.name }));
@@ -4489,21 +4573,49 @@ function Editor() {
         const response = await fetch(apiPath("/api/printer/run-macro"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: macro.name })
+          body: JSON.stringify({ name: macro.name, parameters })
         });
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error ?? t("errors.executeMacro"));
 
         setMessage(t("status.executedMacro", { name: macro.name }));
         await loadPrinterStatus();
+        return true;
       } catch (error) {
         setMessage(error instanceof Error ? error.message : t("errors.executeMacro"));
+        return false;
       } finally {
         setExecutingMacro(null);
       }
     },
-    [confirmDialog, executingMacro, loadPrinterStatus, t]
+    [executingMacro, loadPrinterStatus, t]
   );
+
+  const executeMacro = useCallback(
+    async (macro: MacroEntry) => {
+      if (executingMacro) return;
+      if (macro.parameters.length > 0) {
+        setMacroParameterValues(Object.fromEntries(macro.parameters.map((parameter) => [parameter.name, ""])));
+        setMacroParameterTarget(macro);
+        return;
+      }
+      if (!(await confirmDialog(t("actions.executeMacro"), t("confirm.executeMacro", { name: macro.name })))) return;
+      await runMacro(macro);
+    },
+    [confirmDialog, executingMacro, runMacro, t]
+  );
+
+  const submitMacroParameters = useCallback(async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!macroParameterTarget || executingMacro) return;
+    const parameters = Object.fromEntries(
+      macroParameterTarget.parameters
+        .map((parameter) => [parameter.name, (macroParameterValues[parameter.name] ?? "").trim()] as const)
+        .filter(([, value]) => value !== "")
+    );
+    const completed = await runMacro(macroParameterTarget, parameters);
+    if (completed) setMacroParameterTarget(null);
+  }, [executingMacro, macroParameterTarget, macroParameterValues, runMacro]);
 
   const toggleMacroFavorite = useCallback((macro: MacroEntry) => {
     setMacroFavorites((current) => {
@@ -4792,6 +4904,7 @@ function Editor() {
     }
 
     setSidebarCollapsed(preferences.getItem(sidebarCollapsedKey) === "true");
+    setHomeWidgets(readHomeWidgets());
     const hasStoredTheme = preferences.getItem(themePreferenceKey) !== null;
     const storedTheme = hasStoredTheme
       ? readStoredEditorTheme()
@@ -4862,12 +4975,16 @@ function Editor() {
   }, [loadLocale]);
 
   useEffect(() => {
-    if (!klipperConsoleOpen) return;
+    if (!klipperConsoleOpen && (activeFile || !homeWidgetSet.has("console"))) return;
 
     void loadKlipperGcodeStore(true);
     const interval = window.setInterval(() => void loadKlipperGcodeStore(), 2000);
     return () => window.clearInterval(interval);
-  }, [klipperConsoleOpen, loadKlipperGcodeStore]);
+  }, [klipperConsoleOpen, activeFile, homeWidgetSet, loadKlipperGcodeStore]);
+
+  useEffect(() => {
+    if (!activeFile && homeWidgetSet.has("macros")) void loadMacros();
+  }, [activeFile, homeWidgetSet, loadMacros]);
 
   useEffect(() => {
     loadTree().catch((error) => setMessage(error instanceof Error ? error.message : t("errors.loadTree")));
@@ -5683,7 +5800,97 @@ function Editor() {
         </div>
 
         <div className="editor-panel">
-          {!activeFile ? (
+          {!activeFile ? (hasHomeWidgets ? (
+            <div className="home-grid">
+              {homeWidgets.map((widget) => (
+                <section className={`home-widget home-widget-${widget}`} key={widget}>
+                  <header className="home-widget-header">
+                    <h2>{homeWidgetLabel(widget)}</h2>
+                    <button className="modal-icon-button" type="button" title={t("homeGrid.openFull")} aria-label={t("homeGrid.openFull")}
+                      onClick={() => widget === "macros" ? openMacrosModal() : widget === "console" ? setKlipperConsoleOpen(true) : setMovementOpen(true)}>
+                      <MdOpenInFull className="action-icon" />
+                    </button>
+                  </header>
+                  <div className="home-widget-body">
+                    {widget === "macros" ? (
+                      <div className="home-macro-list">
+                        {favoriteMacros.length === 0 && <p className="empty-note">{t("macros.emptyFavorites")}</p>}
+                        {favoriteMacros.map((macro) => (
+                          <div className="home-macro-item" key={macro.name}>
+                            <span className="home-macro-name" title={macro.name}>{macro.name}</span>
+                            <button className="home-macro-run" type="button" title={t("actions.executeMacro")} aria-label={`${t("actions.executeMacro")}: ${macro.name}`}
+                              disabled={Boolean(executingMacro) || !printerStatus || Boolean(printerStatus.error)} onClick={() => void executeMacro(macro)}>
+                              <FaPlay className="action-icon" />
+                              {macro.parameters.length > 0 && <span className="home-macro-parameter-badge">{macro.parameters.length}</span>}
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : widget === "console" ? (
+                      <>
+                        <div className="home-console-log" role="log" aria-label={t("panels.klipperConsole")}>
+                          {klipperConsoleTimeline.slice(0, 30).map((item) => (
+                            <div className="home-console-entry" key={item.id}>
+                              {item.kind === "store" ? <KlipperStoreMessage message={item.entry.message} /> : <pre>{`${item.entry.script}\n${item.entry.message}`}</pre>}
+                            </div>
+                          ))}
+                        </div>
+                        <form className="home-console-form" onSubmit={sendKlipperConsoleCommand}>
+                          <input aria-label={t("panels.klipperConsole")} value={klipperConsoleInput} placeholder="G-code" spellCheck={false}
+                            onChange={(event) => setKlipperConsoleInput(event.target.value)} />
+                          <button className="modal-icon-button" type="submit" disabled={sendingKlipperCommand || !klipperConsoleInput.trim()} title={t("homeGrid.send")} aria-label={t("homeGrid.send")}><MdSend /></button>
+                        </form>
+                        <div className="home-console-favorites">
+                          {klipperConsoleFavorites.map((favorite) => (
+                            <button key={favorite.script} type="button" className="dialog-button" title={favorite.script} disabled={sendingKlipperCommand}
+                              onClick={() => void sendKlipperScript(favorite.script)}>{favorite.script}</button>
+                          ))}
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="home-position-strip">
+                          {(["x", "y", "z"] as const).map((axis) => <span key={axis}>{axis.toUpperCase()} <strong>{printerStatus ? formatPosition(printerStatus.position[axis]) : "--"}</strong></span>)}
+                        </div>
+                        <div className="home-jog-controls">
+                          <div className="jog-pad xy-pad">
+                            {([
+                              ["x", -1, "left", MdKeyboardArrowLeft], ["y", 1, "up", MdKeyboardArrowUp],
+                              ["x", 1, "right", MdKeyboardArrowRight], ["y", -1, "down", MdKeyboardArrowDown]
+                            ] as const).map(([axis, direction, placement, Icon]) => (
+                              <button key={placement} type="button" className={`jog-button jog-${placement}`} disabled={movementDisabled}
+                                title={`${axis.toUpperCase()} ${formatSigned(direction * moveStep)}`} aria-label={`${axis.toUpperCase()} ${formatSigned(direction * moveStep)}`}
+                                onClick={() => void runMove({ action: "jog", axis, distance: direction * moveStep }, `${axis.toUpperCase()} ${formatSigned(direction * moveStep)}`)}><Icon className="jog-icon" /></button>
+                            ))}
+                          </div>
+                          <div className="home-z-controls"><span>Z</span>{([1, -1] as const).map((direction) => (
+                            <button key={direction} className="jog-button" type="button" disabled={movementDisabled} title={`Z ${formatSigned(direction * moveStep)}`} aria-label={`Z ${formatSigned(direction * moveStep)}`}
+                              onClick={() => void runMove({ action: "jog", axis: "z", distance: direction * moveStep }, `Z ${formatSigned(direction * moveStep)}`)}>
+                              {direction > 0 ? <MdKeyboardArrowUp className="jog-icon" /> : <MdKeyboardArrowDown className="jog-icon" />}
+                            </button>
+                          ))}</div>
+                        </div>
+                        <div className="movement-step-grid" role="group" aria-label={t("movement.distance", { distance: moveStep })}>
+                          {moveSteps.map((step) => <button key={step} type="button" className={step === moveStep ? "movement-step active" : "movement-step"} aria-pressed={step === moveStep} onClick={() => setMoveStep(step)}>{step}</button>)}
+                        </div>
+                        <div className="movement-offset">
+                          <div className="movement-offset-title">{t("movement.zOffset", { offset: printerStatus ? formatOffset(printerStatus.zOffset) : "--" })}</div>
+                          <div className="offset-grid">
+                            {[1, -1].flatMap((direction) => zOffsetSteps.map((step) => (
+                              <button key={direction * step} className="offset-button" type="button" disabled={offsetDisabled}
+                                onClick={() => void runMove({ action: "z-offset", adjust: direction * step }, `Z-offset ${formatSigned(direction * step)}`)}>
+                                {direction > 0 ? <MdKeyboardArrowUp className="offset-icon" /> : <MdKeyboardArrowDown className="offset-icon" />}{formatSigned(direction * step)}
+                              </button>
+                            )))}
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </section>
+              ))}
+            </div>
+          ) : (
             <div className="welcome">
               {showKEditorLogo ? (
                 <KEditorAccentLogo className="welcome-logo" />
@@ -5697,7 +5904,7 @@ function Editor() {
               <h2>{t("welcome.title")}</h2>
               <p>{t("welcome.description")}</p>
             </div>
-          ) : activeFile.loading ? (
+          )) : activeFile.loading ? (
             <div className="welcome editor-loading" role="status" aria-live="polite">
               <h2>{t("loading.title")}</h2>
               <p className="editor-loading-path">{activeFile.path}</p>
@@ -6935,6 +7142,11 @@ function Editor() {
                           <span className="macro-row-main">
                             <span className="macro-row-name">{macro.name}</span>
                             {macro.description && <span className="macro-row-description">{macro.description}</span>}
+                            {macro.parameters.length > 0 && (
+                              <span className="macro-parameter-count">
+                                {t("macros.parameters")} {macro.parameters.length}
+                              </span>
+                            )}
                             <span className="macro-row-path">
                               {macro.path}:{macro.line}
                             </span>
@@ -6968,6 +7180,60 @@ function Editor() {
                   )}
                 </div>
               </div>
+            </section>
+          </div>
+        )}
+
+        {macroParameterTarget && (
+          <div className="modal-backdrop" role="presentation" onMouseDown={() => !executingMacro && setMacroParameterTarget(null)}>
+            <section className="options-modal macro-parameters-modal" role="dialog" aria-modal="true" aria-labelledby="macro-parameters-title"
+              onMouseDown={(event) => event.stopPropagation()}>
+              <div className="modal-header">
+                <h2 id="macro-parameters-title">{t("macros.parametersFor", { name: macroParameterTarget.name })}</h2>
+                <button className="modal-close" type="button" title={t("actions.close")} aria-label={t("actions.close")}
+                  disabled={Boolean(executingMacro)} onClick={() => setMacroParameterTarget(null)}>x</button>
+              </div>
+              <form className="macro-parameters-body" onSubmit={(event) => void submitMacroParameters(event)}>
+                {macroParameterTarget.description && <p className="setting-help">{macroParameterTarget.description}</p>}
+                <div className="macro-parameter-list">
+                  {macroParameterTarget.parameters.map((parameter) => {
+                    const defaultText = parameter.defaultValue !== undefined
+                      ? t("macros.parameterDefault", { value: parameter.defaultValue })
+                      : parameter.defaultExpression
+                        ? t("macros.parameterDynamicDefault", { value: parameter.defaultExpression })
+                        : "";
+                    return (
+                      <label className="macro-parameter-field" key={parameter.name}>
+                        <span className="macro-parameter-heading">
+                          <strong>{parameter.name}</strong>
+                          <small>{t(parameter.required ? "macros.parameterRequired" : "macros.parameterOptional")}</small>
+                        </span>
+                        {parameter.kind === "boolean" ? (
+                          <select required={parameter.required} value={macroParameterValues[parameter.name] ?? ""}
+                            onChange={(event) => setMacroParameterValues((current) => ({ ...current, [parameter.name]: event.target.value }))}>
+                            <option value="">{defaultText || t("macros.useDefault")}</option>
+                            <option value="true">{t("macros.booleanTrue")}</option>
+                            <option value="false">{t("macros.booleanFalse")}</option>
+                          </select>
+                        ) : (
+                          <input type={parameter.kind === "number" ? "number" : "text"} step={parameter.kind === "number" ? "any" : undefined}
+                            required={parameter.required} value={macroParameterValues[parameter.name] ?? ""}
+                            placeholder={defaultText || undefined} autoComplete="off" spellCheck={false}
+                            onChange={(event) => setMacroParameterValues((current) => ({ ...current, [parameter.name]: event.target.value }))} />
+                        )}
+                        {defaultText && <small className="macro-parameter-default">{defaultText}</small>}
+                      </label>
+                    );
+                  })}
+                </div>
+                <div className="dialog-actions">
+                  <button className="dialog-button" type="button" disabled={Boolean(executingMacro)} onClick={() => setMacroParameterTarget(null)}>{t("actions.cancel")}</button>
+                  <button className="dialog-button primary" type="submit" disabled={Boolean(executingMacro)}>
+                    {executingMacro ? <span className="button-spinner" aria-hidden="true" /> : <FaPlay />}
+                    {t("actions.executeMacro")}
+                  </button>
+                </div>
+              </form>
             </section>
           </div>
         )}
@@ -7790,6 +8056,7 @@ function Editor() {
               </div>
               <div className="modal-body options-body">
                 <div className="options-tabs" role="tablist" aria-label={t("options.title")}>
+                  <button className={optionsTab === "home" ? "options-tab active" : "options-tab"} type="button" role="tab" aria-selected={optionsTab === "home"} onClick={() => setOptionsTab("home")}>{t("homeGrid.tab")}</button>
                   <button
                     className={optionsTab === "general" ? "options-tab active" : "options-tab"}
                     type="button"
@@ -7894,7 +8161,27 @@ function Editor() {
                   </div>
                 ) : (
                   <div className="options-tab-panel" role="tabpanel">
-                    {optionsTab === "terminal" ? <>
+                    {optionsTab === "home" ? <>
+                      <div className="home-widget-order">
+                        {[...homeWidgets, ...availableHomeWidgets.filter((widget) => !homeWidgetSet.has(widget))].map((widget) => {
+                          const index = homeWidgets.indexOf(widget);
+                          return <div key={widget}>
+                          <label className="setting-checkbox">
+                            <input type="checkbox" checked={index >= 0} onChange={() => toggleHomeWidget(widget)} />
+                            <span>{homeWidgetLabel(widget)}</span>
+                          </label>
+                          {([-1, 1] as const).map((direction) => <button key={direction} className="modal-icon-button" type="button"
+                            title={t(direction < 0 ? "homeGrid.moveUp" : "homeGrid.moveDown")} aria-label={t(direction < 0 ? "homeGrid.moveUp" : "homeGrid.moveDown")}
+                            disabled={index < 0 || index + direction < 0 || index + direction >= homeWidgets.length}
+                            onClick={() => setHomeWidgets((current) => {
+                              const next = [...current];
+                              [next[index], next[index + direction]] = [next[index + direction], next[index]];
+                              writeHomeWidgets(next);
+                              return next;
+                            })}>{direction < 0 ? <MdKeyboardArrowUp /> : <MdKeyboardArrowDown />}</button>)}
+                        </div>; })}
+                      </div>
+                    </> : optionsTab === "terminal" ? <>
                       <label className="setting-checkbox">
                         <input type="checkbox" checked={terminalEnvEnabled || terminalConfiguredEnabled} disabled={terminalEnvEnabled || terminalModeSaving}
                           onChange={(event) => void updateTerminalEnabledSetting(event.target.checked)} />

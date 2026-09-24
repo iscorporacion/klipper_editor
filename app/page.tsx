@@ -14,9 +14,13 @@ import type {
   MouseEvent as ReactMouseEvent,
   ReactNode
 } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import MdiIcon from "@mdi/react";
-import { mdiArrowCollapseLeft, mdiArrowCollapseRight, mdiConsoleLine, mdiFan, mdiLedStripVariant } from "@mdi/js";
+import {
+  mdiArrowCollapseLeft, mdiArrowCollapseRight, mdiAutoFix, mdiCheckCircleOutline, mdiConsoleLine,
+  mdiDatabaseImportOutline, mdiEject, mdiFan, mdiHome, mdiLedStripVariant, mdiLockOpenVariant,
+  mdiSwapHorizontal, mdiTrayArrowDown, mdiTrayArrowUp
+} from "@mdi/js";
 import type { Range } from "@codemirror/state";
 import { Decoration, DecorationSet, EditorView, ViewPlugin, ViewUpdate, WidgetType } from "@codemirror/view";
 import { HighlightStyle, StreamLanguage, syntaxHighlighting } from "@codemirror/language";
@@ -41,6 +45,7 @@ import {
 } from "react-icons/fc";
 import {
   MdDelete,
+  MdDragIndicator,
   MdContentCopy,
   MdAcUnit,
   MdEdit,
@@ -80,13 +85,65 @@ const sidebarCollapsedKey = "klipper-editor-sidebar-collapsed";
 const useAccentLogoKey = "klipper-editor-use-accent-logo";
 const themePreferenceKey = "klipper-editor-theme";
 const homeWidgetsKey = "klipper-editor-home-widgets";
+const homeGridLayoutKey = "klipper-editor-home-grid-layout";
 const sensorShowEndstopsKey = "klipper-editor-sensors-show-endstops";
 const sensorHiddenKey = "klipper-editor-sensors-hidden";
+const mmuLastImportKey = "klipper-editor-mmu-last-import";
 const homeTabPath = "__keditor_home__";
 const terminalTabPath = "__keditor_terminal__";
-const availableHomeWidgets = ["macros", "console", "movement", "sensors"] as const;
+const availableHomeWidgets = ["macros", "console", "movement", "sensors", "mmu"] as const;
 type HomeWidget = typeof availableHomeWidgets[number];
+type HomeViewport = "desktop" | "tablet" | "mobile";
+type HomeGridLayout = Record<HomeViewport, HomeWidget[][]>;
+type HomeGridColumns = Record<HomeViewport, number>;
 const defaultHomeWidgets: HomeWidget[] = ["macros", "console", "movement"];
+const defaultHomeGridColumns: HomeGridColumns = { desktop: 4, tablet: 2, mobile: 1 };
+
+function distributeHomeWidgets(widgets: HomeWidget[], columns: number) {
+  const result = Array.from({ length: Math.max(1, columns) }, () => [] as HomeWidget[]);
+  widgets.forEach((widget, index) => result[index % result.length].push(widget));
+  return result;
+}
+
+function normalizeHomeGridLayout(value: unknown, widgets: HomeWidget[], columns: HomeGridColumns): HomeGridLayout {
+  const source = value && typeof value === "object" ? value as Partial<Record<HomeViewport, unknown>> : {};
+  return (Object.keys(columns) as HomeViewport[]).reduce((result, viewport) => {
+    const rawColumns = Array.isArray(source[viewport]) ? source[viewport] as unknown[] : [];
+    const ordered = Array.from(new Set(rawColumns.flatMap((column) => Array.isArray(column) ? column : [])
+      .filter((widget): widget is HomeWidget => typeof widget === "string" && widgets.includes(widget as HomeWidget))));
+    if (rawColumns.length === columns[viewport]) {
+      const placed = new Set<HomeWidget>();
+      result[viewport] = rawColumns.map((column) => (Array.isArray(column) ? column : [])
+        .filter((widget): widget is HomeWidget => {
+          if (typeof widget !== "string" || !widgets.includes(widget as HomeWidget) || placed.has(widget as HomeWidget)) return false;
+          placed.add(widget as HomeWidget);
+          return true;
+        }));
+      widgets.forEach((widget) => {
+        if (placed.has(widget)) return;
+        result[viewport].reduce((shortest, column) => column.length < shortest.length ? column : shortest).push(widget);
+      });
+    } else {
+      widgets.forEach((widget) => { if (!ordered.includes(widget)) ordered.push(widget); });
+      result[viewport] = distributeHomeWidgets(ordered, columns[viewport]);
+    }
+    return result;
+  }, {} as HomeGridLayout);
+}
+
+function readHomeGridPreferences(widgets: HomeWidget[]) {
+  try {
+    const stored = JSON.parse(preferences.getItem(homeGridLayoutKey) ?? "null") as { columns?: Partial<HomeGridColumns>; layout?: unknown } | null;
+    const columns: HomeGridColumns = {
+      desktop: Math.min(4, Math.max(2, Number(stored?.columns?.desktop) || defaultHomeGridColumns.desktop)),
+      tablet: Math.min(3, Math.max(1, Number(stored?.columns?.tablet) || defaultHomeGridColumns.tablet)),
+      mobile: Math.min(2, Math.max(1, Number(stored?.columns?.mobile) || defaultHomeGridColumns.mobile))
+    };
+    return { columns, layout: normalizeHomeGridLayout(stored?.layout, widgets, columns) };
+  } catch {
+    return { columns: defaultHomeGridColumns, layout: normalizeHomeGridLayout(null, widgets, defaultHomeGridColumns) };
+  }
+}
 
 function apiPath(path: string) {
   return `${appBasePath}${path}`;
@@ -456,6 +513,64 @@ function writeHomeWidgets(widgets: HomeWidget[]) {
   preferences.setItem(homeWidgetsKey, JSON.stringify(widgets));
 }
 
+function splitOrcaValues(value: string) {
+  const delimiter = value.includes(";") ? ";" : ",";
+  const values: string[] = [];
+  let current = "";
+  let quoted = false;
+  for (let index = 0; index < value.length; index += 1) {
+    const character = value[index];
+    if (character === '"') { quoted = !quoted; continue; }
+    if (character === delimiter && !quoted) { values.push(current.trim()); current = ""; continue; }
+    current += character;
+  }
+  values.push(current.trim());
+  return values;
+}
+
+function parseOrcaMmuProfile(filename: string, content: string): MmuImportProfile {
+  const start = content.lastIndexOf("; CONFIG_BLOCK_START");
+  const end = content.indexOf("; CONFIG_BLOCK_END", start);
+  if (start < 0 || end < 0) throw new Error("El G-code no contiene un bloque CONFIG_BLOCK valido.");
+  const settings = new Map<string, string>();
+  for (const line of content.slice(start, end).split(/\r?\n/)) {
+    const match = line.match(/^;\s*([a-z0-9_]+)\s*=\s*(.*)$/i);
+    if (match) settings.set(match[1], match[2].trim());
+  }
+  const required = ["filament_colour", "filament_settings_id", "filament_type", "filament_vendor", "nozzle_temperature"];
+  const missing = required.filter((key) => !settings.has(key));
+  if (missing.length) throw new Error(`Faltan datos de OrcaSlicer: ${missing.join(", ")}`);
+  const colors = splitOrcaValues(settings.get("filament_colour")!);
+  const names = splitOrcaValues(settings.get("filament_settings_id")!);
+  const materials = splitOrcaValues(settings.get("filament_type")!);
+  const vendors = splitOrcaValues(settings.get("filament_vendor")!);
+  const temperatures = splitOrcaValues(settings.get("nozzle_temperature")!);
+  const count = Math.max(colors.length, names.length, materials.length, vendors.length, temperatures.length);
+  if (count < 1 || count > 64) throw new Error("La cantidad de filamentos del G-code no es valida.");
+  const pick = (values: string[], index: number) => values[index] ?? (values.length === 1 ? values[0] : "");
+  return {
+    filename,
+    importedAt: new Date().toISOString(),
+    filaments: Array.from({ length: count }, (_, tool) => ({
+      tool,
+      color: pick(colors, tool).replace(/^#/, "").toLowerCase(),
+      name: pick(names, tool),
+      material: pick(materials, tool),
+      vendor: pick(vendors, tool),
+      temperature: Number(pick(temperatures, tool)) || 0
+    }))
+  };
+}
+
+function valueArray(value: unknown) {
+  return Array.isArray(value) ? value : [];
+}
+
+function mmuColor(value: unknown) {
+  const color = String(value ?? "").replace(/^#/, "").slice(0, 8);
+  return /^[0-9a-f]{6}([0-9a-f]{2})?$/i.test(color) ? `#${color.slice(0, 6)}` : "#808182";
+}
+
 function rgbaFromHex(value: string, alpha: number) {
   const hex = value.trim();
   const match = hex.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
@@ -640,6 +755,29 @@ type SensorState = {
   label: string;
   group: "sensor" | "endstop";
   state: boolean | null;
+};
+
+type MmuState = {
+  available: boolean;
+  printing: boolean;
+  mmu: Record<string, unknown> | null;
+  machine: Record<string, unknown> | null;
+  error?: string;
+};
+
+type ImportedFilament = {
+  tool: number;
+  color: string;
+  name: string;
+  material: string;
+  vendor: string;
+  temperature: number;
+};
+
+type MmuImportProfile = {
+  filename: string;
+  importedAt: string;
+  filaments: ImportedFilament[];
 };
 
 type MacroEntry = {
@@ -968,6 +1106,7 @@ const defaultMessages: Messages = {
   "homeGrid.widgetConsole": "Consola Klipper",
   "homeGrid.widgetMovement": "Movimiento XY/Z",
   "homeGrid.widgetSensors": "Sensores",
+  "homeGrid.widgetMmu": "Happy Hare MMU",
   "homeGrid.openHome": "Mostrar widgets",
   "homeGrid.showEndstops": "Mostrar finales de carrera",
   "homeGrid.detected": "Detectado",
@@ -983,6 +1122,36 @@ const defaultMessages: Messages = {
   "homeGrid.moveUp": "Mover antes",
   "homeGrid.moveDown": "Mover despues",
   "homeGrid.tab": "Home Grid",
+  "homeGrid.desktop": "Escritorio",
+  "homeGrid.tablet": "Tablet",
+  "homeGrid.mobile": "Movil",
+  "homeGrid.columnCount": "Columnas: {count}",
+  "homeGrid.layoutHelp": "Arrastra los widgets desde su encabezado para organizar cada tipo de pantalla de forma independiente.",
+  "homeGrid.dragWidget": "Mover widget",
+  "mmu.notAvailable": "Happy Hare no esta disponible.",
+  "mmu.loadError": "No se pudo consultar Happy Hare",
+  "mmu.actionError": "No se pudo ejecutar la accion MMU",
+  "mmu.actionDone": "Accion MMU completada",
+  "mmu.idle": "Inactivo",
+  "mmu.selected": "{tool} | Compuerta {gate}",
+  "mmu.unknown": "Desconocido",
+  "mmu.bypass": "Bypass",
+  "mmu.select": "Seleccionar",
+  "mmu.preload": "Precargar",
+  "mmu.eject": "Expulsar",
+  "mmu.check": "Comprobar",
+  "mmu.home": "Home MMU",
+  "mmu.recover": "Recuperar",
+  "mmu.load": "Cargar",
+  "mmu.unload": "Descargar",
+  "mmu.unlock": "Desbloquear",
+  "mmu.dropGcode": "Suelta un G-code de Orca o seleccionalo",
+  "mmu.releaseGcode": "Suelta el G-code para importar",
+  "mmu.preview": "Vista previa de la ultima configuracion",
+  "mmu.applyImport": "Aplicar a Happy Hare",
+  "mmu.gcodeRequired": "Selecciona un archivo .gcode",
+  "mmu.importError": "No se pudo importar la configuracion de OrcaSlicer",
+  "mmu.imported": "Se importaron {count} filamentos",
   "macros.parameters": "Parametros",
   "macros.parametersFor": "Parametros de {name}",
   "macros.parameterRequired": "Obligatorio",
@@ -2306,11 +2475,28 @@ function Editor() {
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [optionsTab, setOptionsTab] = useState<"general" | "home" | "theme" | "mcp" | "terminal">("general");
   const [homeWidgets, setHomeWidgets] = useState<HomeWidget[]>(defaultHomeWidgets);
+  const [homeGridColumns, setHomeGridColumns] = useState<HomeGridColumns>(defaultHomeGridColumns);
+  const [homeGridLayout, setHomeGridLayout] = useState<HomeGridLayout>(() => normalizeHomeGridLayout(null, defaultHomeWidgets, defaultHomeGridColumns));
+  const [homeViewport, setHomeViewport] = useState<HomeViewport>("desktop");
+  const [draggedHomeWidget, setDraggedHomeWidget] = useState<HomeWidget | null>(null);
+  const [homeDropTarget, setHomeDropTarget] = useState<{ column: number; index: number } | null>(null);
+  const [homeDropAnchor, setHomeDropAnchor] = useState<{ column: number; widget: HomeWidget | null; edge: "before" | "after" | "column" } | null>(null);
+  const [draggedHomeWidgetHeight, setDraggedHomeWidgetHeight] = useState(80);
   const [sensorStates, setSensorStates] = useState<SensorState[]>([]);
   const [sensorsLoading, setSensorsLoading] = useState(false);
   const [showEndstops, setShowEndstops] = useState(false);
   const [hiddenSensors, setHiddenSensors] = useState<Set<string>>(() => new Set());
   const [sensorSettingsOpen, setSensorSettingsOpen] = useState(false);
+  const [sensorRefreshToken, setSensorRefreshToken] = useState(0);
+  const [mmuState, setMmuState] = useState<MmuState | null>(null);
+  const [mmuLoading, setMmuLoading] = useState(false);
+  const [mmuAction, setMmuAction] = useState<string | null>(null);
+  const [mmuMenuGate, setMmuMenuGate] = useState<number | null>(null);
+  const [mmuImportProfile, setMmuImportProfile] = useState<MmuImportProfile | null>(null);
+  const [mmuImportOpen, setMmuImportOpen] = useState(false);
+  const [mmuDragActive, setMmuDragActive] = useState(false);
+  const [mmuRefreshToken, setMmuRefreshToken] = useState(0);
+  const mmuImportInputRef = useRef<HTMLInputElement>(null);
   const [macrosOpen, setMacrosOpen] = useState(false);
   const [movementOpen, setMovementOpen] = useState(false);
   const [bedMeshOpen, setBedMeshOpen] = useState(false);
@@ -2518,10 +2704,19 @@ function Editor() {
   const ledControls = useMemo(() => auxiliaryControls.filter((control) => control.type === "led"), [auxiliaryControls]);
   const homeWidgetSet = useMemo(() => new Set(homeWidgets), [homeWidgets]);
   const hasHomeWidgets = homeWidgets.length > 0;
+  const activeHomeColumns = homeGridLayout[homeViewport];
   const visibleSensorStates = useMemo(
     () => sensorStates.filter((sensor) => !hiddenSensors.has(sensor.id) && (sensor.group !== "endstop" || showEndstops)),
     [hiddenSensors, sensorStates, showEndstops]
   );
+  const mmu = mmuState?.mmu ?? null;
+  const mmuGateCount = Math.max(0, Number(mmu?.num_gates) || valueArray(mmu?.gate_status).length);
+  const mmuTtgMap = valueArray(mmu?.ttg_map).map((value) => Number(value));
+  const mmuSelectedGate = Number(mmu?.gate ?? -1);
+  const mmuSelectedTool = Number(mmu?.tool ?? -1);
+  const mmuFilamentPosition = Number(mmu?.filament_pos ?? -1);
+  const mmuMenuGateStatus = mmuMenuGate === null ? -1 : Number(valueArray(mmu?.gate_status)[mmuMenuGate] ?? -1);
+  const mmuManualDisabled = Boolean(mmuState?.printing || mmuAction || !mmuState?.available || mmu?.enabled === false);
   const currentPrintThumbnail = bestThumbnail(printerStatus?.printDetails.metadata?.thumbnails ?? []);
   const currentPrintThumbnailUrl = currentPrintThumbnail
     ? apiPath(`/api/printer/gcode-thumbnail?path=${encodeURIComponent(currentPrintThumbnail.relativePath)}`)
@@ -3561,6 +3756,7 @@ function Editor() {
       if (widget === "macros") return t("homeGrid.widgetMacros");
       if (widget === "console") return t("homeGrid.widgetConsole");
       if (widget === "sensors") return t("homeGrid.widgetSensors");
+      if (widget === "mmu") return t("homeGrid.widgetMmu");
       return t("homeGrid.widgetMovement");
     },
     [t]
@@ -3572,12 +3768,48 @@ function Editor() {
         ? current.filter((item) => item !== widget)
         : [...current, widget].filter((item, index, array) => array.indexOf(item) === index);
       writeHomeWidgets(next);
+      setHomeGridLayout((layout) => {
+        const normalized = normalizeHomeGridLayout(layout, next, homeGridColumns);
+        preferences.setItem(homeGridLayoutKey, JSON.stringify({ columns: homeGridColumns, layout: normalized }));
+        return normalized;
+      });
       return next;
     });
-  }, []);
+  }, [homeGridColumns]);
 
-  const loadSensorStates = useCallback(async (withEndstops = showEndstops) => {
-    setSensorsLoading(true);
+  const changeHomeGridColumns = useCallback((viewport: HomeViewport, count: number) => {
+    setHomeGridColumns((currentColumns) => {
+      const columns = { ...currentColumns, [viewport]: count };
+      setHomeGridLayout((currentLayout) => {
+        const layout = normalizeHomeGridLayout(currentLayout, homeWidgets, columns);
+        preferences.setItem(homeGridLayoutKey, JSON.stringify({ columns, layout }));
+        return layout;
+      });
+      return columns;
+    });
+  }, [homeWidgets]);
+
+  const moveHomeWidget = useCallback((widget: HomeWidget, targetColumn: number, targetIndex?: number) => {
+    setHomeGridLayout((current) => {
+      const sourceColumn = current[homeViewport].findIndex((column) => column.includes(widget));
+      const sourceIndex = sourceColumn >= 0 ? current[homeViewport][sourceColumn].indexOf(widget) : -1;
+      const columns = current[homeViewport].map((column) => column.filter((item) => item !== widget));
+      const column = columns[Math.min(Math.max(targetColumn, 0), columns.length - 1)];
+      const adjustedIndex = targetIndex !== undefined && sourceColumn === targetColumn && sourceIndex < targetIndex
+        ? targetIndex - 1
+        : targetIndex;
+      column.splice(Math.min(Math.max(adjustedIndex ?? column.length, 0), column.length), 0, widget);
+      const layout = { ...current, [homeViewport]: columns };
+      preferences.setItem(homeGridLayoutKey, JSON.stringify({ columns: homeGridColumns, layout }));
+      return layout;
+    });
+    setDraggedHomeWidget(null);
+    setHomeDropTarget(null);
+    setHomeDropAnchor(null);
+  }, [homeGridColumns, homeViewport]);
+
+  const loadSensorStates = useCallback(async (withEndstops = showEndstops, showLoading = true) => {
+    if (showLoading) setSensorsLoading(true);
     try {
       const response = await fetch(apiPath(`/api/printer/sensors?endstops=${withEndstops ? "1" : "0"}`), { cache: "no-store" });
       const payload = await response.json();
@@ -3589,15 +3821,15 @@ function Editor() {
       setMessage(error instanceof Error ? error.message : t("errors.loadSensors"));
       return [];
     } finally {
-      setSensorsLoading(false);
+      if (showLoading) setSensorsLoading(false);
     }
   }, [showEndstops, t]);
 
   const updateShowEndstops = useCallback((visible: boolean) => {
     setShowEndstops(visible);
     preferences.setItem(sensorShowEndstopsKey, String(visible));
-    void loadSensorStates(visible);
-  }, [loadSensorStates]);
+    setSensorRefreshToken((token) => token + 1);
+  }, []);
 
   const toggleSensorVisibility = useCallback((id: string) => {
     setHiddenSensors((current) => {
@@ -3607,6 +3839,77 @@ function Editor() {
       return next;
     });
   }, []);
+
+  const loadMmuState = useCallback(async (showError = false, showLoading = true) => {
+    if (showLoading) setMmuLoading(true);
+    try {
+      const response = await fetch(apiPath("/api/printer/mmu"), { cache: "no-store" });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? t("mmu.loadError"));
+      setMmuState(payload as MmuState);
+      return payload as MmuState;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : t("mmu.loadError");
+      setMmuState({ available: false, printing: false, mmu: null, machine: null, error: errorMessage });
+      if (showError) setMessage(errorMessage);
+      return null;
+    } finally {
+      if (showLoading) setMmuLoading(false);
+    }
+  }, [t]);
+
+  const runMmuAction = useCallback(async (action: string, values: Record<string, unknown> = {}) => {
+    if (mmuAction) return;
+    setMmuAction(action);
+    setMmuMenuGate(null);
+    try {
+      const response = await fetch(apiPath("/api/printer/mmu"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, ...values })
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? t("mmu.actionError"));
+      if (payload.status) setMmuState(payload.status as MmuState);
+      setMessage(t("mmu.actionDone"));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : t("mmu.actionError"));
+    } finally {
+      setMmuAction(null);
+    }
+  }, [mmuAction, t]);
+
+  const importMmuGcode = useCallback(async (file: File) => {
+    if (!file.name.toLowerCase().endsWith(".gcode")) {
+      setMessage(t("mmu.gcodeRequired"));
+      return;
+    }
+    try {
+      const profile = parseOrcaMmuProfile(file.name, await file.text());
+      setMmuImportProfile(profile);
+      setMmuImportOpen(true);
+      preferences.setItem(mmuLastImportKey, JSON.stringify(profile));
+      setMessage(t("mmu.imported", { count: profile.filaments.length }));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : t("mmu.importError"));
+    }
+  }, [t]);
+
+  const applyMmuImport = useCallback(async () => {
+    if (!mmuImportProfile || mmuGateCount < 1) return;
+    const entriesByGate = new Map<number, ImportedFilament>();
+    for (const filament of mmuImportProfile.filaments) {
+      const mappedGate = mmuTtgMap[filament.tool];
+      const gate = Number.isInteger(mappedGate) && mappedGate >= 0 ? mappedGate : filament.tool;
+      if (gate >= 0 && gate < mmuGateCount && !entriesByGate.has(gate)) entriesByGate.set(gate, filament);
+    }
+    await runMmuAction("apply-map", {
+      entries: [...entriesByGate].map(([gate, filament]) => ({
+        gate, name: filament.name, material: filament.material, vendor: filament.vendor,
+        color: filament.color, temperature: filament.temperature
+      }))
+    });
+  }, [mmuGateCount, mmuImportProfile, mmuTtgMap, runMmuAction]);
 
   const openAuxiliariesModal = useCallback(async () => {
     setAuxiliariesOpen(true);
@@ -4988,8 +5291,16 @@ function Editor() {
     }
 
     setSidebarCollapsed(preferences.getItem(sidebarCollapsedKey) === "true");
-    setHomeWidgets(readHomeWidgets());
+    const savedHomeWidgets = readHomeWidgets();
+    const savedHomeGrid = readHomeGridPreferences(savedHomeWidgets);
+    setHomeWidgets(savedHomeWidgets);
+    setHomeGridColumns(savedHomeGrid.columns);
+    setHomeGridLayout(savedHomeGrid.layout);
     setShowEndstops(preferences.getItem(sensorShowEndstopsKey) === "true");
+    try {
+      const savedMmuImport = JSON.parse(preferences.getItem(mmuLastImportKey) ?? "null") as MmuImportProfile | null;
+      if (savedMmuImport?.filaments && Array.isArray(savedMmuImport.filaments)) setMmuImportProfile(savedMmuImport);
+    } catch { setMmuImportProfile(null); }
     try {
       const savedHiddenSensors = JSON.parse(preferences.getItem(sensorHiddenKey) ?? "[]") as unknown;
       if (Array.isArray(savedHiddenSensors)) {
@@ -5082,10 +5393,40 @@ function Editor() {
   useEffect(() => {
     const homeVisible = activePath === homeTabPath || (!activePath && !activeFile);
     if (!homeVisible || !homeWidgetSet.has("sensors")) return;
-    void loadSensorStates();
-    const interval = window.setInterval(() => void loadSensorStates(), 5000);
-    return () => window.clearInterval(interval);
-  }, [activeFile, activePath, homeWidgetSet, loadSensorStates]);
+    let cancelled = false;
+    let timer: number | undefined;
+    let emptyAttempts = 0;
+    const poll = async (showLoading: boolean) => {
+      const sensors = await loadSensorStates(showEndstops, showLoading);
+      if (cancelled) return;
+      emptyAttempts = sensors.length > 0 ? 0 : emptyAttempts + 1;
+      if (sensors.length > 0 || emptyAttempts < 3) {
+        timer = window.setTimeout(() => void poll(false), 5000);
+      }
+    };
+    void poll(true);
+    return () => {
+      cancelled = true;
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
+  }, [activeFile, activePath, homeWidgetSet, loadSensorStates, sensorRefreshToken, showEndstops]);
+
+  useEffect(() => {
+    const homeVisible = activePath === homeTabPath || (!activePath && !activeFile);
+    if (!homeVisible || !homeWidgetSet.has("mmu")) return;
+    let cancelled = false;
+    let timer: number | undefined;
+    const poll = async (showLoading: boolean) => {
+      const state = await loadMmuState(false, showLoading);
+      if (cancelled || !state?.available) return;
+      timer = window.setTimeout(() => void poll(false), 3000);
+    };
+    void poll(true);
+    return () => {
+      cancelled = true;
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
+  }, [activeFile, activePath, homeWidgetSet, loadMmuState, mmuRefreshToken]);
 
   useEffect(() => {
     loadTree().catch((error) => setMessage(error instanceof Error ? error.message : t("errors.loadTree")));
@@ -5303,6 +5644,13 @@ function Editor() {
     clampTerminalToViewport();
     window.addEventListener("resize", clampTerminalToViewport);
     return () => window.removeEventListener("resize", clampTerminalToViewport);
+  }, []);
+
+  useEffect(() => {
+    const updateViewport = () => setHomeViewport(window.innerWidth < 768 ? "mobile" : window.innerWidth < 1280 ? "tablet" : "desktop");
+    updateViewport();
+    window.addEventListener("resize", updateViewport);
+    return () => window.removeEventListener("resize", updateViewport);
   }, []);
 
   useEffect(() => {
@@ -5989,16 +6337,59 @@ function Editor() {
               </>}
             </div>
           ) : !activeFile ? (hasHomeWidgets ? (
-            <div className="home-grid">
-              {homeWidgets.map((widget) => (
-                <section className={`home-widget home-widget-${widget}`} key={widget}>
+            <div className="home-grid" style={{ "--home-grid-columns": activeHomeColumns.length } as CSSProperties}
+              onDragLeave={(event) => {
+                if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                  setHomeDropTarget(null);
+                  setHomeDropAnchor(null);
+                }
+              }}>
+              {activeHomeColumns.map((column, columnIndex) => <div className="home-grid-column" key={`${homeViewport}-${columnIndex}`}
+                onDragOver={(event) => {
+                  if (!draggedHomeWidget) return;
+                  event.preventDefault();
+                  if (event.target === event.currentTarget) {
+                    setHomeDropTarget({ column: columnIndex, index: column.length });
+                    setHomeDropAnchor({ column: columnIndex, widget: null, edge: "column" });
+                  }
+                }}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  if (draggedHomeWidget) moveHomeWidget(draggedHomeWidget, columnIndex, homeDropTarget?.column === columnIndex ? homeDropTarget.index : column.length);
+                }}>
+              {column.map((widget, widgetIndex) => <Fragment key={widget}>
+                <section className={`home-widget home-widget-${widget} ${draggedHomeWidget === widget ? "dragging" : ""} ${homeDropAnchor?.column === columnIndex && homeDropAnchor.widget === widget ? `drop-${homeDropAnchor.edge}` : ""}`} key={widget}
+                  onDragOver={(event) => {
+                    if (!draggedHomeWidget || draggedHomeWidget === widget) return;
+                    event.preventDefault();
+                    event.stopPropagation();
+                    const bounds = event.currentTarget.getBoundingClientRect();
+                    const before = event.clientY < bounds.top + bounds.height / 2;
+                    setHomeDropTarget({ column: columnIndex, index: before ? widgetIndex : widgetIndex + 1 });
+                    setHomeDropAnchor({ column: columnIndex, widget, edge: before ? "before" : "after" });
+                  }}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    if (draggedHomeWidget && draggedHomeWidget !== widget) moveHomeWidget(draggedHomeWidget, columnIndex, homeDropTarget?.column === columnIndex ? homeDropTarget.index : widgetIndex);
+                  }}>
                   <header className="home-widget-header">
-                    <h2>{homeWidgetLabel(widget)}</h2>
-                    <button className="modal-icon-button" type="button" title={widget === "sensors" ? t("actions.refresh") : t("homeGrid.openFull")}
-                      aria-label={widget === "sensors" ? t("actions.refresh") : t("homeGrid.openFull")}
-                      disabled={widget === "sensors" && sensorsLoading}
-                      onClick={() => widget === "macros" ? openMacrosModal() : widget === "console" ? setKlipperConsoleOpen(true) : widget === "movement" ? setMovementOpen(true) : void loadSensorStates()}>
-                      {widget === "sensors" ? <FcRefresh className="action-icon" /> : <MdOpenInFull className="action-icon" />}
+                    <div className="home-widget-title">
+                      <button className="home-widget-drag-handle" type="button" draggable title={t("homeGrid.dragWidget")} aria-label={t("homeGrid.dragWidget")}
+                        onDragStart={(event) => {
+                          setDraggedHomeWidget(widget);
+                          setDraggedHomeWidgetHeight(event.currentTarget.closest(".home-widget")?.getBoundingClientRect().height ?? 80);
+                          event.dataTransfer.effectAllowed = "move";
+                          event.dataTransfer.setData("text/plain", widget);
+                        }}
+                        onDragEnd={() => { setDraggedHomeWidget(null); setHomeDropTarget(null); setHomeDropAnchor(null); }}><MdDragIndicator /></button>
+                      <h2>{homeWidgetLabel(widget)}</h2>
+                    </div>
+                    <button className="modal-icon-button" type="button" title={["sensors", "mmu"].includes(widget) ? t("actions.refresh") : t("homeGrid.openFull")}
+                      aria-label={["sensors", "mmu"].includes(widget) ? t("actions.refresh") : t("homeGrid.openFull")}
+                      disabled={(widget === "sensors" && sensorsLoading) || (widget === "mmu" && mmuLoading)}
+                      onClick={() => widget === "macros" ? openMacrosModal() : widget === "console" ? setKlipperConsoleOpen(true) : widget === "movement" ? setMovementOpen(true) : widget === "sensors" ? setSensorRefreshToken((token) => token + 1) : setMmuRefreshToken((token) => token + 1)}>
+                      {["sensors", "mmu"].includes(widget) ? <FcRefresh className="action-icon" /> : <MdOpenInFull className="action-icon" />}
                     </button>
                   </header>
                   <div className="home-widget-body">
@@ -6075,7 +6466,7 @@ function Editor() {
                           </div>
                         </div>
                       </>
-                    ) : (
+                    ) : widget === "sensors" ? (
                       <>
                         <div className="sensor-widget-toolbar">
                           <label className="sensor-endstop-toggle">
@@ -6123,10 +6514,92 @@ function Editor() {
                           })}
                         </div>
                       </>
+                    ) : (
+                      <div className={`mmu-widget ${mmuDragActive ? "drop-active" : ""}`}
+                        onDragEnter={(event) => { event.preventDefault(); setMmuDragActive(true); }}
+                        onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; }}
+                        onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setMmuDragActive(false); }}
+                        onDrop={(event) => { event.preventDefault(); setMmuDragActive(false); const file = event.dataTransfer.files[0]; if (file) void importMmuGcode(file); }}>
+                        {mmuLoading && !mmuState && <div className="panel-loading-bar" />}
+                        {!mmuLoading && mmuState && !mmuState.available && <p className="empty-note">{mmuState.error || t("mmu.notAvailable")}</p>}
+                        {mmuState?.available && mmu && <>
+                          <div className="mmu-status-line">
+                            <span className={mmu?.enabled === false ? "offline" : "online"} />
+                            <strong>{String(mmu.action || t("mmu.idle"))}</strong>
+                            <span>{t("mmu.selected", { tool: mmuSelectedTool >= 0 ? `T${mmuSelectedTool}` : "--", gate: mmuSelectedGate >= 0 ? mmuSelectedGate : "--" })}</span>
+                          </div>
+                          <div className="mmu-spool-row">
+                            {Array.from({ length: mmuGateCount }, (_, gate) => {
+                              const gateStatus = Number(valueArray(mmu.gate_status)[gate] ?? -1);
+                              const gateColor = mmuColor(valueArray(mmu.gate_color)[gate]);
+                              const name = String(valueArray(mmu.gate_filament_name)[gate] ?? "");
+                              const material = String(valueArray(mmu.gate_material)[gate] ?? "");
+                              const temperature = Number(valueArray(mmu.gate_temperature)[gate] ?? 0);
+                              const tools = mmuTtgMap.flatMap((mappedGate, tool) => mappedGate === gate ? [tool] : []);
+                              const selected = gate === mmuSelectedGate;
+                              const loaded = selected && mmuFilamentPosition > 0;
+                              return <div className={`mmu-gate ${selected ? "selected" : ""} ${loaded ? "loaded" : ""}`} key={gate}>
+                                <button className="mmu-spool" type="button" onClick={() => setMmuMenuGate((current) => current === gate ? null : gate)}
+                                  aria-expanded={mmuMenuGate === gate} title={[name, material, temperature > 0 ? `${temperature} C` : ""].filter(Boolean).join(" | ")}>
+                                  <span className="mmu-spool-flange left" /><span className="mmu-spool-filament" style={{ background: gateStatus === 0 ? "transparent" : gateColor }} />
+                                  <span className="mmu-spool-core" /><span className="mmu-spool-flange right" />
+                                </button>
+                                <div className="mmu-tool-list">
+                                  {(tools.length ? tools : [-1]).map((tool) => tool >= 0 ? <button key={tool} type="button" disabled={mmuManualDisabled || tool === mmuSelectedTool}
+                                    className={tool === mmuSelectedTool ? "active" : ""} onClick={() => void runMmuAction("tool", { tool })}>T{tool}</button> : <span key="unmapped">G{gate}</span>)}
+                                </div>
+                                <div className="mmu-gate-caption"><strong>{material || t("mmu.unknown")}</strong><span>{temperature > 0 ? `${temperature} C` : "--"}</span></div>
+                              </div>;
+                            })}
+                            {Boolean(mmu.has_bypass) && <button type="button" className={`mmu-bypass ${mmuSelectedGate === -2 ? "active" : ""}`}
+                              disabled={mmuManualDisabled || mmuSelectedGate === -2} onClick={() => void runMmuAction("bypass")}>{t("mmu.bypass")}</button>}
+                          </div>
+                          {mmuMenuGate !== null && <div className="mmu-gate-menu">
+                            <strong>G{mmuMenuGate}</strong>
+                            {([
+                              ["select", mdiSwapHorizontal, "mmu.select"], ["preload", mdiTrayArrowDown, "mmu.preload"],
+                              ["eject", mdiEject, "mmu.eject"], ["check", mdiCheckCircleOutline, "mmu.check"]
+                            ] as const).map(([action, icon, label]) => <button type="button" key={action}
+                              disabled={mmuManualDisabled || (action === "select" && mmuMenuGate === mmuSelectedGate) || (action === "preload" && mmuMenuGateStatus > 0) || (action === "eject" && mmuMenuGateStatus === 0)}
+                              onClick={() => void runMmuAction(action, { gate: mmuMenuGate })}><MdiIcon path={icon} size={0.75} /><span>{t(label)}</span></button>)}
+                          </div>}
+                          <div className="mmu-command-bar">
+                            {([
+                              ["home", mdiHome, "mmu.home", false], ["recover", mdiAutoFix, "mmu.recover", false],
+                              ["load", mdiTrayArrowDown, "mmu.load", mmuFilamentPosition !== 0], ["unload", mdiTrayArrowUp, "mmu.unload", mmuFilamentPosition === 0]
+                            ] as const).map(([action, icon, label, disabled]) => <button key={action} type="button" disabled={mmuManualDisabled || disabled}
+                              title={t(label)} aria-label={t(label)} onClick={() => void runMmuAction(action)}><MdiIcon path={icon} size={0.82} /><span>{t(label)}</span></button>)}
+                            {Boolean(mmu.is_paused && mmu.is_locked) && <button type="button" disabled={mmuManualDisabled} onClick={() => void runMmuAction("unlock")}>
+                              <MdiIcon path={mdiLockOpenVariant} size={0.82} /><span>{t("mmu.unlock")}</span></button>}
+                          </div>
+                        </>}
+                        <div className="mmu-import-panel">
+                          <input ref={mmuImportInputRef} type="file" accept=".gcode" hidden onChange={(event) => { const file = event.target.files?.[0]; if (file) void importMmuGcode(file); event.currentTarget.value = ""; }} />
+                          <button className="mmu-import-trigger" type="button" onClick={() => mmuImportInputRef.current?.click()}>
+                            <MdiIcon path={mdiDatabaseImportOutline} size={0.9} /><span>{mmuImportProfile ? mmuImportProfile.filename : t("mmu.dropGcode")}</span>
+                          </button>
+                          {mmuImportProfile && <button className="modal-icon-button" type="button" onClick={() => setMmuImportOpen((open) => !open)}
+                            title={t("mmu.preview")} aria-label={t("mmu.preview")}><MdKeyboardArrowDown className={mmuImportOpen ? "rotated" : ""} /></button>}
+                        </div>
+                        {mmuImportOpen && mmuImportProfile && <div className="mmu-import-preview">
+                          {mmuImportProfile.filaments.map((filament) => {
+                            const gate = Number.isInteger(mmuTtgMap[filament.tool]) && mmuTtgMap[filament.tool] >= 0 ? mmuTtgMap[filament.tool] : filament.tool;
+                            return <div key={filament.tool}><span className="mmu-color-swatch" style={{ background: mmuColor(filament.color) }} />
+                              <strong>T{filament.tool} &gt; G{gate}</strong><span>{filament.name}</span><small>{[filament.vendor, filament.material, filament.temperature ? `${filament.temperature} C` : ""].filter(Boolean).join(" | ")}</small></div>;
+                          })}
+                          <button className="dialog-button primary" type="button" disabled={mmuManualDisabled || mmuGateCount < 1 || Boolean(mmuAction)} onClick={() => void applyMmuImport()}>
+                            <MdiIcon path={mdiDatabaseImportOutline} size={0.8} />{t("mmu.applyImport")}
+                          </button>
+                        </div>}
+                        {mmuDragActive && <div className="mmu-drop-overlay"><MdiIcon path={mdiDatabaseImportOutline} size={1.4} /><span>{t("mmu.releaseGcode")}</span></div>}
+                      </div>
                     )}
                   </div>
                 </section>
-              ))}
+              </Fragment>)}
+              {homeDropAnchor?.column === columnIndex && homeDropAnchor.widget === null &&
+                <div className="home-widget-drop-placeholder" style={{ height: Math.min(Math.max(draggedHomeWidgetHeight, 56), 320) }} aria-hidden="true" />}
+              </div>)}
             </div>
           ) : (
             <div className="welcome">
@@ -8404,6 +8877,19 @@ function Editor() {
                 ) : (
                   <div className="options-tab-panel" role="tabpanel">
                     {optionsTab === "home" ? <>
+                      <div className="home-grid-column-settings">
+                        {([
+                          ["desktop", "homeGrid.desktop", [2, 3, 4]],
+                          ["tablet", "homeGrid.tablet", [1, 2, 3]],
+                          ["mobile", "homeGrid.mobile", [1, 2]]
+                        ] as const).map(([viewport, label, counts]) => <label className="setting-field" key={viewport}>
+                          <span>{t(label)}</span>
+                          <select value={homeGridColumns[viewport]} onChange={(event) => changeHomeGridColumns(viewport, Number(event.target.value))}>
+                            {counts.map((count) => <option value={count} key={count}>{t("homeGrid.columnCount", { count })}</option>)}
+                          </select>
+                        </label>)}
+                      </div>
+                      <p className="setting-help">{t("homeGrid.layoutHelp")}</p>
                       <div className="home-widget-order">
                         {[...homeWidgets, ...availableHomeWidgets.filter((widget) => !homeWidgetSet.has(widget))].map((widget) => {
                           const index = homeWidgets.indexOf(widget);
@@ -8412,15 +8898,6 @@ function Editor() {
                             <input type="checkbox" checked={index >= 0} onChange={() => toggleHomeWidget(widget)} />
                             <span>{homeWidgetLabel(widget)}</span>
                           </label>
-                          {([-1, 1] as const).map((direction) => <button key={direction} className="modal-icon-button" type="button"
-                            title={t(direction < 0 ? "homeGrid.moveUp" : "homeGrid.moveDown")} aria-label={t(direction < 0 ? "homeGrid.moveUp" : "homeGrid.moveDown")}
-                            disabled={index < 0 || index + direction < 0 || index + direction >= homeWidgets.length}
-                            onClick={() => setHomeWidgets((current) => {
-                              const next = [...current];
-                              [next[index], next[index + direction]] = [next[index + direction], next[index]];
-                              writeHomeWidgets(next);
-                              return next;
-                            })}>{direction < 0 ? <MdKeyboardArrowUp /> : <MdKeyboardArrowDown />}</button>)}
                         </div>; })}
                       </div>
                     </> : optionsTab === "terminal" ? <>

@@ -100,6 +100,12 @@ export type SensorState = {
   state: boolean | null;
 };
 
+export type MmuStatus = {
+  available: boolean;
+  printing: boolean;
+  mmu: Record<string, unknown> | null;
+};
+
 export type MainsailUiSettings = {
   mode: string;
   theme: string;
@@ -927,6 +933,34 @@ export async function getSensorStates(includeEndstops = false): Promise<SensorSt
   }
 
   return sensors.sort((left, right) => left.group.localeCompare(right.group) || left.label.localeCompare(right.label));
+}
+
+export async function getMmuStatus(): Promise<MmuStatus> {
+  const objectsPayload = await moonrakerFetch("/printer/objects/list");
+  const rawObjects = objectsPayload?.result?.objects ?? objectsPayload?.objects ?? [];
+  const objects = Array.isArray(rawObjects)
+    ? rawObjects.filter((name): name is string => typeof name === "string")
+    : [];
+  if (!objects.includes("mmu")) return { available: false, printing: false, mmu: null };
+
+  const params = new URLSearchParams();
+  params.append("mmu", [
+    "enabled", "num_gates", "is_homed", "is_locked", "is_paused", "is_in_print", "print_state",
+    "unit", "tool", "gate", "active_filament", "operation", "filament_pos", "ttg_map", "gate_status",
+    "gate_filament_name", "gate_material", "gate_color", "gate_temperature", "gate_spool_id",
+    "gate_speed_override", "action", "has_bypass", "spoolman_support"
+  ].join(","));
+  if (objects.includes("idle_timeout")) params.append("idle_timeout", "state");
+  if (objects.includes("print_stats")) params.append("print_stats", "state");
+  const payload = await moonrakerFetch(`/printer/objects/query?${params.toString()}`);
+  const status = payload?.result?.status ?? payload?.status ?? {};
+  const printState = String(status.print_stats?.state ?? "").toLowerCase();
+  const idleState = String(status.idle_timeout?.state ?? "").toLowerCase();
+  return {
+    available: true,
+    printing: printState === "printing" || idleState === "printing",
+    mmu: status.mmu && typeof status.mmu === "object" ? status.mmu : null
+  };
 }
 
 export async function setAuxiliaryControl(name: string, value?: number, color?: string) {

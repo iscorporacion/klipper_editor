@@ -33,7 +33,7 @@ export function initializePreferences() {
   })().catch(error => { loaded = undefined; throw error; });
 }
 
-const keys = ["ratos-viewer-locale", "klipper-editor-create-backup-on-save", "klipper-editor-hide-backup-files", "klipper-editor-terminal-height", "klipper-editor-terminal-history", "klipper-editor-klipper-console-favorites", "klipper-editor-macro-favorites", "klipper-editor-section-preview-delay", "klipper-editor-sidebar-collapsed", "klipper-editor-use-accent-logo", "klipper-editor-heater-cache", "klipper-editor-heater-colors", "klipper-editor-theme", "klipper-editor-home-widgets", "klipper-editor-sensors-show-endstops", "klipper-editor-sensors-hidden"];
+const keys = ["ratos-viewer-locale", "klipper-editor-create-backup-on-save", "klipper-editor-hide-backup-files", "klipper-editor-terminal-height", "klipper-editor-terminal-history", "klipper-editor-klipper-console-favorites", "klipper-editor-macro-favorites", "klipper-editor-section-preview-delay", "klipper-editor-sidebar-collapsed", "klipper-editor-use-accent-logo", "klipper-editor-heater-cache", "klipper-editor-heater-colors", "klipper-editor-theme", "klipper-editor-home-widgets", "klipper-editor-home-grid-layout", "klipper-editor-sensors-show-endstops", "klipper-editor-sensors-hidden", "klipper-editor-mmu-last-import"];
 
 function notify(error: string) { window.dispatchEvent(new CustomEvent("preferences-status", { detail: error })); }
 export function hasPendingPreferences() { return pending.length > 0; }

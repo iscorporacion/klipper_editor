@@ -10,7 +10,8 @@ export const preferenceKeys = [
   "klipper-editor-macro-favorites", "klipper-editor-section-preview-delay",
   "klipper-editor-sidebar-collapsed", "klipper-editor-use-accent-logo",
   "klipper-editor-heater-cache", "klipper-editor-heater-colors",
-  "klipper-editor-theme", "klipper-editor-home-widgets"
+  "klipper-editor-theme", "klipper-editor-home-widgets",
+  "klipper-editor-sensors-show-endstops", "klipper-editor-sensors-hidden"
 ];
 type Document = { id: string; values: Record<string, string> };
 const filename = path.join(WORKSPACE_ROOT, ".klipper-editor-preferences.json");

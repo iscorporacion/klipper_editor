@@ -53,6 +53,7 @@ import {
   MdKeyboardArrowRight,
   MdKeyboardArrowUp,
   MdSend,
+  MdSensors,
   MdStar,
   MdStarBorder,
   MdTerminal
@@ -79,7 +80,11 @@ const sidebarCollapsedKey = "klipper-editor-sidebar-collapsed";
 const useAccentLogoKey = "klipper-editor-use-accent-logo";
 const themePreferenceKey = "klipper-editor-theme";
 const homeWidgetsKey = "klipper-editor-home-widgets";
-const availableHomeWidgets = ["macros", "console", "movement"] as const;
+const sensorShowEndstopsKey = "klipper-editor-sensors-show-endstops";
+const sensorHiddenKey = "klipper-editor-sensors-hidden";
+const homeTabPath = "__keditor_home__";
+const terminalTabPath = "__keditor_terminal__";
+const availableHomeWidgets = ["macros", "console", "movement", "sensors"] as const;
 type HomeWidget = typeof availableHomeWidgets[number];
 const defaultHomeWidgets: HomeWidget[] = ["macros", "console", "movement"];
 
@@ -630,6 +635,13 @@ type AuxiliaryControl = {
   color?: string;
 };
 
+type SensorState = {
+  id: string;
+  label: string;
+  group: "sensor" | "endstop";
+  state: boolean | null;
+};
+
 type MacroEntry = {
   name: string;
   title: string;
@@ -746,6 +758,7 @@ const defaultMessages: Messages = {
   "actions.options": "Opciones",
   "actions.terminal": "Terminal",
   "actions.openTerminal": "Abrir terminal",
+  "actions.openTerminalTab": "Abrir terminal en una pestaña",
   "actions.closeTerminal": "Ocultar terminal",
   "actions.connectTerminal": "Conectar terminal",
   "actions.disconnectTerminal": "Desconectar terminal",
@@ -845,6 +858,7 @@ const defaultMessages: Messages = {
   "errors.coolHeater": "No se pudo enfriar el calentador",
   "errors.setHeaters": "No se pudieron aplicar las temperaturas",
   "errors.loadAuxiliaries": "No se pudieron cargar ventiladores y LEDs",
+  "errors.loadSensors": "No se pudieron cargar los sensores",
   "errors.setAuxiliary": "No se pudo ajustar {name}",
   "errors.movePrinter": "No se pudo mover la impresora",
   "errors.extrudeFilament": "No se pudo extruir filamento",
@@ -953,6 +967,17 @@ const defaultMessages: Messages = {
   "homeGrid.widgetMacros": "Macros favoritas",
   "homeGrid.widgetConsole": "Consola Klipper",
   "homeGrid.widgetMovement": "Movimiento XY/Z",
+  "homeGrid.widgetSensors": "Sensores",
+  "homeGrid.openHome": "Mostrar widgets",
+  "homeGrid.showEndstops": "Mostrar finales de carrera",
+  "homeGrid.detected": "Detectado",
+  "homeGrid.empty": "Vacio",
+  "homeGrid.triggered": "Activado",
+  "homeGrid.open": "Abierto",
+  "homeGrid.unknown": "Desconocido",
+  "homeGrid.hideSensor": "Ocultar {name}",
+  "homeGrid.sensorVisibility": "Visibilidad de sensores",
+  "homeGrid.noSensors": "No se encontraron sensores.",
   "homeGrid.openFull": "Abrir ventana completa",
   "homeGrid.send": "Enviar G-code",
   "homeGrid.moveUp": "Mover antes",
@@ -2281,6 +2306,11 @@ function Editor() {
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [optionsTab, setOptionsTab] = useState<"general" | "home" | "theme" | "mcp" | "terminal">("general");
   const [homeWidgets, setHomeWidgets] = useState<HomeWidget[]>(defaultHomeWidgets);
+  const [sensorStates, setSensorStates] = useState<SensorState[]>([]);
+  const [sensorsLoading, setSensorsLoading] = useState(false);
+  const [showEndstops, setShowEndstops] = useState(false);
+  const [hiddenSensors, setHiddenSensors] = useState<Set<string>>(() => new Set());
+  const [sensorSettingsOpen, setSensorSettingsOpen] = useState(false);
   const [macrosOpen, setMacrosOpen] = useState(false);
   const [movementOpen, setMovementOpen] = useState(false);
   const [bedMeshOpen, setBedMeshOpen] = useState(false);
@@ -2378,6 +2408,7 @@ function Editor() {
   const [machinePowerMenuOpen, setMachinePowerMenuOpen] = useState(false);
   const [runningMachinePowerAction, setRunningMachinePowerAction] = useState<MachinePowerAction | null>(null);
   const [terminalOpen, setTerminalOpen] = useState(false);
+  const [terminalTabOpen, setTerminalTabOpen] = useState(false);
   const [terminalEnabled, setTerminalEnabled] = useState(false);
   const [terminalConfiguredEnabled, setTerminalConfiguredEnabled] = useState(false);
   const [terminalEnvEnabled, setTerminalEnvEnabled] = useState(false);
@@ -2487,6 +2518,10 @@ function Editor() {
   const ledControls = useMemo(() => auxiliaryControls.filter((control) => control.type === "led"), [auxiliaryControls]);
   const homeWidgetSet = useMemo(() => new Set(homeWidgets), [homeWidgets]);
   const hasHomeWidgets = homeWidgets.length > 0;
+  const visibleSensorStates = useMemo(
+    () => sensorStates.filter((sensor) => !hiddenSensors.has(sensor.id) && (sensor.group !== "endstop" || showEndstops)),
+    [hiddenSensors, sensorStates, showEndstops]
+  );
   const currentPrintThumbnail = bestThumbnail(printerStatus?.printDetails.metadata?.thumbnails ?? []);
   const currentPrintThumbnailUrl = currentPrintThumbnail
     ? apiPath(`/api/printer/gcode-thumbnail?path=${encodeURIComponent(currentPrintThumbnail.relativePath)}`)
@@ -3202,12 +3237,28 @@ function Editor() {
       return;
     }
 
+    if (terminalTabOpen) {
+      setActivePath(terminalTabPath);
+      return;
+    }
+
     setTerminalOpen(true);
     const enabled = terminalEnabled || (await loadTerminalStatus());
     if (enabled && terminalMode === "basic" && !terminalSessionId) {
       await startTerminalSession();
     }
-  }, [loadTerminalStatus, startTerminalSession, terminalEnabled, terminalOpen, terminalSessionId, terminalMode]);
+  }, [loadTerminalStatus, startTerminalSession, terminalEnabled, terminalOpen, terminalSessionId, terminalMode, terminalTabOpen]);
+
+  const openTerminalTab = useCallback(() => {
+    setTerminalTabOpen(true);
+    setTerminalOpen(false);
+    setActivePath(terminalTabPath);
+  }, []);
+
+  const closeTerminalTab = useCallback(() => {
+    setTerminalTabOpen(false);
+    setActivePath((current) => current === terminalTabPath ? openFiles.at(-1)?.path : current);
+  }, [openFiles]);
 
   const disconnectTerminal = useCallback(async () => {
     const id = terminalSessionId;
@@ -3509,6 +3560,7 @@ function Editor() {
     (widget: HomeWidget) => {
       if (widget === "macros") return t("homeGrid.widgetMacros");
       if (widget === "console") return t("homeGrid.widgetConsole");
+      if (widget === "sensors") return t("homeGrid.widgetSensors");
       return t("homeGrid.widgetMovement");
     },
     [t]
@@ -3520,6 +3572,38 @@ function Editor() {
         ? current.filter((item) => item !== widget)
         : [...current, widget].filter((item, index, array) => array.indexOf(item) === index);
       writeHomeWidgets(next);
+      return next;
+    });
+  }, []);
+
+  const loadSensorStates = useCallback(async (withEndstops = showEndstops) => {
+    setSensorsLoading(true);
+    try {
+      const response = await fetch(apiPath(`/api/printer/sensors?endstops=${withEndstops ? "1" : "0"}`), { cache: "no-store" });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? t("errors.loadSensors"));
+      const next = Array.isArray(payload.sensors) ? payload.sensors as SensorState[] : [];
+      setSensorStates(next);
+      return next;
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : t("errors.loadSensors"));
+      return [];
+    } finally {
+      setSensorsLoading(false);
+    }
+  }, [showEndstops, t]);
+
+  const updateShowEndstops = useCallback((visible: boolean) => {
+    setShowEndstops(visible);
+    preferences.setItem(sensorShowEndstopsKey, String(visible));
+    void loadSensorStates(visible);
+  }, [loadSensorStates]);
+
+  const toggleSensorVisibility = useCallback((id: string) => {
+    setHiddenSensors((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      preferences.setItem(sensorHiddenKey, JSON.stringify([...next]));
       return next;
     });
   }, []);
@@ -4905,6 +4989,15 @@ function Editor() {
 
     setSidebarCollapsed(preferences.getItem(sidebarCollapsedKey) === "true");
     setHomeWidgets(readHomeWidgets());
+    setShowEndstops(preferences.getItem(sensorShowEndstopsKey) === "true");
+    try {
+      const savedHiddenSensors = JSON.parse(preferences.getItem(sensorHiddenKey) ?? "[]") as unknown;
+      if (Array.isArray(savedHiddenSensors)) {
+        setHiddenSensors(new Set(savedHiddenSensors.filter((id): id is string => typeof id === "string")));
+      }
+    } catch {
+      setHiddenSensors(new Set());
+    }
     const hasStoredTheme = preferences.getItem(themePreferenceKey) !== null;
     const storedTheme = hasStoredTheme
       ? readStoredEditorTheme()
@@ -4985,6 +5078,14 @@ function Editor() {
   useEffect(() => {
     if (!activeFile && homeWidgetSet.has("macros")) void loadMacros();
   }, [activeFile, homeWidgetSet, loadMacros]);
+
+  useEffect(() => {
+    const homeVisible = activePath === homeTabPath || (!activePath && !activeFile);
+    if (!homeVisible || !homeWidgetSet.has("sensors")) return;
+    void loadSensorStates();
+    const interval = window.setInterval(() => void loadSensorStates(), 5000);
+    return () => window.clearInterval(interval);
+  }, [activeFile, activePath, homeWidgetSet, loadSensorStates]);
 
   useEffect(() => {
     loadTree().catch((error) => setMessage(error instanceof Error ? error.message : t("errors.loadTree")));
@@ -5174,19 +5275,19 @@ function Editor() {
   }, [machinePowerMenuOpen]);
 
   useEffect(() => {
-    if (!terminalOpen || !terminalSessionId || terminalMode !== "basic") return;
+    if ((!terminalOpen && !terminalTabOpen) || !terminalSessionId || terminalMode !== "basic") return;
 
     void pollTerminalSession();
     const interval = window.setInterval(() => void pollTerminalSession(), 1000);
     return () => window.clearInterval(interval);
-  }, [pollTerminalSession, terminalOpen, terminalSessionId, terminalMode]);
+  }, [pollTerminalSession, terminalOpen, terminalSessionId, terminalMode, terminalTabOpen]);
 
   useEffect(() => {
-    if (!terminalOpen) return;
+    if (!terminalOpen && !terminalTabOpen) return;
     const output = terminalOutputRef.current;
     if (!output) return;
     output.scrollTop = output.scrollHeight;
-  }, [terminalOpen, terminalOutput]);
+  }, [terminalOpen, terminalOutput, terminalTabOpen]);
 
   useEffect(() => {
     const clampTerminalToViewport = () => {
@@ -5661,12 +5762,12 @@ function Editor() {
               <FcSettings className="action-icon" />
             </button>
             <button
-              className={terminalOpen ? "icon-button active-toggle" : "icon-button"}
+              className={terminalOpen || terminalTabOpen ? "icon-button active-toggle" : "icon-button"}
               type="button"
               onClick={() => void toggleTerminal()}
               title={terminalOpen ? t("actions.closeTerminal") : t("actions.openTerminal")}
               aria-label={terminalOpen ? t("actions.closeTerminal") : t("actions.openTerminal")}
-              aria-pressed={terminalOpen}
+              aria-pressed={terminalOpen || terminalTabOpen}
             >
               <MdTerminal className="action-icon plain-action-icon" />
             </button>
@@ -5765,6 +5866,16 @@ function Editor() {
         </div>
 
         <div className="tabs">
+          <button
+            className={`home-tab-button ${activePath === homeTabPath || (!activePath && !activeFile) ? "active" : ""}`}
+            type="button"
+            onClick={() => setActivePath(homeTabPath)}
+            title={t("homeGrid.openHome")}
+            aria-label={t("homeGrid.openHome")}
+            aria-pressed={activePath === homeTabPath || (!activePath && !activeFile)}
+          >
+            <MdGridOn />
+          </button>
           {openFiles.map((file) => (
             <button
               key={file.path}
@@ -5797,18 +5908,97 @@ function Editor() {
               </span>
             </button>
           ))}
+          {terminalTabOpen && (
+            <button
+              className={`tab ${activePath === terminalTabPath ? "active" : ""}`}
+              type="button"
+              onClick={() => setActivePath(terminalTabPath)}
+              title={t("panels.terminal")}
+            >
+              <MdTerminal className="action-icon plain-action-icon" />
+              <span>{t("panels.terminal")}</span>
+              <span
+                className="tab-close"
+                role="button"
+                tabIndex={0}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  closeTerminalTab();
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    closeTerminalTab();
+                  }
+                }}
+                aria-label={t("tabs.closeLabel", { path: t("panels.terminal") })}
+              >
+                x
+              </span>
+            </button>
+          )}
         </div>
 
         <div className="editor-panel">
-          {!activeFile ? (hasHomeWidgets ? (
+          {activePath === terminalTabPath && terminalTabOpen ? (
+            <div className="terminal-tab-view">
+              {terminalMode === "pty" ? <PtyTerminal endpoint={apiPath("/api/terminal/pty")} enabled={terminalEnabled} supported={ptySupported}
+                onClose={closeTerminalTab} onActive={setPtyActive}
+                labels={{ connect: t("actions.connectTerminal"), disconnect: t("actions.disconnectTerminal"), connected: t("status.terminalConnected"),
+                  disconnected: t("status.terminalDisconnected"), connecting: t("pty.connecting"), close: t("actions.closeTerminal"), expand: t("actions.openTerminalTab"),
+                  disabled: t("errors.terminalDisabled"), unsupported: t("pty.unsupported"), http: t("pty.http") }} /> : <>
+                <div className="terminal-header">
+                  <div className="terminal-title">
+                    <MdTerminal className="terminal-title-icon" />
+                    <span>{t("panels.terminal")}</span>
+                    <small>{terminalAlive ? t("status.terminalConnected") : t("status.terminalDisconnected")}</small>
+                  </div>
+                  <div className="terminal-actions">
+                    <button className="terminal-button" type="button" disabled={terminalBusy || terminalAlive} onClick={() => void startTerminalSession()}>{t("actions.connectTerminal")}</button>
+                    <button className="terminal-button" type="button" disabled={terminalBusy || !terminalSessionId} onClick={() => void disconnectTerminal()}>{t("actions.disconnectTerminal")}</button>
+                    <button className="terminal-icon-button" type="button" title={t("actions.closeTerminal")} aria-label={t("actions.closeTerminal")} onClick={closeTerminalTab}>
+                      <IoClose className="terminal-close-icon" />
+                    </button>
+                  </div>
+                </div>
+                <div className={terminalWarning ? "terminal-warning" : "terminal-warning hidden"} role="status">{terminalWarning}</div>
+                <pre ref={terminalOutputRef} className="terminal-output">{terminalOutput || terminalError || t("empty.terminal")}</pre>
+                <form className="terminal-input-row" onSubmit={submitTerminalCommand}>
+                  <span className="terminal-prompt">$</span>
+                  <input value={terminalInput} disabled={!terminalEnabled || terminalBusy} spellCheck={false} autoCapitalize="off" autoComplete="off"
+                    onChange={(event) => { setTerminalInput(event.target.value); setTerminalHistoryIndex(null); }}
+                    onKeyDown={(event) => {
+                      if (event.key === "Escape") { setTerminalInput(""); setTerminalHistoryIndex(null); return; }
+                      if (event.key === "ArrowUp") {
+                        event.preventDefault();
+                        if (terminalHistory.length === 0) return;
+                        const nextIndex = terminalHistoryIndex === null ? terminalHistory.length - 1 : Math.max(0, terminalHistoryIndex - 1);
+                        setTerminalHistoryIndex(nextIndex); setTerminalInput(terminalHistory[nextIndex] ?? ""); return;
+                      }
+                      if (event.key === "ArrowDown") {
+                        event.preventDefault();
+                        if (terminalHistory.length === 0 || terminalHistoryIndex === null) return;
+                        const nextIndex = terminalHistoryIndex + 1;
+                        if (nextIndex >= terminalHistory.length) { setTerminalHistoryIndex(null); setTerminalInput(""); return; }
+                        setTerminalHistoryIndex(nextIndex); setTerminalInput(terminalHistory[nextIndex] ?? "");
+                      }
+                    }} />
+                  <button className="terminal-button primary" type="submit" disabled={!terminalEnabled || terminalBusy || !terminalInput.trim()}>{t("actions.runTerminalCommand")}</button>
+                </form>
+              </>}
+            </div>
+          ) : !activeFile ? (hasHomeWidgets ? (
             <div className="home-grid">
               {homeWidgets.map((widget) => (
                 <section className={`home-widget home-widget-${widget}`} key={widget}>
                   <header className="home-widget-header">
                     <h2>{homeWidgetLabel(widget)}</h2>
-                    <button className="modal-icon-button" type="button" title={t("homeGrid.openFull")} aria-label={t("homeGrid.openFull")}
-                      onClick={() => widget === "macros" ? openMacrosModal() : widget === "console" ? setKlipperConsoleOpen(true) : setMovementOpen(true)}>
-                      <MdOpenInFull className="action-icon" />
+                    <button className="modal-icon-button" type="button" title={widget === "sensors" ? t("actions.refresh") : t("homeGrid.openFull")}
+                      aria-label={widget === "sensors" ? t("actions.refresh") : t("homeGrid.openFull")}
+                      disabled={widget === "sensors" && sensorsLoading}
+                      onClick={() => widget === "macros" ? openMacrosModal() : widget === "console" ? setKlipperConsoleOpen(true) : widget === "movement" ? setMovementOpen(true) : void loadSensorStates()}>
+                      {widget === "sensors" ? <FcRefresh className="action-icon" /> : <MdOpenInFull className="action-icon" />}
                     </button>
                   </header>
                   <div className="home-widget-body">
@@ -5847,7 +6037,7 @@ function Editor() {
                           ))}
                         </div>
                       </>
-                    ) : (
+                    ) : widget === "movement" ? (
                       <>
                         <div className="home-position-strip">
                           {(["x", "y", "z"] as const).map((axis) => <span key={axis}>{axis.toUpperCase()} <strong>{printerStatus ? formatPosition(printerStatus.position[axis]) : "--"}</strong></span>)}
@@ -5883,6 +6073,54 @@ function Editor() {
                               </button>
                             )))}
                           </div>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="sensor-widget-toolbar">
+                          <label className="sensor-endstop-toggle">
+                            <input type="checkbox" checked={showEndstops} onChange={(event) => updateShowEndstops(event.target.checked)} />
+                            <span>{t("homeGrid.showEndstops")}</span>
+                          </label>
+                          <button className="modal-icon-button" type="button" onClick={() => setSensorSettingsOpen((open) => !open)}
+                            title={t("homeGrid.sensorVisibility")} aria-label={t("homeGrid.sensorVisibility")} aria-pressed={sensorSettingsOpen}>
+                            <FcSettings />
+                          </button>
+                        </div>
+                        {sensorSettingsOpen && sensorStates.length > 0 && (
+                          <div className="sensor-visibility-list">
+                            {sensorStates.filter((sensor) => sensor.group === "sensor" || showEndstops).map((sensor) => (
+                              <label key={sensor.id}>
+                                <input type="checkbox" checked={!hiddenSensors.has(sensor.id)} onChange={() => toggleSensorVisibility(sensor.id)} />
+                                <span>{sensor.label}</span>
+                              </label>
+                            ))}
+                          </div>
+                        )}
+                        <div className="sensor-state-list" aria-busy={sensorsLoading}>
+                          {sensorsLoading && sensorStates.length === 0 && <div className="panel-loading-bar" />}
+                          {!sensorsLoading && visibleSensorStates.length === 0 && <p className="empty-note">{t("homeGrid.noSensors")}</p>}
+                          {visibleSensorStates.map((sensor) => {
+                            const stateLabel = sensor.state === null
+                              ? t("homeGrid.unknown")
+                              : sensor.group === "endstop"
+                                ? t(sensor.state ? "homeGrid.triggered" : "homeGrid.open")
+                                : t(sensor.state ? "homeGrid.detected" : "homeGrid.empty");
+                            const stateClass = sensor.state === null
+                              ? "unknown"
+                              : sensor.group === "endstop"
+                                ? sensor.state ? "endstop-triggered" : "endstop-open"
+                                : sensor.state ? "sensor-detected" : "sensor-empty";
+                            return <div className="sensor-state-row" key={sensor.id}>
+                              <MdSensors className="sensor-state-icon" />
+                              <span className="sensor-state-name">{sensor.label}</span>
+                              <strong className={stateClass}>{stateLabel}</strong>
+                              <button type="button" className="sensor-hide-button" onClick={() => toggleSensorVisibility(sensor.id)}
+                                title={t("homeGrid.hideSensor", { name: sensor.label })} aria-label={t("homeGrid.hideSensor", { name: sensor.label })}>
+                                <span aria-hidden="true">-</span>
+                              </button>
+                            </div>;
+                          })}
                         </div>
                       </>
                     )}
@@ -6071,9 +6309,10 @@ function Editor() {
               onMouseDown={startTerminalHeightResize}
             />
             {terminalMode === "pty" ? <PtyTerminal endpoint={apiPath("/api/terminal/pty")} enabled={terminalEnabled} supported={ptySupported}
-              onClose={() => setTerminalOpen(false)} onActive={setPtyActive}
+              onClose={() => setTerminalOpen(false)} onExpand={openTerminalTab} onActive={setPtyActive}
               labels={{ connect: t("actions.connectTerminal"), disconnect: t("actions.disconnectTerminal"), connected: t("status.terminalConnected"),
                 disconnected: t("status.terminalDisconnected"), connecting: t("pty.connecting"), close: t("actions.closeTerminal"),
+                expand: t("actions.openTerminalTab"),
                 disabled: t("errors.terminalDisabled"), unsupported: t("pty.unsupported"), http: t("pty.http") }} /> : <>
             <div className="terminal-header">
               <div className="terminal-title">
@@ -6098,7 +6337,10 @@ function Editor() {
                 >
                   {t("actions.disconnectTerminal")}
                 </button>
-                <button className="terminal-icon-button" type="button" onClick={() => setTerminalOpen(false)}>
+                <button className="terminal-icon-button" type="button" title={t("actions.openTerminalTab")} aria-label={t("actions.openTerminalTab")} onClick={openTerminalTab}>
+                  <MdOpenInFull />
+                </button>
+                <button className="terminal-icon-button" type="button" title={t("actions.closeTerminal")} aria-label={t("actions.closeTerminal")} onClick={() => setTerminalOpen(false)}>
                   <IoClose className="terminal-close-icon" />
                 </button>
               </div>

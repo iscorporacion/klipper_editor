@@ -93,6 +93,13 @@ export type AuxiliaryControl = {
   color?: string;
 };
 
+export type SensorState = {
+  id: string;
+  label: string;
+  group: "sensor" | "endstop";
+  state: boolean | null;
+};
+
 export type MainsailUiSettings = {
   mode: string;
   theme: string;
@@ -841,6 +848,85 @@ export async function getAuxiliaryControls(): Promise<AuxiliaryControl[]> {
       color: isLed ? colorFromLedData(objectStatus.color_data) : undefined
     };
   });
+}
+
+function sensorLabel(name: string) {
+  return name
+    .replace(/^(filament_switch_sensor|filament_motion_sensor)\s+/i, "")
+    .replace(/^mmu:/i, "")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function booleanSensorState(value: unknown): boolean | null {
+  if (typeof value === "boolean") return value;
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase();
+  if (["triggered", "detected", "closed", "1", "true"].includes(normalized)) return true;
+  if (["open", "empty", "0", "false"].includes(normalized)) return false;
+  return null;
+}
+
+export async function getSensorStates(includeEndstops = false): Promise<SensorState[]> {
+  const objectsPayload = await moonrakerFetch("/printer/objects/list");
+  const rawObjects = objectsPayload?.result?.objects ?? objectsPayload?.objects ?? [];
+  const objects = Array.isArray(rawObjects)
+    ? rawObjects.filter((name): name is string => typeof name === "string")
+    : [];
+  const filamentObjects = objects.filter((name) =>
+    /^(filament_switch_sensor|filament_motion_sensor)\s+/i.test(name)
+  );
+  const queryObjects = [...filamentObjects];
+  if (objects.includes("mmu")) queryObjects.push("mmu");
+  if (includeEndstops && objects.includes("query_endstops")) queryObjects.push("query_endstops");
+
+  if (includeEndstops && objects.includes("query_endstops")) {
+    await runGcodeScript("QUERY_ENDSTOPS");
+  }
+
+  if (queryObjects.length === 0) return [];
+  const params = new URLSearchParams();
+  for (const name of queryObjects) {
+    if (name === "mmu") params.append(name, "sensors");
+    else if (name === "query_endstops") params.append(name, "last_query");
+    else params.append(name, "filament_detected,enabled");
+  }
+  const payload = await moonrakerFetch(`/printer/objects/query?${params.toString()}`);
+  const status = payload?.result?.status ?? payload?.status ?? {};
+  const sensors: SensorState[] = filamentObjects.map((name) => ({
+    id: `sensor:${name}`,
+    label: sensorLabel(name),
+    group: "sensor",
+    state: booleanSensorState(status[name]?.filament_detected)
+  }));
+
+  const mmuSensors = status.mmu?.sensors;
+  if (mmuSensors && typeof mmuSensors === "object" && !Array.isArray(mmuSensors)) {
+    for (const [name, value] of Object.entries(mmuSensors)) {
+      sensors.push({
+        id: `sensor:mmu:${name}`,
+        label: sensorLabel(`mmu:${name}`),
+        group: "sensor",
+        state: booleanSensorState(value)
+      });
+    }
+  }
+
+  if (includeEndstops) {
+    const endstops = status.query_endstops?.last_query;
+    if (endstops && typeof endstops === "object" && !Array.isArray(endstops)) {
+      for (const [name, value] of Object.entries(endstops)) {
+        sensors.push({
+          id: `endstop:${name}`,
+          label: sensorLabel(name),
+          group: "endstop",
+          state: booleanSensorState(value)
+        });
+      }
+    }
+  }
+
+  return sensors.sort((left, right) => left.group.localeCompare(right.group) || left.label.localeCompare(right.label));
 }
 
 export async function setAuxiliaryControl(name: string, value?: number, color?: string) {

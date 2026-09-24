@@ -3,18 +3,19 @@
 import { useEffect, useRef, useState } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
-import { MdClose, MdTerminal } from "react-icons/md";
+import { MdClose, MdOpenInFull, MdTerminal } from "react-icons/md";
 
 type Props = {
   endpoint: string;
   enabled: boolean;
   supported: boolean;
   onClose: () => void;
+  onExpand?: () => void;
   onActive: (active: boolean) => void;
-  labels: { connect: string; disconnect: string; connected: string; disconnected: string; connecting: string; close: string; disabled: string; unsupported: string; http: string };
+  labels: { connect: string; disconnect: string; connected: string; disconnected: string; connecting: string; close: string; expand: string; disabled: string; unsupported: string; http: string };
 };
 
-export default function PtyTerminal({ endpoint, enabled, supported, onClose, onActive, labels }: Props) {
+export default function PtyTerminal({ endpoint, enabled, supported, onClose, onExpand, onActive, labels }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const [wanted, setWanted] = useState(true);
   const [connected, setConnected] = useState(false);
@@ -150,6 +151,7 @@ export default function PtyTerminal({ endpoint, enabled, supported, onClose, onA
       <div className="terminal-actions">
         <button type="button" className="terminal-button" disabled={!enabled || !supported || wanted} onClick={() => setWanted(true)}>{labels.connect}</button>
         <button type="button" className="terminal-button" disabled={!wanted} onClick={() => { setWanted(false); setConnected(false); setConnecting(false); }}>{labels.disconnect}</button>
+        {onExpand && <button type="button" className="terminal-icon-button" title={labels.expand} aria-label={labels.expand} onClick={onExpand}><MdOpenInFull /></button>}
         <button type="button" className="terminal-icon-button" title={labels.close} aria-label={labels.close} onClick={onClose}><MdClose /></button>
       </div>
     </div>

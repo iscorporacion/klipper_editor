@@ -1257,6 +1257,27 @@ h1 {
 .pty-terminal .terminal-header { flex: 0 0 auto; flex-wrap: wrap; }
 .pty-terminal-screen { flex: 1; min-height: 0; min-width: 0; padding: 6px 10px; overflow: hidden; }
 .pty-terminal-screen .xterm { height: 100%; }
+
+.terminal-tab-view {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  background: #0b0f14;
+}
+
+.terminal-tab-view > .pty-terminal {
+  flex: 1;
+  min-height: 0;
+}
+
+.terminal-tab-view > .terminal-output {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+}
 .pty-http-warning, .pty-error { flex: 0 0 auto; margin: 0; padding: 5px 10px; font-size: 12px; line-height: 1.4; overflow-wrap: anywhere; }
 .pty-http-warning { color: #e2bd7b; background: #25221b; }
 .pty-error { color: #ff8f8f; }
@@ -1431,6 +1452,26 @@ h1 {
   background: var(--panel-soft);
 }
 
+.home-tab-button {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  display: inline-flex;
+  flex: 0 0 38px;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 36px;
+  border: 0;
+  border-right: 1px solid var(--border);
+  background: var(--panel-strong);
+  color: var(--muted);
+  cursor: pointer;
+}
+.home-tab-button:hover, .home-tab-button:focus-visible { color: var(--text); background: var(--panel); outline: 0; }
+.home-tab-button.active { color: var(--accent); box-shadow: inset 0 -2px 0 var(--accent); }
+.home-tab-button svg { width: 18px; height: 18px; }
+
 .tab {
   position: relative;
   gap: 7px;
@@ -1549,6 +1590,23 @@ h1 {
 .home-widget-order { display: grid; gap: 8px; margin-top: 16px; }
 .home-widget-order > div { display: flex; align-items: center; gap: 8px; }
 .home-widget-order label { flex: 1; }
+.sensor-widget-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.sensor-endstop-toggle, .sensor-visibility-list label { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.sensor-visibility-list { display: grid; gap: 7px; padding: 10px; border: 1px solid var(--border); background: var(--panel-soft); }
+.sensor-visibility-list span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sensor-state-list { display: grid; border: 1px solid var(--border); }
+.sensor-state-row { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto 28px; align-items: center; gap: 8px; min-height: 38px; padding: 0 6px 0 10px; border-bottom: 1px solid var(--border-soft); }
+.sensor-state-row:last-child { border-bottom: 0; }
+.sensor-state-icon { color: var(--muted); }
+.sensor-state-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sensor-state-row strong { font-size: 12px; font-weight: 700; text-transform: uppercase; }
+.sensor-state-row strong.sensor-detected, .sensor-state-row strong.endstop-open { color: #4ecb63; }
+.sensor-state-row strong.sensor-empty { color: #f0a020; }
+.sensor-state-row strong.endstop-triggered { color: #ff4d4f; }
+.sensor-state-row strong.unknown { color: var(--muted); }
+.sensor-hide-button { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border: 0; background: transparent; color: var(--muted); cursor: pointer; opacity: 0; }
+.sensor-state-row:hover .sensor-hide-button, .sensor-hide-button:focus-visible { opacity: 1; }
+@media (hover: none) { .sensor-hide-button { opacity: 1; } }
 @media (max-width: 600px) {
   .home-grid { padding: 8px; gap: 10px; }
   .options-tabs { display: flex; flex-wrap: wrap; }

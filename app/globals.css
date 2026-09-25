@@ -1590,6 +1590,8 @@ h1 {
 .home-macro-parameter-badge { min-width: 18px; color: var(--accent); font-size: 11px; font-weight: 800; text-align: center; }
 @media (hover: none) { .home-macro-run { opacity: 1; } }
 .home-console-log { height: 240px; overflow: auto; background: var(--bg); padding: 8px; }
+.home-console-filter { display: inline-flex; align-items: center; gap: 7px; width: fit-content; color: var(--muted); font-size: 11px; cursor: pointer; }
+.home-console-filter input { accent-color: var(--accent); }
 .home-console-log pre { margin: 0 0 8px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; }
 .home-console-entry { margin-bottom: 8px; overflow-wrap: anywhere; font-size: 12px; }
 .home-console-form { display: grid; grid-template-columns: minmax(0, 1fr) 34px; gap: 8px; }
@@ -1631,17 +1633,16 @@ h1 {
 .mmu-status-line > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mmu-status-line .online, .mmu-status-line .offline { width: 8px; height: 8px; border-radius: 50%; background: #4ecb63; }
 .mmu-status-line .offline { background: #ff4d4f; }
-.mmu-spool-row { display: flex; align-items: flex-end; gap: 8px; min-width: 0; overflow-x: auto; padding: 10px 4px 14px; }
-.mmu-gate { position: relative; display: grid; flex: 1 0 82px; justify-items: center; gap: 5px; min-width: 82px; }
-.mmu-gate.selected { transform: translateY(-4px); }
-.mmu-spool { position: relative; width: 70px; height: 86px; border: 0; background: transparent; cursor: pointer; }
-.mmu-spool-flange { position: absolute; top: 3px; bottom: 3px; width: 15px; border: 2px solid #aa8465; border-radius: 50%; background: #191919; z-index: 3; }
-.mmu-spool-flange.left { left: 4px; }
-.mmu-spool-flange.right { right: 4px; }
-.mmu-spool-filament { position: absolute; left: 12px; right: 12px; top: 13px; bottom: 13px; border: 1px solid rgba(255,255,255,.24); border-radius: 5px; box-shadow: inset 0 0 10px rgba(0,0,0,.35); }
-.mmu-spool-core { position: absolute; left: 50%; top: 50%; z-index: 4; width: 13px; height: 28px; border-radius: 50%; background: #111; transform: translate(-50%, -50%); }
-.mmu-gate.selected .mmu-spool { filter: drop-shadow(0 5px 5px color-mix(in srgb, var(--accent) 45%, transparent)); }
-.mmu-gate.loaded .mmu-spool-core { background: var(--accent); }
+.mmu-spool-row { display: flex; align-items: flex-end; gap: 0; min-width: 0; overflow-x: auto; padding: 34px 12px 14px; }
+.mmu-gate { position: relative; display: grid; flex: 0 0 68px; justify-items: center; gap: 5px; min-width: 68px; transition: transform 180ms ease; }
+.mmu-gate.selected { transform: translateY(-10px); }
+.mmu-spool { position: relative; display: grid; place-items: center; width: 84px; height: 98px; padding: 0; border: 0; background: transparent; cursor: pointer; transition: transform 180ms ease, filter 180ms ease; transform-origin: 50% 62%; }
+.mmu-spool img { display: block; width: 84px; height: 96px; object-fit: contain; pointer-events: none; }
+.mmu-gate:hover { z-index: 30 !important; }
+.mmu-gate:hover .mmu-spool { filter: drop-shadow(0 7px 7px rgba(0, 0, 0, .42)); transform: scale(1.1); }
+.mmu-gate.selected .mmu-spool { filter: drop-shadow(0 9px 7px rgba(0, 0, 0, .62)) drop-shadow(0 4px 6px color-mix(in srgb, var(--accent) 48%, transparent)); }
+.mmu-gate.selected:hover .mmu-spool { filter: drop-shadow(0 12px 9px rgba(0, 0, 0, .68)) drop-shadow(0 6px 8px color-mix(in srgb, var(--accent) 62%, transparent)); }
+.mmu-gate.loaded .mmu-spool::after { position: absolute; right: 3px; bottom: 3px; width: 9px; height: 9px; border: 2px solid var(--panel); border-radius: 50%; background: var(--accent); content: ""; }
 .mmu-tool-list { display: flex; justify-content: center; gap: 3px; width: 100%; }
 .mmu-tool-list button, .mmu-tool-list span { min-width: 30px; height: 22px; padding: 2px 5px; border: 1px solid var(--border); border-radius: 3px; background: var(--panel-soft); color: var(--muted); font-size: 11px; font-weight: 800; text-align: center; }
 .mmu-tool-list button { cursor: pointer; }
@@ -1653,7 +1654,7 @@ h1 {
 .mmu-gate-menu button { display: grid; grid-template-columns: 22px 1fr; align-items: center; gap: 6px; min-height: 32px; padding: 4px 8px; border: 0; background: transparent; color: var(--text); text-align: left; cursor: pointer; }
 .mmu-gate-menu button:hover:not(:disabled), .mmu-gate-menu button:focus-visible { background: var(--accent-soft); outline: 0; }
 .mmu-gate-menu button:disabled, .mmu-command-bar button:disabled { opacity: .4; cursor: not-allowed; }
-.mmu-bypass { display: grid; place-items: center; flex: 0 0 74px; height: 42px; margin-bottom: 47px; border: 1px solid var(--border); border-radius: 4px; background: var(--panel-soft); color: var(--muted); font-size: 11px; font-weight: 800; text-transform: uppercase; cursor: pointer; }
+.mmu-bypass { position: relative; z-index: 2; display: grid; place-items: center; flex: 0 0 74px; height: 42px; margin-bottom: 47px; margin-left: 14px; border: 1px solid var(--border); border-radius: 4px; background: var(--panel-soft); color: var(--muted); font-size: 11px; font-weight: 800; text-transform: uppercase; cursor: pointer; }
 .mmu-bypass.active { border-color: var(--accent); color: var(--accent); }
 .mmu-bypass:disabled { opacity: .45; cursor: not-allowed; }
 .mmu-command-bar { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 10px; border-top: 1px solid var(--border-soft); }
@@ -1670,6 +1671,7 @@ h1 {
 .mmu-import-preview .primary { justify-self: end; display: inline-flex; align-items: center; gap: 6px; margin-top: 4px; }
 .mmu-drop-overlay { position: absolute; inset: 0; z-index: 40; display: grid; place-content: center; justify-items: center; gap: 8px; border: 2px dashed var(--accent); background: color-mix(in srgb, var(--panel) 92%, transparent); color: var(--accent); font-weight: 800; pointer-events: none; }
 .rotated { transform: rotate(180deg); }
+@media (prefers-reduced-motion: reduce) { .mmu-gate, .mmu-spool { transition: none; } }
 @media (max-width: 600px) {
   .home-grid { padding: 8px; gap: 10px; }
   .home-grid-column { gap: 10px; }
@@ -3964,6 +3966,7 @@ button.bed-mesh-profile {
   font-weight: 800;
   text-transform: uppercase;
 }
+.klipper-console-panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 
 .klipper-console-log,
 .klipper-gcode-store,

@@ -399,6 +399,7 @@
     "klipperConsole.output": "Salida Klipper",
     "klipperConsole.favoriteSearch": "Buscar favorito",
     "klipperConsole.noOutput": "Sin mensajes de Klipper.",
+    "klipperConsole.showTemperatureReports": "Mostrar reportes de temperatura",
     "klipperConsole.noFavorites": "Sin favoritos.",
     "klipperConsole.sent": "Enviado",
     "klipperConsole.error": "Error",

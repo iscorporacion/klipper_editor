@@ -6,7 +6,7 @@ import { WORKSPACE_ROOT } from "@/lib/workspace";
 export const preferenceKeys = [
   "ratos-viewer-locale", "klipper-editor-create-backup-on-save",
   "klipper-editor-hide-backup-files", "klipper-editor-terminal-height",
-  "klipper-editor-terminal-history", "klipper-editor-klipper-console-favorites",
+  "klipper-editor-terminal-history", "klipper-editor-klipper-console-favorites", "klipper-editor-klipper-console-temperature-reports",
   "klipper-editor-macro-favorites", "klipper-editor-section-preview-delay",
   "klipper-editor-sidebar-collapsed", "klipper-editor-use-accent-logo",
   "klipper-editor-heater-cache", "klipper-editor-heater-colors",

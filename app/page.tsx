@@ -79,6 +79,7 @@ const hideBackupFilesKey = "klipper-editor-hide-backup-files";
 const terminalHeightKey = "klipper-editor-terminal-height";
 const terminalHistoryKey = "klipper-editor-terminal-history";
 const klipperConsoleFavoritesKey = "klipper-editor-klipper-console-favorites";
+const klipperConsoleTemperatureReportsKey = "klipper-editor-klipper-console-temperature-reports";
 const macroFavoritesKey = "klipper-editor-macro-favorites";
 const sectionPreviewDelayKey = "klipper-editor-section-preview-delay";
 const sidebarCollapsedKey = "klipper-editor-sidebar-collapsed";
@@ -1173,6 +1174,7 @@ const defaultMessages: Messages = {
   "klipperConsole.output": "Salida Klipper",
   "klipperConsole.favoriteSearch": "Buscar favorito",
   "klipperConsole.noOutput": "Sin mensajes de Klipper.",
+  "klipperConsole.showTemperatureReports": "Mostrar reportes de temperatura",
   "klipperConsole.noFavorites": "Sin favoritos.",
   "klipperConsole.sent": "Enviado",
   "klipperConsole.error": "Error",
@@ -1440,6 +1442,13 @@ function KlipperStoreMessage({ message }: { message: string }) {
   }
 
   return <div className="klipper-store-html" dangerouslySetInnerHTML={{ __html: sanitizeKlipperHtml(message) }} />;
+}
+
+function isKlipperTemperatureReport(message: string) {
+  const normalized = message.replace(/<[^>]*>/g, " ").replace(/&nbsp;/gi, " ").trim();
+  if (!normalized) return false;
+  const temperatureField = String.raw`(?:B|C|T\d*):\s*[-+]?\d+(?:\.\d+)?\s*\/\s*[-+]?\d+(?:\.\d+)?`;
+  return new RegExp(String.raw`^(?:ok\s+)?${temperatureField}(?:\s+${temperatureField})*\s*$`, "i").test(normalized);
 }
 
 function hasPendingUpdate(update: UpdateApp) {
@@ -2475,6 +2484,7 @@ function Editor() {
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [optionsTab, setOptionsTab] = useState<"general" | "home" | "theme" | "mcp" | "terminal">("general");
   const [homeWidgets, setHomeWidgets] = useState<HomeWidget[]>(defaultHomeWidgets);
+  const [showKlipperTemperatureReports, setShowKlipperTemperatureReports] = useState(false);
   const [homeGridColumns, setHomeGridColumns] = useState<HomeGridColumns>(defaultHomeGridColumns);
   const [homeGridLayout, setHomeGridLayout] = useState<HomeGridLayout>(() => normalizeHomeGridLayout(null, defaultHomeWidgets, defaultHomeGridColumns));
   const [homeViewport, setHomeViewport] = useState<HomeViewport>("desktop");
@@ -2766,6 +2776,7 @@ function Editor() {
   const klipperConsoleTimeline = useMemo<KlipperConsoleTimelineEntry[]>(() => {
     return [
       ...klipperGcodeStore
+        .filter((entry) => showKlipperTemperatureReports || !isKlipperTemperatureReport(entry.message))
         .map((entry, index) => ({
           kind: "store" as const,
           id: `store-${entry.time}-${index}`,
@@ -2782,7 +2793,7 @@ function Editor() {
         }))
         .filter((entry) => entry.sortTime > klipperConsoleClearedAt)
     ].sort((a, b) => b.sortTime - a.sortTime);
-  }, [klipperConsoleClearedAt, klipperConsoleLog, klipperGcodeStore]);
+  }, [klipperConsoleClearedAt, klipperConsoleLog, klipperGcodeStore, showKlipperTemperatureReports]);
   const themeStyle = useMemo<ThemeVariables>(() => {
     const primary = normalizeCssColor(mainsailTheme.primary, fallbackMainsailTheme.primary);
     const logo = normalizeCssColor(mainsailTheme.logo, fallbackMainsailTheme.logo);
@@ -5296,6 +5307,7 @@ function Editor() {
     setHomeWidgets(savedHomeWidgets);
     setHomeGridColumns(savedHomeGrid.columns);
     setHomeGridLayout(savedHomeGrid.layout);
+    setShowKlipperTemperatureReports(preferences.getItem(klipperConsoleTemperatureReportsKey) === "true");
     setShowEndstops(preferences.getItem(sensorShowEndstopsKey) === "true");
     try {
       const savedMmuImport = JSON.parse(preferences.getItem(mmuLastImportKey) ?? "null") as MmuImportProfile | null;
@@ -6409,6 +6421,13 @@ function Editor() {
                       </div>
                     ) : widget === "console" ? (
                       <>
+                        <label className="home-console-filter">
+                          <input type="checkbox" checked={showKlipperTemperatureReports} onChange={(event) => {
+                            setShowKlipperTemperatureReports(event.target.checked);
+                            preferences.setItem(klipperConsoleTemperatureReportsKey, String(event.target.checked));
+                          }} />
+                          <span>{t("klipperConsole.showTemperatureReports")}</span>
+                        </label>
                         <div className="home-console-log" role="log" aria-label={t("panels.klipperConsole")}>
                           {klipperConsoleTimeline.slice(0, 30).map((item) => (
                             <div className="home-console-entry" key={item.id}>
@@ -6538,17 +6557,20 @@ function Editor() {
                               const tools = mmuTtgMap.flatMap((mappedGate, tool) => mappedGate === gate ? [tool] : []);
                               const selected = gate === mmuSelectedGate;
                               const loaded = selected && mmuFilamentPosition > 0;
-                              return <div className={`mmu-gate ${selected ? "selected" : ""} ${loaded ? "loaded" : ""}`} key={gate}>
+                              const spoolColor = gateColor;
+                              const spoolMaterial = gateStatus === 0 ? "" : material || "?";
+                              return <div className={`mmu-gate ${selected ? "selected" : ""} ${loaded ? "loaded" : ""}`} key={gate}
+                                style={{ zIndex: selected ? 20 : 1 }}>
                                 <button className="mmu-spool" type="button" onClick={() => setMmuMenuGate((current) => current === gate ? null : gate)}
                                   aria-expanded={mmuMenuGate === gate} title={[name, material, temperature > 0 ? `${temperature} C` : ""].filter(Boolean).join(" | ")}>
-                                  <span className="mmu-spool-flange left" /><span className="mmu-spool-filament" style={{ background: gateStatus === 0 ? "transparent" : gateColor }} />
-                                  <span className="mmu-spool-core" /><span className="mmu-spool-flange right" />
+                                  <img src={apiPath(`/api/printer/mmu/spool?color=${encodeURIComponent(spoolColor)}&material=${encodeURIComponent(spoolMaterial)}&empty=${gateStatus === 0 ? "1" : "0"}&v=2`)}
+                                    alt="" aria-hidden="true" draggable={false} />
                                 </button>
                                 <div className="mmu-tool-list">
                                   {(tools.length ? tools : [-1]).map((tool) => tool >= 0 ? <button key={tool} type="button" disabled={mmuManualDisabled || tool === mmuSelectedTool}
                                     className={tool === mmuSelectedTool ? "active" : ""} onClick={() => void runMmuAction("tool", { tool })}>T{tool}</button> : <span key="unmapped">G{gate}</span>)}
                                 </div>
-                                <div className="mmu-gate-caption"><strong>{material || t("mmu.unknown")}</strong><span>{temperature > 0 ? `${temperature} C` : "--"}</span></div>
+                                <div className="mmu-gate-caption"><strong>{gateStatus === 0 ? "..." : material || t("mmu.unknown")}</strong><span>{temperature > 0 ? `${temperature} C` : "--"}</span></div>
                               </div>;
                             })}
                             {Boolean(mmu.has_bypass) && <button type="button" className={`mmu-bypass ${mmuSelectedGate === -2 ? "active" : ""}`}
@@ -8602,7 +8624,16 @@ function Editor() {
                 </div>
                 {klipperConsoleTab === "console" ? (
                   <section className="klipper-console-panel" aria-label={t("klipperConsole.output")}>
-                    <div className="klipper-console-panel-title">{t("klipperConsole.output")}</div>
+                    <div className="klipper-console-panel-heading">
+                      <div className="klipper-console-panel-title">{t("klipperConsole.output")}</div>
+                      <label className="home-console-filter">
+                        <input type="checkbox" checked={showKlipperTemperatureReports} onChange={(event) => {
+                          setShowKlipperTemperatureReports(event.target.checked);
+                          preferences.setItem(klipperConsoleTemperatureReportsKey, String(event.target.checked));
+                        }} />
+                        <span>{t("klipperConsole.showTemperatureReports")}</span>
+                      </label>
+                    </div>
                     <div className="klipper-console-timeline">
                       {klipperGcodeStoreLoading && klipperConsoleTimeline.length === 0 ? (
                         <div className="panel-loading-state" role="status" aria-live="polite">

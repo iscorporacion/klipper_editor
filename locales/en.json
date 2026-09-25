@@ -399,6 +399,7 @@
     "klipperConsole.output": "Klipper output",
     "klipperConsole.favoriteSearch": "Search favorite",
     "klipperConsole.noOutput": "No Klipper messages.",
+    "klipperConsole.showTemperatureReports": "Show temperature reports",
     "klipperConsole.noFavorites": "No favorites.",
     "klipperConsole.sent": "Sent",
     "klipperConsole.error": "Error",

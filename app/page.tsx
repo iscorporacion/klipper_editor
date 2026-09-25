@@ -151,6 +151,22 @@ function apiPath(path: string) {
   return `${appBasePath}${path}`;
 }
 
+function moonrakerWebSocketUrl(serverUrl?: string) {
+  const configured = process.env.NEXT_PUBLIC_MOONRAKER_WS_URL?.trim();
+  if (configured) return configured;
+  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  if (window.location.protocol !== "https:" && serverUrl) return serverUrl;
+  const developmentPort = ["3000", "3100"].includes(window.location.port) ? ":7125" : window.location.port ? `:${window.location.port}` : "";
+  return `${protocol}//${window.location.hostname}${developmentPort}/websocket`;
+}
+
+const mmuSubscriptionFields = [
+  "enabled", "num_gates", "is_homed", "is_locked", "is_paused", "is_in_print", "print_state", "unit", "tool", "gate",
+  "active_filament", "operation", "filament_pos", "ttg_map", "gate_status", "gate_filament_name", "gate_material",
+  "gate_color", "gate_temperature", "gate_spool_id", "gate_speed_override", "action", "has_bypass", "spoolman_support",
+  "encoder", "flowguard", "sync_feedback_flow_rate", "sync_feedback_enabled", "sync_feedback_state", "sensors"
+];
+
 type TreeNode = {
   name: string;
   path: string;
@@ -766,6 +782,7 @@ type MmuState = {
   printing: boolean;
   mmu: Record<string, unknown> | null;
   machine: Record<string, unknown> | null;
+  websocketUrl?: string;
   error?: string;
 };
 
@@ -1164,7 +1181,10 @@ const defaultMessages: Messages = {
   "mmu.tool": "Herramienta",
   "mmu.gate": "Compuerta",
   "mmu.flowrate": "FLOWRATE",
+  "mmu.flow": "FLOW",
+  "mmu.guard": "GUARD",
   "mmu.flowGuard": "FLOW GUARD",
+  "mmu.active": "ACTIVO",
   "mmu.tangle": "TANGLE",
   "mmu.clog": "CLOG",
   "mmu.clogDetection": "Deteccion de atascos/enredos",
@@ -2484,32 +2504,86 @@ function objectValue(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
 }
 
-function firstNumber(source: Record<string, unknown> | null, keys: string[]) {
-  for (const key of keys) {
-    const value = Number(source?.[key]);
-    if (Number.isFinite(value)) return value;
-  }
-  return null;
+const mmuMeterCircumference = 2 * Math.PI * 50;
+
+function useMeterTransition(value: number) {
+  const previous = useRef(value);
+  const duration = Math.min(1, Math.abs(previous.current - value) / mmuMeterCircumference);
+  useEffect(() => { previous.current = value; }, [value]);
+  return `stroke-dashoffset ${duration}s ease-out`;
 }
 
-function MmuMeter({ label, value, minimum = 0, maximum = 100, leftLabel, rightLabel }: {
-  label: string;
-  value: number;
-  minimum?: number;
-  maximum?: number;
-  leftLabel: string;
-  rightLabel: string;
+function MmuEncoderMeter({ encoder, label }: { encoder: Record<string, unknown>; label: string }) {
+  const desiredHeadroom = Number(encoder.desired_headroom) || 0;
+  const detectionLength = Number(encoder.detection_length) || 0;
+  const headroom = Number(encoder.headroom) || 0;
+  const minHeadroom = Number(encoder.min_headroom) || 0;
+  const flowRate = Number(encoder.flow_rate) || 0;
+  const detectionMode = Number(encoder.detection_mode) || 0;
+  const enabled = encoder.enabled !== false && detectionMode !== 0;
+  const clogPercent = detectionLength === 0 ? 100
+    : Math.min(Math.max(0, detectionLength - headroom), detectionLength) / detectionLength * 100;
+  const dashOffset = mmuMeterCircumference * ((100 - clogPercent * 300 / 360) / 100);
+  const transition = useMeterTransition(dashOffset);
+  const minPercent = detectionLength === 0 ? 100
+    : Math.min(Math.max(0, detectionLength - minHeadroom), detectionLength) / detectionLength * 100;
+  const minAngle = (120 + minPercent * 3) * Math.PI / 180;
+  const desiredRatio = detectionLength > 0 ? desiredHeadroom / detectionLength : 0;
+  return <svg className={`mmu-live-meter ${enabled ? "" : "disabled"}`} viewBox="0 0 140 140" aria-label={label}>
+    <g transform="rotate(120 70 70)">
+      <circle className="meter-underlay" cx="70" cy="70" r="50" strokeWidth="18" strokeDasharray={mmuMeterCircumference} strokeDashoffset={mmuMeterCircumference * 60 / 360} />
+      <circle className="meter-primary" cx="70" cy="70" r="50" strokeWidth="18" strokeDasharray={mmuMeterCircumference}
+        strokeDashoffset={dashOffset} style={{ transition }} />
+    </g>
+    <g transform={`rotate(${420 - desiredRatio * 300} 70 70)`}>
+      <circle className="meter-danger-zone" cx="70" cy="70" r="50" strokeWidth="18" strokeDasharray={mmuMeterCircumference}
+        strokeDashoffset={mmuMeterCircumference * (1 - desiredRatio * 300 / 360)} />
+    </g>
+    <line className={minHeadroom < desiredHeadroom ? "meter-warning" : "meter-primary"} x1={70 + 64 * Math.cos(minAngle)} y1={70 + 64 * Math.sin(minAngle)} x2="70" y2="70" strokeWidth="4" strokeDasharray="23,63" />
+    <line className="meter-zero" x1={70 + 63 * Math.cos(120 * Math.PI / 180)} y1={70 + 63 * Math.sin(120 * Math.PI / 180)} x2="70" y2="70" strokeWidth="2" strokeDasharray="22,63" />
+    <line className="meter-warning" x1={70 + 63 * Math.cos(60 * Math.PI / 180)} y1={70 + 63 * Math.sin(60 * Math.PI / 180)} x2="70" y2="70" strokeWidth="2" strokeDasharray="22,63" />
+    <text x="70" y="68" textAnchor="middle" className="meter-small">{label}</text>
+    <text x="70" y="90" textAnchor="middle" className="meter-value">{Math.round(flowRate)}%</text>
+    {detectionMode === 2 && <text x="70" y="122" textAnchor="middle" className="meter-small">AUTO</text>}
+    <text x="32" y="139" textAnchor="end" className="meter-small">{detectionLength}</text>
+    <text x="106" y="139" className="meter-small">0</text>
+  </svg>;
+}
+
+function MmuFlowguardMeter({ flowguard, flowRate, labels }: {
+  flowguard: Record<string, unknown>;
+  flowRate: number;
+  labels: { flow: string; guard: string; tangle: string; clog: string; active: string };
 }) {
-  const ratio = Math.min(1, Math.max(0, (value - minimum) / Math.max(maximum - minimum, 0.001)));
-  const angle = -90 + ratio * 180;
-  return <div className="mmu-meter">
-    <div className="mmu-meter-dial">
-      <div className="mmu-meter-arc" />
-      <span className="mmu-meter-value"><small>{label}</small>{Math.round(value)}%</span>
-      <i style={{ transform: `translateX(-50%) rotate(${angle}deg)` }} />
-    </div>
-    <div className="mmu-meter-scale"><span>{leftLabel}</span><span>{rightLabel}</span></div>
-  </div>;
+  const level = Math.max(-1, Math.min(1, Number(flowguard.level) || 0));
+  const maxClog = Math.abs(Number(flowguard.max_clog) || 0);
+  const maxTangle = -Math.abs(Number(flowguard.max_tangle) || 0);
+  const trigger = String(flowguard.trigger || "").toUpperCase();
+  const dashOffset = mmuMeterCircumference * ((100 - level * 100 * 150 / 360) / 100);
+  const transition = useMeterTransition(dashOffset);
+  const point = (value: number) => {
+    const angle = (120 + value * 150 + 150) * Math.PI / 180;
+    return { x: 70 + 59 * Math.cos(angle), y: 70 + 59 * Math.sin(angle) };
+  };
+  const clogPoint = point(maxClog);
+  const tanglePoint = point(maxTangle);
+  return <svg className={`mmu-live-meter ${flowguard.enabled === false ? "disabled" : ""}`} viewBox="0 0 140 140" aria-label={`${labels.flow} ${labels.guard}`}>
+    <g transform="rotate(120 70 70)"><circle className="meter-underlay" cx="70" cy="70" r="50" strokeWidth="18" strokeDasharray={mmuMeterCircumference} strokeDashoffset={mmuMeterCircumference * 60 / 360} /></g>
+    <g transform="rotate(270 70 70)"><circle className="meter-primary" cx="70" cy="70" r="50" strokeWidth="18" strokeDasharray={mmuMeterCircumference}
+      strokeDashoffset={dashOffset} style={{ transition }} /></g>
+    <g transform="rotate(60 70 70)"><circle className="meter-danger-zone" cx="70" cy="70" r="50" strokeWidth="18" strokeDasharray={mmuMeterCircumference} strokeDashoffset={mmuMeterCircumference * (1 + .2 * 150 / 360)} /></g>
+    <g transform="rotate(120 70 70)"><circle className="meter-danger-zone" cx="70" cy="70" r="50" strokeWidth="18" strokeDasharray={mmuMeterCircumference} strokeDashoffset={mmuMeterCircumference * (1 - .2 * 150 / 360)} /></g>
+    <line className={maxClog > .8 ? "meter-warning" : "meter-primary"} x1={clogPoint.x} y1={clogPoint.y} x2="70" y2="70" strokeWidth="2" strokeDasharray="18,63" />
+    <line className={Math.abs(maxTangle) > .8 ? "meter-warning" : "meter-primary"} x1={tanglePoint.x} y1={tanglePoint.y} x2="70" y2="70" strokeWidth="2" strokeDasharray="18,63" />
+    <line className="meter-warning" x1={70 + 63 * Math.cos(120 * Math.PI / 180)} y1={70 + 63 * Math.sin(120 * Math.PI / 180)} x2="70" y2="70" strokeWidth="2" strokeDasharray="22,63" />
+    <line className="meter-warning" x1={70 + 63 * Math.cos(60 * Math.PI / 180)} y1={70 + 63 * Math.sin(60 * Math.PI / 180)} x2="70" y2="70" strokeWidth="2" strokeDasharray="22,63" />
+    <line className="meter-zero" x1="70" y1="11" x2="70" y2="70" strokeWidth="2" strokeDasharray="18,63" />
+    <text x="70" y="56" textAnchor="middle" className="meter-small">{labels.flow}</text>
+    <text x="70" y="69" textAnchor="middle" className="meter-small">{labels.guard}</text>
+    <text x="70" y="90" textAnchor="middle" className={trigger ? "meter-value warning" : "meter-value"}>{trigger || (flowguard.active ? `${Math.round(flowRate)}%` : labels.active)}</text>
+    <text x="58" y="139" textAnchor="end" className="meter-small">{labels.tangle}</text>
+    <text x="86" y="139" className="meter-small">{labels.clog}</text>
+  </svg>;
 }
 
 export default function Home() {
@@ -2778,13 +2852,7 @@ function Editor() {
   const mmuManualDisabled = Boolean(mmuState?.printing || mmuAction || !mmuState?.available || mmu?.enabled === false);
   const mmuEncoder = objectValue(mmu?.encoder);
   const mmuFlowguard = objectValue(mmu?.flowguard);
-  const mmuSyncFeedback = objectValue(mmu?.sync_feedback);
-  const mmuFlowRate = firstNumber(mmuEncoder, ["flow_rate", "flowrate"])
-    ?? firstNumber(mmuFlowguard, ["flow_rate", "flowrate"]);
-  const rawFlowguardLevel = firstNumber(mmuFlowguard, ["percent", "percentage", "level", "value", "position"])
-    ?? firstNumber(mmuSyncFeedback, ["percent", "percentage", "level", "value", "position"]);
-  const mmuFlowguardLevel = rawFlowguardLevel === null ? null
-    : Math.abs(rawFlowguardLevel) <= 1 ? 50 + rawFlowguardLevel * 50 : rawFlowguardLevel;
+  const mmuSyncFeedbackFlowRate = Number(mmu?.sync_feedback_flow_rate) || 100;
   const currentPrintThumbnail = bestThumbnail(printerStatus?.printDetails.metadata?.thumbnails ?? []);
   const currentPrintThumbnailUrl = currentPrintThumbnail
     ? apiPath(`/api/printer/gcode-thumbnail?path=${encodeURIComponent(currentPrintThumbnail.relativePath)}`)
@@ -5509,16 +5577,77 @@ function Editor() {
     const homeVisible = activePath === homeTabPath || (!activePath && !activeFile);
     if (!homeVisible || !homeWidgetSet.has("mmu")) return;
     let cancelled = false;
-    let timer: number | undefined;
-    const poll = async (showLoading: boolean) => {
-      const state = await loadMmuState(false, showLoading);
-      if (cancelled || !state?.available) return;
-      timer = window.setTimeout(() => void poll(false), 3000);
+    let socket: WebSocket | null = null;
+    let pollTimer: number | undefined;
+    let reconnectTimer: number | undefined;
+    let connected = false;
+
+    const applyMmuUpdate = (value: unknown) => {
+      const update = objectValue(value);
+      if (!update) return;
+      setMmuState((current) => {
+        const merged = { ...(current?.mmu ?? {}), ...update };
+        const printState = String(merged.print_state ?? "").toLowerCase();
+        return {
+          available: true,
+          printing: Boolean(merged.is_in_print) || ["printing", "started"].includes(printState),
+          machine: current?.machine ?? null,
+          mmu: merged,
+          websocketUrl: current?.websocketUrl
+        };
+      });
     };
-    void poll(true);
+
+    const scheduleFallbackPoll = () => {
+      if (cancelled || connected || pollTimer !== undefined) return;
+      pollTimer = window.setTimeout(async () => {
+        pollTimer = undefined;
+        await loadMmuState(false, false);
+        scheduleFallbackPoll();
+      }, 3000);
+    };
+
+    const connect = (serverUrl?: string) => {
+      if (cancelled) return;
+      try {
+        socket = new WebSocket(moonrakerWebSocketUrl(serverUrl));
+      } catch {
+        scheduleFallbackPoll();
+        return;
+      }
+      socket.onopen = () => {
+        connected = true;
+        if (pollTimer !== undefined) window.clearTimeout(pollTimer);
+        pollTimer = undefined;
+        socket?.send(JSON.stringify({
+          jsonrpc: "2.0",
+          method: "printer.objects.subscribe",
+          params: { objects: { mmu: mmuSubscriptionFields } },
+          id: 1
+        }));
+      };
+      socket.onmessage = (event) => {
+        try {
+          const message = JSON.parse(String(event.data)) as { result?: { status?: { mmu?: unknown } }; params?: Array<{ mmu?: unknown }> };
+          applyMmuUpdate(message.result?.status?.mmu ?? message.params?.[0]?.mmu);
+        } catch { /* Ignore unrelated Moonraker messages. */ }
+      };
+      socket.onclose = () => {
+        connected = false;
+        scheduleFallbackPoll();
+        if (!cancelled) reconnectTimer = window.setTimeout(() => connect(serverUrl), 2000);
+      };
+      socket.onerror = () => socket?.close();
+    };
+
+    void loadMmuState(false, true).then((state) => {
+      if (!cancelled && state?.available) connect(state.websocketUrl);
+    });
     return () => {
       cancelled = true;
-      if (timer !== undefined) window.clearTimeout(timer);
+      socket?.close();
+      if (pollTimer !== undefined) window.clearTimeout(pollTimer);
+      if (reconnectTimer !== undefined) window.clearTimeout(reconnectTimer);
     };
   }, [activeFile, activePath, homeWidgetSet, loadMmuState, mmuRefreshToken]);
 
@@ -6674,10 +6803,10 @@ function Editor() {
                               disabled={mmuMenuGate === null || mmuManualDisabled || (action === "select" && mmuMenuGate === mmuSelectedGate) || (action === "preload" && mmuMenuGateStatus > 0) || (action === "eject" && mmuMenuGateStatus === 0)}
                               onClick={() => void runMmuAction(action, { gate: mmuMenuGate })}><MdiIcon path={icon} size={0.75} /><span>{t(label)}</span></button>)}
                           </div>
-                          {(mmuFlowRate !== null || mmuFlowguardLevel !== null) && <div className="mmu-monitoring">
-                            {mmuFlowRate !== null && <MmuMeter label={t("mmu.flowrate")} value={mmuFlowRate} leftLabel="20" rightLabel="0" />}
-                            {mmuFlowguardLevel !== null && <MmuMeter label={t("mmu.flowGuard")} value={mmuFlowguardLevel}
-                              leftLabel={t("mmu.tangle")} rightLabel={t("mmu.clog")} />}
+                          {(mmuEncoder || mmuFlowguard) && <div className="mmu-monitoring">
+                            {mmuEncoder && <MmuEncoderMeter encoder={mmuEncoder} label={t("mmu.flowrate")} />}
+                            {mmuFlowguard && <MmuFlowguardMeter flowguard={mmuFlowguard} flowRate={mmuSyncFeedbackFlowRate}
+                              labels={{ flow: t("mmu.flow"), guard: t("mmu.guard"), tangle: t("mmu.tangle"), clog: t("mmu.clog"), active: t("mmu.active") }} />}
                             <strong>{t("mmu.clogDetection")}</strong>
                           </div>}
                           <div className="mmu-command-bar">

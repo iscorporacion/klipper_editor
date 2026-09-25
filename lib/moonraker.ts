@@ -106,6 +106,7 @@ export type MmuStatus = {
   available: boolean;
   printing: boolean;
   mmu: Record<string, unknown> | null;
+  websocketUrl: string;
 };
 
 export type MainsailUiSettings = {
@@ -985,14 +986,16 @@ export async function getMmuStatus(): Promise<MmuStatus> {
   const objects = Array.isArray(rawObjects)
     ? rawObjects.filter((name): name is string => typeof name === "string")
     : [];
-  if (!objects.includes("mmu")) return { available: false, printing: false, mmu: null };
+  const websocketUrl = `${moonrakerUrl.replace(/^http/i, "ws")}/websocket`;
+  if (!objects.includes("mmu")) return { available: false, printing: false, mmu: null, websocketUrl };
 
   const params = new URLSearchParams();
   params.append("mmu", [
     "enabled", "num_gates", "is_homed", "is_locked", "is_paused", "is_in_print", "print_state",
     "unit", "tool", "gate", "active_filament", "operation", "filament_pos", "ttg_map", "gate_status",
     "gate_filament_name", "gate_material", "gate_color", "gate_temperature", "gate_spool_id",
-    "gate_speed_override", "action", "has_bypass", "spoolman_support", "encoder", "flowguard", "sync_feedback"
+    "gate_speed_override", "action", "has_bypass", "spoolman_support", "encoder", "flowguard",
+    "sync_feedback_flow_rate", "sync_feedback_enabled", "sync_feedback_state"
   ].join(","));
   if (objects.includes("idle_timeout")) params.append("idle_timeout", "state");
   if (objects.includes("print_stats")) params.append("print_stats", "state");
@@ -1003,7 +1006,8 @@ export async function getMmuStatus(): Promise<MmuStatus> {
   return {
     available: true,
     printing: printState === "printing" || idleState === "printing",
-    mmu: status.mmu && typeof status.mmu === "object" ? status.mmu : null
+    mmu: status.mmu && typeof status.mmu === "object" ? status.mmu : null,
+    websocketUrl
   };
 }
 

@@ -1665,13 +1665,17 @@ h1 {
 .mmu-gate-menu button:disabled, .mmu-command-bar button:disabled { opacity: .4; cursor: not-allowed; }
 .mmu-monitoring { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: center; gap: 12px; padding: 8px 0 2px; }
 .mmu-monitoring > strong { flex: 1 0 100%; color: var(--muted); font-size: 12px; text-align: center; }
-.mmu-meter { width: 82px; color: var(--muted); }
-.mmu-meter-dial { position: relative; width: 72px; height: 43px; margin: 0 auto; overflow: hidden; }
-.mmu-meter-arc { position: absolute; inset: 0 0 auto; width: 72px; height: 72px; border: 9px solid #414348; border-bottom-color: #4ecb63; border-left-color: #ffb020; border-radius: 50%; transform: rotate(45deg); }
-.mmu-meter-value { position: absolute; inset: 17px 0 auto; display: grid; color: var(--accent); font-size: 11px; font-weight: 800; line-height: 1; text-align: center; }
-.mmu-meter-value small { margin-bottom: 3px; color: var(--muted); font-size: 7px; }
-.mmu-meter-dial i { position: absolute; left: 50%; bottom: 2px; width: 2px; height: 31px; background: var(--text); transform-origin: 50% 100%; transition: transform 220ms ease; }
-.mmu-meter-scale { display: flex; justify-content: space-between; color: var(--accent); font-size: 7px; font-weight: 800; }
+.mmu-live-meter { width: 92px; height: 92px; overflow: visible; }
+.mmu-live-meter.disabled { opacity: .5; }
+.mmu-live-meter circle { fill: transparent; }
+.mmu-live-meter .meter-underlay { stroke: color-mix(in srgb, var(--muted) 42%, transparent); }
+.mmu-live-meter .meter-primary { stroke: var(--accent); }
+.mmu-live-meter .meter-warning { stroke: #ff4d4f; }
+.mmu-live-meter .meter-zero { stroke: #fff; }
+.mmu-live-meter .meter-danger-zone { stroke: #ff4d4f; opacity: .3; }
+.mmu-live-meter .meter-small { fill: var(--accent); font-size: 11px; font-weight: 700; }
+.mmu-live-meter .meter-value { fill: var(--accent); font-size: 18px; font-weight: 800; }
+.mmu-live-meter .meter-value.warning { fill: #ff4d4f; font-size: 14px; }
 .mmu-bypass { position: relative; z-index: 2; display: grid; place-items: center; flex: 0 0 74px; height: 42px; margin-bottom: 47px; margin-left: 14px; border: 1px solid var(--border); border-radius: 4px; background: var(--panel-soft); color: var(--muted); font-size: 11px; font-weight: 800; text-transform: uppercase; cursor: pointer; }
 .mmu-bypass.active { border-color: var(--accent); color: var(--accent); }
 .mmu-bypass:disabled { opacity: .45; cursor: not-allowed; }

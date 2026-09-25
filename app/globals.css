@@ -1623,6 +1623,15 @@ h1 {
 .sensor-state-row strong.sensor-empty { color: #f0a020; }
 .sensor-state-row strong.endstop-triggered { color: #ff4d4f; }
 .sensor-state-row strong.unknown { color: var(--muted); }
+.sensor-enable-switch { position: relative; width: 22px; height: 16px; cursor: pointer; }
+.sensor-enable-switch input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.sensor-enable-switch span { position: absolute; inset: 3px 0; border: 1px solid #e6e6e6; border-radius: 8px; background: #17191c; transition: background 140ms ease; }
+.sensor-enable-switch span::after { position: absolute; top: 1px; left: 1px; width: 6px; height: 6px; border-radius: 50%; background: #f5f5f5; content: ""; transition: transform 140ms ease, background 140ms ease; }
+.sensor-enable-switch input:checked + span { background: #f5f5f5; }
+.sensor-enable-switch input:checked + span::after { background: #25282c; transform: translateX(12px); }
+.sensor-enable-switch input:focus-visible + span { outline: 2px solid #f5f5f5; outline-offset: 2px; }
+.sensor-enable-switch input:disabled + span { opacity: .45; cursor: wait; }
+.sensor-enable-placeholder { width: 22px; }
 .sensor-hide-button { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border: 0; background: transparent; color: var(--muted); cursor: pointer; opacity: 0; }
 .sensor-state-row:hover .sensor-hide-button, .sensor-hide-button:focus-visible { opacity: 1; }
 @media (hover: none) { .sensor-hide-button { opacity: 1; } }
@@ -1654,6 +1663,15 @@ h1 {
 .mmu-gate-menu button { display: grid; grid-template-columns: 22px 1fr; align-items: center; gap: 6px; min-height: 32px; padding: 4px 8px; border: 0; background: transparent; color: var(--text); text-align: left; cursor: pointer; }
 .mmu-gate-menu button:hover:not(:disabled), .mmu-gate-menu button:focus-visible { background: var(--accent-soft); outline: 0; }
 .mmu-gate-menu button:disabled, .mmu-command-bar button:disabled { opacity: .4; cursor: not-allowed; }
+.mmu-monitoring { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: center; gap: 12px; padding: 8px 0 2px; }
+.mmu-monitoring > strong { flex: 1 0 100%; color: var(--muted); font-size: 12px; text-align: center; }
+.mmu-meter { width: 82px; color: var(--muted); }
+.mmu-meter-dial { position: relative; width: 72px; height: 43px; margin: 0 auto; overflow: hidden; }
+.mmu-meter-arc { position: absolute; inset: 0 0 auto; width: 72px; height: 72px; border: 9px solid #414348; border-bottom-color: #4ecb63; border-left-color: #ffb020; border-radius: 50%; transform: rotate(45deg); }
+.mmu-meter-value { position: absolute; inset: 17px 0 auto; display: grid; color: var(--accent); font-size: 11px; font-weight: 800; line-height: 1; text-align: center; }
+.mmu-meter-value small { margin-bottom: 3px; color: var(--muted); font-size: 7px; }
+.mmu-meter-dial i { position: absolute; left: 50%; bottom: 2px; width: 2px; height: 31px; background: var(--text); transform-origin: 50% 100%; transition: transform 220ms ease; }
+.mmu-meter-scale { display: flex; justify-content: space-between; color: var(--accent); font-size: 7px; font-weight: 800; }
 .mmu-bypass { position: relative; z-index: 2; display: grid; place-items: center; flex: 0 0 74px; height: 42px; margin-bottom: 47px; margin-left: 14px; border: 1px solid var(--border); border-radius: 4px; background: var(--panel-soft); color: var(--muted); font-size: 11px; font-weight: 800; text-transform: uppercase; cursor: pointer; }
 .mmu-bypass.active { border-color: var(--accent); color: var(--accent); }
 .mmu-bypass:disabled { opacity: .45; cursor: not-allowed; }
@@ -1671,6 +1689,18 @@ h1 {
 .mmu-import-preview .primary { justify-self: end; display: inline-flex; align-items: center; gap: 6px; margin-top: 4px; }
 .mmu-drop-overlay { position: absolute; inset: 0; z-index: 40; display: grid; place-content: center; justify-items: center; gap: 8px; border: 2px dashed var(--accent); background: color-mix(in srgb, var(--panel) 92%, transparent); color: var(--accent); font-weight: 800; pointer-events: none; }
 .rotated { transform: rotate(180deg); }
+.home-widget-header-actions { display: inline-flex; align-items: center; gap: 6px; }
+.mmu-map-modal { width: min(820px, 100%); max-height: min(760px, calc(100vh - 48px)); overflow: hidden; }
+.mmu-map-modal .modal-header h2 { display: inline-flex; align-items: center; gap: 8px; }
+.mmu-map-body { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; max-height: calc(100vh - 130px); overflow: auto; padding: 14px; }
+.mmu-map-tool { display: grid; grid-template-columns: 64px minmax(0, 1fr) auto; align-items: center; gap: 10px; min-width: 0; padding: 8px; border: 1px solid var(--border); background: var(--panel-soft); }
+.mmu-map-tool.active { border-color: var(--accent); box-shadow: inset 3px 0 var(--accent); }
+.mmu-map-tool img { width: 62px; height: 72px; object-fit: contain; }
+.mmu-map-tool > div { display: grid; min-width: 0; }
+.mmu-map-tool > div span, .mmu-map-tool > div small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mmu-map-tool > div small, .mmu-map-tool label span { color: var(--muted); font-size: 10px; }
+.mmu-map-tool label { display: grid; gap: 4px; }
+.mmu-map-tool select { min-width: 62px; height: 32px; border: 1px solid var(--border); background: var(--panel-strong); color: var(--text); }
 @media (prefers-reduced-motion: reduce) { .mmu-gate, .mmu-spool { transition: none; } }
 @media (max-width: 600px) {
   .home-grid { padding: 8px; gap: 10px; }

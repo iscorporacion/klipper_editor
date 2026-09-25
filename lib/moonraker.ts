@@ -98,6 +98,8 @@ export type SensorState = {
   label: string;
   group: "sensor" | "endstop";
   state: boolean | null;
+  enabled: boolean | null;
+  controlName: string | null;
 };
 
 export type MmuStatus = {
@@ -873,6 +875,14 @@ function booleanSensorState(value: unknown): boolean | null {
   return null;
 }
 
+function mmuSensorControlName(name: string, unit: number) {
+  const normalized = name.trim().toLowerCase().replace(/\s+/g, "_");
+  if (!normalized || /[\r\n"]/g.test(normalized)) return null;
+  if (normalized.includes(":")) return normalized;
+  if (["extruder", "toolhead"].includes(normalized)) return `default:${normalized}`;
+  return `unit${Math.max(0, unit)}:${normalized}`;
+}
+
 export async function getSensorStates(includeEndstops = false): Promise<SensorState[]> {
   const objectsPayload = await moonrakerFetch("/printer/objects/list");
   const rawObjects = objectsPayload?.result?.objects ?? objectsPayload?.objects ?? [];
@@ -893,7 +903,7 @@ export async function getSensorStates(includeEndstops = false): Promise<SensorSt
   if (queryObjects.length === 0) return [];
   const params = new URLSearchParams();
   for (const name of queryObjects) {
-    if (name === "mmu") params.append(name, "sensors");
+    if (name === "mmu") params.append(name, "sensors,unit");
     else if (name === "query_endstops") params.append(name, "last_query");
     else params.append(name, "filament_detected,enabled");
   }
@@ -903,17 +913,28 @@ export async function getSensorStates(includeEndstops = false): Promise<SensorSt
     id: `sensor:${name}`,
     label: sensorLabel(name),
     group: "sensor",
-    state: booleanSensorState(status[name]?.filament_detected)
+    state: booleanSensorState(status[name]?.filament_detected),
+    enabled: booleanSensorState(status[name]?.enabled),
+    controlName: name.replace(/^(filament_switch_sensor|filament_motion_sensor)\s+/i, "")
   }));
 
   const mmuSensors = status.mmu?.sensors;
   if (mmuSensors && typeof mmuSensors === "object" && !Array.isArray(mmuSensors)) {
+    const unit = Math.max(0, Number(status.mmu?.unit) || 0);
     for (const [name, value] of Object.entries(mmuSensors)) {
+      const controlName = mmuSensorControlName(name, unit);
+      const physical = sensors.find((sensor) => sensor.controlName?.toLowerCase() === controlName);
+      if (physical) {
+        physical.state = booleanSensorState(value);
+        continue;
+      }
       sensors.push({
         id: `sensor:mmu:${name}`,
         label: sensorLabel(`mmu:${name}`),
         group: "sensor",
-        state: booleanSensorState(value)
+        state: booleanSensorState(value),
+        enabled: true,
+        controlName
       });
     }
   }
@@ -926,13 +947,36 @@ export async function getSensorStates(includeEndstops = false): Promise<SensorSt
           id: `endstop:${name}`,
           label: sensorLabel(name),
           group: "endstop",
-          state: booleanSensorState(value)
+          state: booleanSensorState(value),
+          enabled: null,
+          controlName: null
         });
       }
     }
   }
 
   return sensors.sort((left, right) => left.group.localeCompare(right.group) || left.label.localeCompare(right.label));
+}
+
+export async function setFilamentSensorEnabled(name: string, enabled: boolean) {
+  const objectsPayload = await moonrakerFetch("/printer/objects/list");
+  const rawObjects = objectsPayload?.result?.objects ?? objectsPayload?.objects ?? [];
+  const expected = [`filament_switch_sensor ${name}`, `filament_motion_sensor ${name}`];
+  let allowed = Array.isArray(rawObjects) && expected.some((objectName) => rawObjects.includes(objectName));
+  if (!allowed && Array.isArray(rawObjects) && rawObjects.includes("mmu")) {
+    const payload = await moonrakerFetch("/printer/objects/query?mmu=sensors,unit");
+    const status = payload?.result?.status ?? payload?.status ?? {};
+    const mmuSensors = status.mmu?.sensors;
+    const unit = Math.max(0, Number(status.mmu?.unit) || 0);
+    if (mmuSensors && typeof mmuSensors === "object" && !Array.isArray(mmuSensors)) {
+      allowed = Object.keys(mmuSensors).some((sensorName) => mmuSensorControlName(sensorName, unit) === name.toLowerCase());
+    }
+  }
+  if (!allowed) {
+    throw new Error("Filament sensor is not controllable");
+  }
+  if (!name || /[\r\n"]/g.test(name)) throw new Error("Invalid filament sensor name");
+  return runGcodeScript(`SET_FILAMENT_SENSOR SENSOR="${name}" ENABLE=${enabled ? 1 : 0}`);
 }
 
 export async function getMmuStatus(): Promise<MmuStatus> {
@@ -948,7 +992,7 @@ export async function getMmuStatus(): Promise<MmuStatus> {
     "enabled", "num_gates", "is_homed", "is_locked", "is_paused", "is_in_print", "print_state",
     "unit", "tool", "gate", "active_filament", "operation", "filament_pos", "ttg_map", "gate_status",
     "gate_filament_name", "gate_material", "gate_color", "gate_temperature", "gate_spool_id",
-    "gate_speed_override", "action", "has_bypass", "spoolman_support"
+    "gate_speed_override", "action", "has_bypass", "spoolman_support", "encoder", "flowguard", "sync_feedback"
   ].join(","));
   if (objects.includes("idle_timeout")) params.append("idle_timeout", "state");
   if (objects.includes("print_stats")) params.append("print_stats", "state");

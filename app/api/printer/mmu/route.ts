@@ -64,6 +64,13 @@ export async function POST(request: NextRequest) {
         const temperature = Math.max(0, Math.min(500, Number(entry.temperature) || 0));
         return `MMU_GATE_MAP GATE=${gate} NAME="${quoted(entry.name)}" MATERIAL="${quoted(entry.material)}" VENDOR="${quoted(entry.vendor)}" COLOR="${color}" TEMP=${temperature} QUIET=1`;
       }).join("\n");
+    } else if (action === "ttg-map") {
+      const tool = integer(body.tool);
+      const gate = checkedGate(body.gate);
+      if (gateCount > 0 && tool >= gateCount) throw new Error("MMU tool is out of range");
+      script = `MMU_TTG_MAP TOOL=${tool} GATE=${gate} QUIET=1`;
+    } else if (action === "reset-ttg-map") {
+      script = "MMU_TTG_MAP RESET=1 QUIET=1";
     } else {
       return NextResponse.json({ error: "Unsupported MMU action" }, { status: 400 });
     }

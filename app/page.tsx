@@ -45,6 +45,7 @@ import {
 } from "react-icons/fc";
 import {
   MdDelete,
+  MdDeviceHub,
   MdDragIndicator,
   MdContentCopy,
   MdAcUnit,
@@ -756,6 +757,8 @@ type SensorState = {
   label: string;
   group: "sensor" | "endstop";
   state: boolean | null;
+  enabled: boolean | null;
+  controlName: string | null;
 };
 
 type MmuState = {
@@ -1118,11 +1121,14 @@ const defaultMessages: Messages = {
   "homeGrid.hideSensor": "Ocultar {name}",
   "homeGrid.sensorVisibility": "Visibilidad de sensores",
   "homeGrid.noSensors": "No se encontraron sensores.",
+  "homeGrid.enableSensor": "Habilitar sensor",
+  "homeGrid.disableSensor": "Deshabilitar sensor",
+  "homeGrid.disableSensorConfirm": "Deshabilitar {name} durante una impresion puede anular la proteccion contra falta de filamento o atascos. Deseas continuar?",
   "homeGrid.openFull": "Abrir ventana completa",
   "homeGrid.send": "Enviar G-code",
   "homeGrid.moveUp": "Mover antes",
   "homeGrid.moveDown": "Mover despues",
-  "homeGrid.tab": "Home Grid",
+  "homeGrid.tab": "Widgets",
   "homeGrid.desktop": "Escritorio",
   "homeGrid.tablet": "Tablet",
   "homeGrid.mobile": "Movil",
@@ -1141,7 +1147,7 @@ const defaultMessages: Messages = {
   "mmu.preload": "Precargar",
   "mmu.eject": "Expulsar",
   "mmu.check": "Comprobar",
-  "mmu.home": "Home MMU",
+  "mmu.home": "Home",
   "mmu.recover": "Recuperar",
   "mmu.load": "Cargar",
   "mmu.unload": "Descargar",
@@ -1153,6 +1159,15 @@ const defaultMessages: Messages = {
   "mmu.gcodeRequired": "Selecciona un archivo .gcode",
   "mmu.importError": "No se pudo importar la configuracion de OrcaSlicer",
   "mmu.imported": "Se importaron {count} filamentos",
+  "mmu.mapTools": "Mapear herramientas y filamentos",
+  "mmu.resetMap": "Restablecer mapa",
+  "mmu.tool": "Herramienta",
+  "mmu.gate": "Compuerta",
+  "mmu.flowrate": "FLOWRATE",
+  "mmu.flowGuard": "FLOW GUARD",
+  "mmu.tangle": "TANGLE",
+  "mmu.clog": "CLOG",
+  "mmu.clogDetection": "Deteccion de atascos/enredos",
   "macros.parameters": "Parametros",
   "macros.parametersFor": "Parametros de {name}",
   "macros.parameterRequired": "Obligatorio",
@@ -2465,6 +2480,38 @@ function TreeItem({
   );
 }
 
+function objectValue(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}
+
+function firstNumber(source: Record<string, unknown> | null, keys: string[]) {
+  for (const key of keys) {
+    const value = Number(source?.[key]);
+    if (Number.isFinite(value)) return value;
+  }
+  return null;
+}
+
+function MmuMeter({ label, value, minimum = 0, maximum = 100, leftLabel, rightLabel }: {
+  label: string;
+  value: number;
+  minimum?: number;
+  maximum?: number;
+  leftLabel: string;
+  rightLabel: string;
+}) {
+  const ratio = Math.min(1, Math.max(0, (value - minimum) / Math.max(maximum - minimum, 0.001)));
+  const angle = -90 + ratio * 180;
+  return <div className="mmu-meter">
+    <div className="mmu-meter-dial">
+      <div className="mmu-meter-arc" />
+      <span className="mmu-meter-value"><small>{label}</small>{Math.round(value)}%</span>
+      <i style={{ transform: `translateX(-50%) rotate(${angle}deg)` }} />
+    </div>
+    <div className="mmu-meter-scale"><span>{leftLabel}</span><span>{rightLabel}</span></div>
+  </div>;
+}
+
 export default function Home() {
   return <PreferencesGate><Editor /></PreferencesGate>;
 }
@@ -2498,10 +2545,12 @@ function Editor() {
   const [hiddenSensors, setHiddenSensors] = useState<Set<string>>(() => new Set());
   const [sensorSettingsOpen, setSensorSettingsOpen] = useState(false);
   const [sensorRefreshToken, setSensorRefreshToken] = useState(0);
+  const [sensorAction, setSensorAction] = useState<string | null>(null);
   const [mmuState, setMmuState] = useState<MmuState | null>(null);
   const [mmuLoading, setMmuLoading] = useState(false);
   const [mmuAction, setMmuAction] = useState<string | null>(null);
   const [mmuMenuGate, setMmuMenuGate] = useState<number | null>(null);
+  const [mmuMapOpen, setMmuMapOpen] = useState(false);
   const [mmuImportProfile, setMmuImportProfile] = useState<MmuImportProfile | null>(null);
   const [mmuImportOpen, setMmuImportOpen] = useState(false);
   const [mmuDragActive, setMmuDragActive] = useState(false);
@@ -2727,6 +2776,15 @@ function Editor() {
   const mmuFilamentPosition = Number(mmu?.filament_pos ?? -1);
   const mmuMenuGateStatus = mmuMenuGate === null ? -1 : Number(valueArray(mmu?.gate_status)[mmuMenuGate] ?? -1);
   const mmuManualDisabled = Boolean(mmuState?.printing || mmuAction || !mmuState?.available || mmu?.enabled === false);
+  const mmuEncoder = objectValue(mmu?.encoder);
+  const mmuFlowguard = objectValue(mmu?.flowguard);
+  const mmuSyncFeedback = objectValue(mmu?.sync_feedback);
+  const mmuFlowRate = firstNumber(mmuEncoder, ["flow_rate", "flowrate"])
+    ?? firstNumber(mmuFlowguard, ["flow_rate", "flowrate"]);
+  const rawFlowguardLevel = firstNumber(mmuFlowguard, ["percent", "percentage", "level", "value", "position"])
+    ?? firstNumber(mmuSyncFeedback, ["percent", "percentage", "level", "value", "position"]);
+  const mmuFlowguardLevel = rawFlowguardLevel === null ? null
+    : Math.abs(rawFlowguardLevel) <= 1 ? 50 + rawFlowguardLevel * 50 : rawFlowguardLevel;
   const currentPrintThumbnail = bestThumbnail(printerStatus?.printDetails.metadata?.thumbnails ?? []);
   const currentPrintThumbnailUrl = currentPrintThumbnail
     ? apiPath(`/api/printer/gcode-thumbnail?path=${encodeURIComponent(currentPrintThumbnail.relativePath)}`)
@@ -3850,6 +3908,30 @@ function Editor() {
       return next;
     });
   }, []);
+
+  const toggleFilamentSensor = useCallback(async (sensor: SensorState, enabled: boolean) => {
+    if (!sensor.controlName || sensorAction) return;
+    if (!enabled && printerStatus?.printing && !(await confirmDialog(
+      t("homeGrid.disableSensor"),
+      t("homeGrid.disableSensorConfirm", { name: sensor.label })
+    ))) return;
+    setSensorAction(sensor.id);
+    try {
+      const response = await fetch(apiPath("/api/printer/sensors"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: sensor.controlName, enabled, includeEndstops: showEndstops })
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? t("errors.loadSensors"));
+      if (Array.isArray(payload.sensors)) setSensorStates(payload.sensors as SensorState[]);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : t("errors.loadSensors"));
+      await loadSensorStates(showEndstops, false);
+    } finally {
+      setSensorAction(null);
+    }
+  }, [confirmDialog, loadSensorStates, printerStatus?.printing, sensorAction, showEndstops, t]);
 
   const loadMmuState = useCallback(async (showError = false, showLoading = true) => {
     if (showLoading) setMmuLoading(true);
@@ -6397,12 +6479,16 @@ function Editor() {
                         onDragEnd={() => { setDraggedHomeWidget(null); setHomeDropTarget(null); setHomeDropAnchor(null); }}><MdDragIndicator /></button>
                       <h2>{homeWidgetLabel(widget)}</h2>
                     </div>
-                    <button className="modal-icon-button" type="button" title={["sensors", "mmu"].includes(widget) ? t("actions.refresh") : t("homeGrid.openFull")}
-                      aria-label={["sensors", "mmu"].includes(widget) ? t("actions.refresh") : t("homeGrid.openFull")}
-                      disabled={(widget === "sensors" && sensorsLoading) || (widget === "mmu" && mmuLoading)}
-                      onClick={() => widget === "macros" ? openMacrosModal() : widget === "console" ? setKlipperConsoleOpen(true) : widget === "movement" ? setMovementOpen(true) : widget === "sensors" ? setSensorRefreshToken((token) => token + 1) : setMmuRefreshToken((token) => token + 1)}>
-                      {["sensors", "mmu"].includes(widget) ? <FcRefresh className="action-icon" /> : <MdOpenInFull className="action-icon" />}
-                    </button>
+                    <div className="home-widget-header-actions">
+                      {widget === "mmu" && <button className="modal-icon-button" type="button" title={t("mmu.mapTools")} aria-label={t("mmu.mapTools")}
+                        disabled={!mmuState?.available || mmuGateCount < 1} onClick={() => setMmuMapOpen(true)}><MdDeviceHub /></button>}
+                      <button className="modal-icon-button" type="button" title={["sensors", "mmu"].includes(widget) ? t("actions.refresh") : t("homeGrid.openFull")}
+                        aria-label={["sensors", "mmu"].includes(widget) ? t("actions.refresh") : t("homeGrid.openFull")}
+                        disabled={(widget === "sensors" && sensorsLoading) || (widget === "mmu" && mmuLoading)}
+                        onClick={() => widget === "macros" ? openMacrosModal() : widget === "console" ? setKlipperConsoleOpen(true) : widget === "movement" ? setMovementOpen(true) : widget === "sensors" ? setSensorRefreshToken((token) => token + 1) : setMmuRefreshToken((token) => token + 1)}>
+                        {["sensors", "mmu"].includes(widget) ? <FcRefresh className="action-icon" /> : <MdOpenInFull className="action-icon" />}
+                      </button>
+                    </div>
                   </header>
                   <div className="home-widget-body">
                     {widget === "macros" ? (
@@ -6525,10 +6611,13 @@ function Editor() {
                               <MdSensors className="sensor-state-icon" />
                               <span className="sensor-state-name">{sensor.label}</span>
                               <strong className={stateClass}>{stateLabel}</strong>
-                              <button type="button" className="sensor-hide-button" onClick={() => toggleSensorVisibility(sensor.id)}
-                                title={t("homeGrid.hideSensor", { name: sensor.label })} aria-label={t("homeGrid.hideSensor", { name: sensor.label })}>
-                                <span aria-hidden="true">-</span>
-                              </button>
+                              {sensor.controlName && sensor.enabled !== null
+                                ? <label className="sensor-enable-switch" title={t(sensor.enabled ? "homeGrid.disableSensor" : "homeGrid.enableSensor")}>
+                                  <input type="checkbox" checked={sensor.enabled} disabled={sensorAction === sensor.id}
+                                    onChange={(event) => void toggleFilamentSensor(sensor, event.target.checked)} />
+                                  <span aria-hidden="true" />
+                                </label>
+                                : <span className="sensor-enable-placeholder" />}
                             </div>;
                           })}
                         </div>
@@ -6576,14 +6665,20 @@ function Editor() {
                             {Boolean(mmu.has_bypass) && <button type="button" className={`mmu-bypass ${mmuSelectedGate === -2 ? "active" : ""}`}
                               disabled={mmuManualDisabled || mmuSelectedGate === -2} onClick={() => void runMmuAction("bypass")}>{t("mmu.bypass")}</button>}
                           </div>
-                          {mmuMenuGate !== null && <div className="mmu-gate-menu">
-                            <strong>G{mmuMenuGate}</strong>
+                          <div className="mmu-gate-menu">
+                            <strong>{mmuMenuGate === null ? "G--" : `G${mmuMenuGate}`}</strong>
                             {([
                               ["select", mdiSwapHorizontal, "mmu.select"], ["preload", mdiTrayArrowDown, "mmu.preload"],
                               ["eject", mdiEject, "mmu.eject"], ["check", mdiCheckCircleOutline, "mmu.check"]
                             ] as const).map(([action, icon, label]) => <button type="button" key={action}
-                              disabled={mmuManualDisabled || (action === "select" && mmuMenuGate === mmuSelectedGate) || (action === "preload" && mmuMenuGateStatus > 0) || (action === "eject" && mmuMenuGateStatus === 0)}
+                              disabled={mmuMenuGate === null || mmuManualDisabled || (action === "select" && mmuMenuGate === mmuSelectedGate) || (action === "preload" && mmuMenuGateStatus > 0) || (action === "eject" && mmuMenuGateStatus === 0)}
                               onClick={() => void runMmuAction(action, { gate: mmuMenuGate })}><MdiIcon path={icon} size={0.75} /><span>{t(label)}</span></button>)}
+                          </div>
+                          {(mmuFlowRate !== null || mmuFlowguardLevel !== null) && <div className="mmu-monitoring">
+                            {mmuFlowRate !== null && <MmuMeter label={t("mmu.flowrate")} value={mmuFlowRate} leftLabel="20" rightLabel="0" />}
+                            {mmuFlowguardLevel !== null && <MmuMeter label={t("mmu.flowGuard")} value={mmuFlowguardLevel}
+                              leftLabel={t("mmu.tangle")} rightLabel={t("mmu.clog")} />}
+                            <strong>{t("mmu.clogDetection")}</strong>
                           </div>}
                           <div className="mmu-command-bar">
                             {([
@@ -6897,6 +6992,37 @@ function Editor() {
             </form>
             </>}
           </section>
+        )}
+
+        {mmuMapOpen && (
+          <div className="modal-backdrop" role="presentation" onMouseDown={() => setMmuMapOpen(false)}>
+            <section className="options-modal mmu-map-modal" role="dialog" aria-modal="true" aria-labelledby="mmu-map-title" onMouseDown={(event) => event.stopPropagation()}>
+              <header className="modal-header">
+                <h2 id="mmu-map-title"><MdDeviceHub className="modal-title-icon" />{t("mmu.mapTools")}</h2>
+                <div className="modal-header-actions">
+                  <button className="dialog-button" type="button" disabled={mmuManualDisabled} onClick={() => void runMmuAction("reset-ttg-map")}>{t("mmu.resetMap")}</button>
+                  <button className="modal-close" type="button" title={t("actions.close")} aria-label={t("actions.close")} onClick={() => setMmuMapOpen(false)}><IoClose /></button>
+                </div>
+              </header>
+              <div className="mmu-map-body">
+                {Array.from({ length: Math.max(mmuGateCount, mmuTtgMap.length) }, (_, tool) => {
+                  const gate = Number.isInteger(mmuTtgMap[tool]) ? mmuTtgMap[tool] : tool;
+                  const color = mmuColor(valueArray(mmu?.gate_color)[gate]);
+                  const material = String(valueArray(mmu?.gate_material)[gate] ?? "");
+                  const name = String(valueArray(mmu?.gate_filament_name)[gate] ?? "");
+                  const temperature = Number(valueArray(mmu?.gate_temperature)[gate] ?? 0);
+                  return <article className={tool === mmuSelectedTool ? "mmu-map-tool active" : "mmu-map-tool"} key={tool}>
+                    <img src={apiPath(`/api/printer/mmu/spool?color=${encodeURIComponent(color)}&material=${encodeURIComponent(material || "?")}&empty=0&v=2`)} alt="" draggable={false} />
+                    <div><strong>T{tool}</strong><span>{name || material || "..."}</span><small>{[material, temperature > 0 ? `${temperature} C` : ""].filter(Boolean).join(" | ")}</small></div>
+                    <label><span>{t("mmu.gate")}</span><select value={gate} disabled={mmuManualDisabled}
+                      onChange={(event) => void runMmuAction("ttg-map", { tool, gate: Number(event.target.value) })}>
+                      {Array.from({ length: mmuGateCount }, (_, gateOption) => <option value={gateOption} key={gateOption}>G{gateOption}</option>)}
+                    </select></label>
+                  </article>;
+                })}
+              </div>
+            </section>
+          </div>
         )}
 
         {dialog && (
@@ -8802,7 +8928,6 @@ function Editor() {
               </div>
               <div className="modal-body options-body">
                 <div className="options-tabs" role="tablist" aria-label={t("options.title")}>
-                  <button className={optionsTab === "home" ? "options-tab active" : "options-tab"} type="button" role="tab" aria-selected={optionsTab === "home"} onClick={() => setOptionsTab("home")}>{t("homeGrid.tab")}</button>
                   <button
                     className={optionsTab === "general" ? "options-tab active" : "options-tab"}
                     type="button"
@@ -8812,6 +8937,7 @@ function Editor() {
                   >
                     {t("options.generalTab")}
                   </button>
+                  <button className={optionsTab === "home" ? "options-tab active" : "options-tab"} type="button" role="tab" aria-selected={optionsTab === "home"} onClick={() => setOptionsTab("home")}>{t("homeGrid.tab")}</button>
                   <button
                     className={optionsTab === "theme" ? "options-tab active" : "options-tab"}
                     type="button"

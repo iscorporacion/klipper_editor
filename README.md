@@ -46,7 +46,10 @@ Create `.env.local` if you want to connect to a printer while developing:
 ```env
 RATOS_MOONRAKER_URL=http://<printer-ip>:7125
 KLIPPER_EDITOR_ENABLE_TERMINAL=false
+KEDITOR_REMOTE_WIDGET_CONFIG=true
 ```
+
+`KEDITOR_REMOTE_WIDGET_CONFIG` enables the development-only managed widget configuration sync. It is disabled by default and should remain unset in printer releases.
 
 ## Install on printer host
 

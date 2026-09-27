@@ -113,6 +113,7 @@ export type MmuStatus = {
 export type TrayStatus = {
   available: boolean;
   servoAvailable: boolean;
+  filamentColor: string;
   printing: boolean;
   state: Record<string, unknown> | null;
   settings: Record<string, unknown> | null;
@@ -248,6 +249,28 @@ export async function uploadGcodeFile(file: File) {
   });
 }
 
+export async function getMoonrakerFileRoots() {
+  const payload = await moonrakerFetch("/server/files/roots");
+  return (payload?.result ?? payload) as Array<{ name?: string; path?: string; permissions?: string }>;
+}
+
+export async function readMoonrakerConfigFile(filePath: string) {
+  const cleanPath = filePath.replace(/^\/+/, "");
+  return String(await moonrakerFetch(`/server/files/config/${cleanPath.split("/").map(encodeURIComponent).join("/")}`));
+}
+
+export async function uploadMoonrakerConfigFile(filePath: string, content: string) {
+  const cleanPath = filePath.replace(/^\/+|\/+$/g, "");
+  const parts = cleanPath.split("/");
+  const filename = parts.pop();
+  if (!filename || parts.some((part) => !part || part === "." || part === "..")) throw new Error("Invalid config path");
+  const formData = new FormData();
+  formData.append("root", "config");
+  formData.append("path", parts.join("/"));
+  formData.append("file", new File([content], filename, { type: "text/plain" }), filename);
+  return moonrakerFetch("/server/files/upload", { method: "POST", body: formData });
+}
+
 export async function deleteGcodeFile(filename: string) {
   const cleanFilename = filename.trim().replace(/^\/+/, "");
   const payload = await moonrakerFetch(`/server/files/gcodes/${cleanFilename.split("/").map(encodeURIComponent).join("/")}`, {
@@ -354,6 +377,11 @@ export async function getMoonrakerStatus(): Promise<MoonrakerStatus> {
 
 export async function firmwareRestart() {
   const payload = await moonrakerFetch("/printer/firmware_restart", { method: "POST" });
+  return payload?.result ?? payload;
+}
+
+export async function klipperRestart() {
+  const payload = await moonrakerFetch("/printer/restart", { method: "POST" });
   return payload?.result ?? payload;
 }
 
@@ -1035,7 +1063,7 @@ export async function getTrayStatus(): Promise<TrayStatus> {
   const stateObject = "gcode_macro _BANDEJA_STATE";
   const settingsObject = "gcode_macro _BANDEJA_VARS";
   if (!objects.includes(stateObject) || !objects.includes(settingsObject)) {
-    return { available: false, servoAvailable: false, printing: false, state: null, settings: null, temperature: 0, target: 0 };
+    return { available: false, servoAvailable: false, filamentColor: "#7457e8", printing: false, state: null, settings: null, temperature: 0, target: 0 };
   }
 
   const params = new URLSearchParams();
@@ -1043,11 +1071,17 @@ export async function getTrayStatus(): Promise<TrayStatus> {
   params.append(settingsObject, "");
   if (objects.includes("print_stats")) params.append("print_stats", "state");
   if (objects.includes("extruder")) params.append("extruder", "temperature,target");
+  if (objects.includes("mmu")) params.append("mmu", "gate,gate_color");
   const payload = await moonrakerFetch(`/printer/objects/query?${params.toString()}`);
   const status = payload?.result?.status ?? payload?.status ?? {};
+  const gate = Number(status.mmu?.gate);
+  const gateColors = Array.isArray(status.mmu?.gate_color) ? status.mmu.gate_color : [];
+  const rawColor = Number.isInteger(gate) && gate >= 0 ? String(gateColors[gate] ?? "") : "";
+  const filamentColor = /^#?[0-9a-f]{6}([0-9a-f]{2})?$/i.test(rawColor) ? `#${rawColor.replace(/^#/, "")}` : "#7457e8";
   return {
     available: true,
     servoAvailable: objects.includes("servo bandeja_cama"),
+    filamentColor,
     printing: String(status.print_stats?.state ?? "").toLowerCase() === "printing",
     state: status[stateObject] && typeof status[stateObject] === "object" ? status[stateObject] : {},
     settings: status[settingsObject] && typeof status[settingsObject] === "object" ? status[settingsObject] : {},

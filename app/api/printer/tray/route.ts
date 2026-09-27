@@ -37,6 +37,8 @@ export async function POST(request: NextRequest) {
     let script = commands[action];
     if (action === "move") {
       script = `BANDEJA_MOVE POS=${finite(body.position, 0, 50, "tray position")}`;
+    } else if (action === "servo-test") {
+      script = `BANDEJA_SERVO ANGLE=${finite(body.angle, 0, 180, "servo angle")}`;
     } else if (action === "configure") {
       const profile = String(body.profile ?? "Custom").replace(/[^a-z0-9 _-]/gi, "").trim().slice(0, 32) || "Custom";
       const values = {

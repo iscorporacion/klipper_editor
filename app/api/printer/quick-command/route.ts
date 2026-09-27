@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
     }
 
     const status = await getMoonrakerStatus();
-    if (status.printing) {
+    if (status.printing && status.printState.trim().toLowerCase() !== "paused") {
       return NextResponse.json({ error: "A print is currently active", status }, { status: 409 });
     }
 

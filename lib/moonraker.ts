@@ -106,7 +106,18 @@ export type MmuStatus = {
   available: boolean;
   printing: boolean;
   mmu: Record<string, unknown> | null;
+  displayName: string;
   websocketUrl: string;
+};
+
+export type TrayStatus = {
+  available: boolean;
+  servoAvailable: boolean;
+  printing: boolean;
+  state: Record<string, unknown> | null;
+  settings: Record<string, unknown> | null;
+  temperature: number;
+  target: number;
 };
 
 export type MainsailUiSettings = {
@@ -987,28 +998,87 @@ export async function getMmuStatus(): Promise<MmuStatus> {
     ? rawObjects.filter((name): name is string => typeof name === "string")
     : [];
   const websocketUrl = `${moonrakerUrl.replace(/^http/i, "ws")}/websocket`;
-  if (!objects.includes("mmu")) return { available: false, printing: false, mmu: null, websocketUrl };
+  if (!objects.includes("mmu")) return { available: false, printing: false, mmu: null, displayName: "MMU", websocketUrl };
 
   const params = new URLSearchParams();
   params.append("mmu", [
     "enabled", "num_gates", "is_homed", "is_locked", "is_paused", "is_in_print", "print_state",
     "unit", "tool", "gate", "active_filament", "operation", "filament_pos", "ttg_map", "gate_status",
-    "gate_filament_name", "gate_material", "gate_color", "gate_temperature", "gate_spool_id",
+    "gate_filament_name", "gate_material", "gate_vendor", "gate_color", "gate_temperature", "gate_spool_id",
     "gate_speed_override", "action", "has_bypass", "spoolman_support", "encoder", "flowguard",
     "sync_feedback_flow_rate", "sync_feedback_enabled", "sync_feedback_state"
   ].join(","));
   if (objects.includes("idle_timeout")) params.append("idle_timeout", "state");
   if (objects.includes("print_stats")) params.append("print_stats", "state");
+  if (objects.includes("configfile")) params.append("configfile", "settings");
   const payload = await moonrakerFetch(`/printer/objects/query?${params.toString()}`);
   const status = payload?.result?.status ?? payload?.status ?? {};
+  const mmu = status.mmu && typeof status.mmu === "object" ? status.mmu as Record<string, unknown> : null;
+  const configSettings = status.configfile?.settings && typeof status.configfile.settings === "object"
+    ? status.configfile.settings as Record<string, unknown>
+    : {};
   const printState = String(status.print_stats?.state ?? "").toLowerCase();
   const idleState = String(status.idle_timeout?.state ?? "").toLowerCase();
   return {
     available: true,
     printing: printState === "printing" || idleState === "printing",
-    mmu: status.mmu && typeof status.mmu === "object" ? status.mmu : null,
+    mmu,
+    displayName: mmuDisplayName(configSettings, mmu),
     websocketUrl
   };
+}
+
+export async function getTrayStatus(): Promise<TrayStatus> {
+  const objectsPayload = await moonrakerFetch("/printer/objects/list");
+  const rawObjects = objectsPayload?.result?.objects ?? objectsPayload?.objects ?? [];
+  const objects = Array.isArray(rawObjects) ? rawObjects.filter((name): name is string => typeof name === "string") : [];
+  const stateObject = "gcode_macro _BANDEJA_STATE";
+  const settingsObject = "gcode_macro _BANDEJA_VARS";
+  if (!objects.includes(stateObject) || !objects.includes(settingsObject)) {
+    return { available: false, servoAvailable: false, printing: false, state: null, settings: null, temperature: 0, target: 0 };
+  }
+
+  const params = new URLSearchParams();
+  params.append(stateObject, "");
+  params.append(settingsObject, "");
+  if (objects.includes("print_stats")) params.append("print_stats", "state");
+  if (objects.includes("extruder")) params.append("extruder", "temperature,target");
+  const payload = await moonrakerFetch(`/printer/objects/query?${params.toString()}`);
+  const status = payload?.result?.status ?? payload?.status ?? {};
+  return {
+    available: true,
+    servoAvailable: objects.includes("servo bandeja_cama"),
+    printing: String(status.print_stats?.state ?? "").toLowerCase() === "printing",
+    state: status[stateObject] && typeof status[stateObject] === "object" ? status[stateObject] : {},
+    settings: status[settingsObject] && typeof status[settingsObject] === "object" ? status[settingsObject] : {},
+    temperature: Number(status.extruder?.temperature) || 0,
+    target: Number(status.extruder?.target) || 0
+  };
+}
+
+function mmuDisplayName(configSettings: Record<string, unknown>, mmu: Record<string, unknown> | null) {
+  const machine = configSettings.mmu_machine && typeof configSettings.mmu_machine === "object"
+    ? configSettings.mmu_machine as Record<string, unknown>
+    : {};
+  const configuredUnits = Array.isArray(machine.units)
+    ? machine.units.map((unit) => String(unit).trim()).filter(Boolean)
+    : String(machine.units ?? "").split(",").map((unit) => unit.trim()).filter(Boolean);
+  const runtimeUnit = mmu?.unit;
+  const activeUnit = typeof runtimeUnit === "string" && runtimeUnit.trim()
+    ? runtimeUnit.trim()
+    : Number.isInteger(Number(runtimeUnit)) ? configuredUnits[Number(runtimeUnit)] : "";
+  const unitSections = Object.entries(configSettings)
+    .filter(([section, value]) => /^mmu_unit(?:\s+.+)?$/i.test(section) && value && typeof value === "object")
+    .map(([section, value]) => ({ section, name: section.replace(/^mmu_unit\s*/i, "").trim(), settings: value as Record<string, unknown> }));
+  const unit = unitSections.find((entry) => activeUnit && entry.name.toLowerCase() === activeUnit.toLowerCase())
+    ?? unitSections[Number.isInteger(Number(runtimeUnit)) ? Number(runtimeUnit) : -1]
+    ?? (unitSections.length === 1 ? unitSections[0] : undefined);
+  const displayName = String(unit?.settings.display_name ?? "").trim();
+  if (displayName) return displayName;
+  if (unit?.name) return unit.name;
+  const vendor = String(machine.mmu_vendor ?? machine.vendor ?? "").trim();
+  const version = String(machine.mmu_version ?? machine.version ?? "").trim();
+  return [vendor, version].filter(Boolean).join(" ") || "MMU";
 }
 
 export async function setAuxiliaryControl(name: string, value?: number, color?: string) {

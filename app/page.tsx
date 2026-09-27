@@ -5,6 +5,7 @@ import PreferencesGate from "@/components/PreferencesGate";
 import { preferences } from "@/lib/preferences-client";
 import Image from "next/image";
 import PidChart, { type PidSample } from "@/components/PidChart";
+import PurgeTrayWidget from "@/components/PurgeTrayWidget";
 import type { BedMeshViewerData } from "@/components/BedMeshViewer";
 import type {
   ChangeEvent,
@@ -14,11 +15,12 @@ import type {
   MouseEvent as ReactMouseEvent,
   ReactNode
 } from "react";
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import MdiIcon from "@mdi/react";
 import {
-  mdiArrowCollapseLeft, mdiArrowCollapseRight, mdiAutoFix, mdiCheckCircleOutline, mdiConsoleLine,
-  mdiDatabaseImportOutline, mdiEject, mdiFan, mdiHome, mdiLedStripVariant, mdiLockOpenVariant,
+  mdiArrowCollapseLeft, mdiArrowCollapseRight, mdiAutoFix, mdiCheckAll, mdiCheckCircleOutline, mdiConsoleLine,
+  mdiDatabaseImportOutline, mdiEject, mdiEngineOff, mdiFan, mdiHome, mdiLedStripVariant, mdiLockOpenVariant,
   mdiSwapHorizontal, mdiTrayArrowDown, mdiTrayArrowUp
 } from "@mdi/js";
 import type { Range } from "@codemirror/state";
@@ -81,6 +83,7 @@ const terminalHeightKey = "klipper-editor-terminal-height";
 const terminalHistoryKey = "klipper-editor-terminal-history";
 const klipperConsoleFavoritesKey = "klipper-editor-klipper-console-favorites";
 const klipperConsoleTemperatureReportsKey = "klipper-editor-klipper-console-temperature-reports";
+const klipperConsoleSingleLineKey = "klipper-editor-klipper-console-single-line";
 const macroFavoritesKey = "klipper-editor-macro-favorites";
 const sectionPreviewDelayKey = "klipper-editor-section-preview-delay";
 const sidebarCollapsedKey = "klipper-editor-sidebar-collapsed";
@@ -93,7 +96,7 @@ const sensorHiddenKey = "klipper-editor-sensors-hidden";
 const mmuLastImportKey = "klipper-editor-mmu-last-import";
 const homeTabPath = "__keditor_home__";
 const terminalTabPath = "__keditor_terminal__";
-const availableHomeWidgets = ["macros", "console", "movement", "sensors", "mmu"] as const;
+const availableHomeWidgets = ["macros", "console", "movement", "sensors", "mmu", "tray"] as const;
 type HomeWidget = typeof availableHomeWidgets[number];
 type HomeViewport = "desktop" | "tablet" | "mobile";
 type HomeGridLayout = Record<HomeViewport, HomeWidget[][]>;
@@ -162,7 +165,7 @@ function moonrakerWebSocketUrl(serverUrl?: string) {
 
 const mmuSubscriptionFields = [
   "enabled", "num_gates", "is_homed", "is_locked", "is_paused", "is_in_print", "print_state", "unit", "tool", "gate",
-  "active_filament", "operation", "filament_pos", "ttg_map", "gate_status", "gate_filament_name", "gate_material",
+  "active_filament", "operation", "filament_pos", "ttg_map", "gate_status", "gate_filament_name", "gate_material", "gate_vendor",
   "gate_color", "gate_temperature", "gate_spool_id", "gate_speed_override", "action", "has_bypass", "spoolman_support",
   "encoder", "flowguard", "sync_feedback_flow_rate", "sync_feedback_enabled", "sync_feedback_state", "sensors"
 ];
@@ -186,6 +189,13 @@ type OpenFile = {
   loading?: boolean;
   saving?: boolean;
   error?: string;
+};
+
+type EditorViewSnapshot = {
+  anchor: number;
+  head: number;
+  scrollTop: number;
+  scrollLeft: number;
 };
 
 type ConfigSection = {
@@ -781,7 +791,7 @@ type MmuState = {
   available: boolean;
   printing: boolean;
   mmu: Record<string, unknown> | null;
-  machine: Record<string, unknown> | null;
+  displayName: string;
   websocketUrl?: string;
   error?: string;
 };
@@ -1127,7 +1137,7 @@ const defaultMessages: Messages = {
   "homeGrid.widgetConsole": "Consola Klipper",
   "homeGrid.widgetMovement": "Movimiento XY/Z",
   "homeGrid.widgetSensors": "Sensores",
-  "homeGrid.widgetMmu": "Happy Hare MMU",
+  "homeGrid.widgetMmu": "MMU",
   "homeGrid.openHome": "Mostrar widgets",
   "homeGrid.showEndstops": "Mostrar finales de carrera",
   "homeGrid.detected": "Detectado",
@@ -1169,6 +1179,10 @@ const defaultMessages: Messages = {
   "mmu.load": "Cargar",
   "mmu.unload": "Descargar",
   "mmu.unlock": "Desbloquear",
+  "mmu.checkAll": "Comprobar todas",
+  "mmu.checkAllHelp": "Comprueba la presencia de filamento en todas las compuertas.",
+  "mmu.motorsOff": "Apagar motores MMU",
+  "mmu.motorsOffHelp": "Libera los motores de la MMU para poder mover el mecanismo manualmente.",
   "mmu.dropGcode": "Suelta un G-code de Orca o seleccionalo",
   "mmu.releaseGcode": "Suelta el G-code para importar",
   "mmu.preview": "Vista previa de la ultima configuracion",
@@ -1202,6 +1216,15 @@ const defaultMessages: Messages = {
   "macros.count": "{count} macros",
   "klipperConsole.placeholder": "Escribe G-code o una macro. Ctrl+Enter envia.\n\nEjemplos:\nG28\nBED_MESH_CALIBRATE",
   "klipperConsole.help": "Los comandos se envian a Moonraker como script G-code. Puedes enviar varias lineas.",
+  "klipperConsole.singleLinePlaceholder": "Escribe G-code o una macro. Enter envia; Shift+Enter agrega una linea.",
+  "klipperConsole.singleLineHelp": "Enter envia el comando. Usa Shift+Enter para agregar una linea.",
+  "klipperConsole.disableMultiline": "Deshabilitar multilinea",
+  "klipperConsole.macroError": "Error de macro",
+  "klipperConsole.genericError": "Error",
+  "klipperConsole.showErrorDetails": "Ver detalles",
+  "klipperConsole.hideErrorDetails": "Ocultar detalles",
+  "klipperConsole.copyError": "Copiar error",
+  "klipperConsole.errorCopied": "Error copiado",
   "klipperConsole.empty": "Sin comandos enviados en esta sesion.",
   "klipperConsole.console": "Consola",
   "klipperConsole.favorites": "Favoritos",
@@ -1468,12 +1491,90 @@ function sanitizeKlipperHtml(message: string) {
     }
   });
 
+  const textNodes: Text[] = [];
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  let node = walker.nextNode();
+  while (node) {
+    textNodes.push(node as Text);
+    node = walker.nextNode();
+  }
+  textNodes.forEach((textNode) => { textNode.textContent = replaceKlipperSeparators(textNode.textContent ?? ""); });
+
   return document.body.innerHTML;
+}
+
+function replaceKlipperSeparators(message: string) {
+  return message.replace(/(^|[ \t])\/\/[ \t]?/gm, (_match, prefix: string) => prefix ? "\n" : "");
+}
+
+function formatKlipperResponse(message: string) {
+  return replaceKlipperSeparators(message)
+    .replace(/^\s*\n/, "")
+    .trimEnd();
+}
+
+type ParsedKlipperError = { titleKey: "klipperConsole.macroError" | "klipperConsole.genericError"; code: number | null; summary: string; details: string };
+
+function parseKlipperError(raw: string): ParsedKlipperError {
+  let payload: Record<string, unknown> | null = null;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) payload = parsed as Record<string, unknown>;
+  } catch { /* Non-JSON Klipper errors are handled from their plain text. */ }
+  const traceback = typeof payload?.traceback === "string" ? payload.traceback : "";
+  const source = traceback || raw.replace(/\\n/g, "\n");
+  const commandErrors = [...source.matchAll(/gcode\.CommandError:\s*([^\r\n]+)/gi)];
+  const serverErrors = [...source.matchAll(/(?:ServerError|HTTP\s+\d+):\s*([^\r\n]+)/gi)];
+  const payloadMessage = typeof payload?.message === "string" ? payload.message.trim() : "";
+  const candidate = commandErrors.at(-1)?.[1] || serverErrors.at(-1)?.[1]
+    || (!/^unknown$/i.test(payloadMessage) ? payloadMessage : "") || raw.trim();
+  const summary = candidate
+    .replace(/^Error evaluating\s+['"][^'"]+['"]:\s*/i, "")
+    .replace(/^gcode\.CommandError:\s*/i, "")
+    .replace(/^HTTP\s+\d+:\s*/i, "")
+    .trim();
+  const numericCode = Number(payload?.code);
+  return {
+    titleKey: /gcode_macro|gcode\.CommandError/i.test(source) ? "klipperConsole.macroError" : "klipperConsole.genericError",
+    code: Number.isFinite(numericCode) && numericCode > 0 ? numericCode : null,
+    summary: summary || payloadMessage || "Unknown error",
+    details: payload ? JSON.stringify(payload, null, 2) : raw
+  };
+}
+
+function KlipperConsoleErrorEntry({ entry, labels }: {
+  entry: KlipperConsoleEntry;
+  labels: Record<"macro" | "generic" | "show" | "hide" | "copy" | "copied", string>;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const parsed = useMemo(() => parseKlipperError(entry.message), [entry.message]);
+  const title = parsed.titleKey === "klipperConsole.macroError" ? labels.macro : labels.generic;
+  const copyDetails = async () => {
+    try {
+      await navigator.clipboard.writeText(parsed.details);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1600);
+    } catch { /* Clipboard access may be unavailable in non-secure browser contexts. */ }
+  };
+  return <article className="klipper-console-entry error readable-error">
+    <div className="klipper-console-entry-header">
+      <strong>{title}{parsed.code ? ` · HTTP ${parsed.code}` : ""}</strong>
+      <time>{entry.timestamp}</time>
+    </div>
+    <pre className="klipper-error-command">{entry.script}</pre>
+    <p className="klipper-error-summary">{parsed.summary}</p>
+    <div className="klipper-error-actions">
+      <button type="button" onClick={() => setExpanded((value) => !value)}>{expanded ? labels.hide : labels.show}</button>
+      <button type="button" onClick={() => void copyDetails()}><MdContentCopy />{copied ? labels.copied : labels.copy}</button>
+    </div>
+    {expanded && <pre className="klipper-error-details">{parsed.details}</pre>}
+  </article>;
 }
 
 function KlipperStoreMessage({ message }: { message: string }) {
   if (!isHtmlLikeMessage(message)) {
-    return <pre>{message}</pre>;
+    return <pre>{formatKlipperResponse(message)}</pre>;
   }
 
   return <div className="klipper-store-html" dangerouslySetInnerHTML={{ __html: sanitizeKlipperHtml(message) }} />;
@@ -2504,6 +2605,78 @@ function objectValue(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
 }
 
+function RichTooltip({ content, children, placement = "top" }: {
+  content: ReactNode;
+  children: ReactNode;
+  placement?: "top" | "bottom";
+}) {
+  const id = useId();
+  const triggerRef = useRef<HTMLSpanElement>(null);
+  const tooltipRef = useRef<HTMLSpanElement>(null);
+  const [open, setOpen] = useState(false);
+  const [position, setPosition] = useState({ top: 0, left: 0, arrowLeft: 20, placement, ready: false, theme: {} as CSSProperties });
+
+  const updatePosition = useCallback(() => {
+    const trigger = triggerRef.current;
+    const tooltip = tooltipRef.current;
+    if (!trigger || !tooltip) return;
+    const triggerRect = trigger.getBoundingClientRect();
+    const tooltipRect = tooltip.getBoundingClientRect();
+    const triggerStyle = window.getComputedStyle(trigger);
+    const margin = 10;
+    const gap = 9;
+    const resolvedPlacement = placement === "top" && triggerRect.top >= tooltipRect.height + gap + margin ? "top"
+      : placement === "bottom" && window.innerHeight - triggerRect.bottom >= tooltipRect.height + gap + margin ? "bottom"
+      : triggerRect.top >= tooltipRect.height + gap + margin ? "top" : "bottom";
+    const idealLeft = triggerRect.left + triggerRect.width / 2 - tooltipRect.width / 2;
+    const left = Math.min(Math.max(margin, idealLeft), Math.max(margin, window.innerWidth - tooltipRect.width - margin));
+    const top = resolvedPlacement === "top" ? triggerRect.top - tooltipRect.height - gap : triggerRect.bottom + gap;
+    setPosition({
+      top: Math.max(margin, Math.min(top, window.innerHeight - tooltipRect.height - margin)),
+      left,
+      arrowLeft: Math.min(Math.max(12, triggerRect.left + triggerRect.width / 2 - left), tooltipRect.width - 12),
+      placement: resolvedPlacement,
+      ready: true,
+      theme: {
+        "--tooltip-panel": triggerStyle.getPropertyValue("--panel-strong"),
+        "--tooltip-border": triggerStyle.getPropertyValue("--border"),
+        "--tooltip-accent": triggerStyle.getPropertyValue("--accent"),
+        "--tooltip-text": triggerStyle.getPropertyValue("--text"),
+        "--tooltip-muted": triggerStyle.getPropertyValue("--muted")
+      } as CSSProperties
+    });
+  }, [placement]);
+
+  useEffect(() => {
+    if (!open) return;
+    const frame = window.requestAnimationFrame(updatePosition);
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [open, updatePosition]);
+
+  const show = () => {
+    setPosition((current) => ({ ...current, ready: false }));
+    setOpen(true);
+  };
+
+  return <span className="rich-tooltip"
+    onMouseEnter={show} onMouseLeave={() => setOpen(false)}
+    onFocusCapture={show}
+    onBlurCapture={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setOpen(false); }}>
+    <span ref={triggerRef} className="rich-tooltip-trigger" aria-describedby={open ? id : undefined}>{children}</span>
+    {open && typeof document !== "undefined" && createPortal(
+      <span ref={tooltipRef} className={`rich-tooltip-content rich-tooltip-${position.placement} ${position.ready ? "ready" : ""}`} id={id} role="tooltip"
+        style={{ ...position.theme, top: position.top, left: position.left, "--tooltip-arrow-left": `${position.arrowLeft}px` } as CSSProperties}>{content}</span>,
+      document.body
+    )}
+  </span>;
+}
+
 const mmuMeterCircumference = 2 * Math.PI * 50;
 
 function useMeterTransition(value: number) {
@@ -2700,6 +2873,7 @@ function Editor() {
   const [klipperConsoleClearedAt, setKlipperConsoleClearedAt] = useState(0);
   const [klipperGcodeStoreLoading, setKlipperGcodeStoreLoading] = useState(false);
   const [klipperConsoleTab, setKlipperConsoleTab] = useState<KlipperConsoleTab>("console");
+  const [klipperConsoleSingleLine, setKlipperConsoleSingleLine] = useState(false);
   const [klipperConsoleFavorites, setKlipperConsoleFavorites] = useState<KlipperConsoleFavorite[]>([]);
   const [klipperFavoriteSearch, setKlipperFavoriteSearch] = useState("");
   const [sendingKlipperCommand, setSendingKlipperCommand] = useState(false);
@@ -2770,6 +2944,7 @@ function Editor() {
   const [sectionPreview, setSectionPreview] = useState<SectionPreview | null>(null);
   const [pendingJump, setPendingJump] = useState<PendingJump | null>(null);
   const editorViewRef = useRef<EditorView | null>(null);
+  const editorViewSnapshotsRef = useRef<Map<string, EditorViewSnapshot>>(new Map());
   const includePanelRef = useRef<HTMLElement | null>(null);
   const previewOpenTimerRef = useRef<number | null>(null);
   const previewCloseTimerRef = useRef<number | null>(null);
@@ -3767,8 +3942,11 @@ function Editor() {
         }
       } catch (error) {
         const nextError = error instanceof Error ? error.message : t("errors.gcodeCommand");
+        const parsedError = parseKlipperError(nextError);
         setKlipperConsoleLog((current) => [createConsoleEntry(script, "error", nextError), ...current].slice(0, 80));
-        setMessage(nextError);
+        setMessage(
+          `${t(parsedError.titleKey)}${parsedError.code ? ` · HTTP ${parsedError.code}` : ""}: ${parsedError.summary}`
+        );
       } finally {
         setSendingKlipperCommand(false);
       }
@@ -3893,10 +4071,11 @@ function Editor() {
       if (widget === "macros") return t("homeGrid.widgetMacros");
       if (widget === "console") return t("homeGrid.widgetConsole");
       if (widget === "sensors") return t("homeGrid.widgetSensors");
-      if (widget === "mmu") return t("homeGrid.widgetMmu");
+      if (widget === "mmu") return mmuState?.displayName?.trim() || t("homeGrid.widgetMmu");
+      if (widget === "tray") return t("homeGrid.widgetTray");
       return t("homeGrid.widgetMovement");
     },
-    [t]
+    [mmuState?.displayName, t]
   );
 
   const toggleHomeWidget = useCallback((widget: HomeWidget) => {
@@ -4011,7 +4190,7 @@ function Editor() {
       return payload as MmuState;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : t("mmu.loadError");
-      setMmuState({ available: false, printing: false, mmu: null, machine: null, error: errorMessage });
+      setMmuState({ available: false, printing: false, mmu: null, displayName: "MMU", error: errorMessage });
       if (showError) setMessage(errorMessage);
       return null;
     } finally {
@@ -4202,7 +4381,7 @@ function Editor() {
         return;
       }
 
-      if (printerStatus.printing) {
+      if (printerStatus.printing && normalizedPrintStatus(printerStatus.printState) !== "paused") {
         setMessage(t("errors.restartPrinting"));
         return;
       }
@@ -4289,7 +4468,7 @@ function Editor() {
         return;
       }
 
-      if (printerStatus.printing) {
+      if (printerStatus.printing && normalizedPrintStatus(printerStatus.printState) !== "paused") {
         setMessage(t("errors.restartPrinting"));
         return;
       }
@@ -5297,6 +5476,34 @@ function Editor() {
     return true;
   }, []);
 
+  const captureEditorView = useCallback((path: string, view: EditorView) => {
+    const selection = view.state.selection.main;
+    editorViewSnapshotsRef.current.set(path, {
+      anchor: selection.anchor,
+      head: selection.head,
+      scrollTop: view.scrollDOM.scrollTop,
+      scrollLeft: view.scrollDOM.scrollLeft
+    });
+  }, []);
+
+  const restoreEditorView = useCallback((path: string, view: EditorView) => {
+    const snapshot = editorViewSnapshotsRef.current.get(path);
+    if (!snapshot) return;
+
+    const documentEnd = view.state.doc.length;
+    view.dispatch({
+      selection: {
+        anchor: clamp(snapshot.anchor, 0, documentEnd),
+        head: clamp(snapshot.head, 0, documentEnd)
+      }
+    });
+
+    window.requestAnimationFrame(() => {
+      if (editorViewRef.current !== view) return;
+      view.scrollDOM.scrollTo({ top: snapshot.scrollTop, left: snapshot.scrollLeft });
+    });
+  }, []);
+
   const clearPreviewCloseTimer = useCallback(() => {
     if (previewCloseTimerRef.current) {
       window.clearTimeout(previewCloseTimerRef.current);
@@ -5458,6 +5665,7 @@ function Editor() {
     setHomeGridColumns(savedHomeGrid.columns);
     setHomeGridLayout(savedHomeGrid.layout);
     setShowKlipperTemperatureReports(preferences.getItem(klipperConsoleTemperatureReportsKey) === "true");
+    setKlipperConsoleSingleLine(preferences.getItem(klipperConsoleSingleLineKey) === "true");
     setShowEndstops(preferences.getItem(sensorShowEndstopsKey) === "true");
     try {
       const savedMmuImport = JSON.parse(preferences.getItem(mmuLastImportKey) ?? "null") as MmuImportProfile | null;
@@ -5591,7 +5799,7 @@ function Editor() {
         return {
           available: true,
           printing: Boolean(merged.is_in_print) || ["printing", "started"].includes(printState),
-          machine: current?.machine ?? null,
+          displayName: current?.displayName ?? "MMU",
           mmu: merged,
           websocketUrl: current?.websocketUrl
         };
@@ -5915,6 +6123,11 @@ function Editor() {
 
   const quickCommandDisabled =
     runningQuickCommand !== null || !printerStatus || Boolean(printerStatus.error) || printerStatus.printing;
+  const movementQuickCommandDisabled =
+    runningQuickCommand !== null ||
+    !printerStatus ||
+    Boolean(printerStatus.error) ||
+    (printerStatus.printing && normalizedPrintStatus(printerStatus.printState) !== "paused");
   const movementDisabled =
     movingAction !== null ||
     !printerStatus ||
@@ -5927,7 +6140,7 @@ function Editor() {
     movingAction !== null ||
     !printerStatus ||
     Boolean(printerStatus.error) ||
-    printerStatus.printing ||
+    (printerStatus.printing && normalizedPrintStatus(printerStatus.printState) !== "paused") ||
     printerStatus.extruders.length === 0 ||
     !selectedExtruder;
   const machinePowerDisabled =
@@ -6609,14 +6822,17 @@ function Editor() {
                       <h2>{homeWidgetLabel(widget)}</h2>
                     </div>
                     <div className="home-widget-header-actions">
-                      {widget === "mmu" && <button className="modal-icon-button" type="button" title={t("mmu.mapTools")} aria-label={t("mmu.mapTools")}
-                        disabled={!mmuState?.available || mmuGateCount < 1} onClick={() => setMmuMapOpen(true)}><MdDeviceHub /></button>}
-                      <button className="modal-icon-button" type="button" title={["sensors", "mmu"].includes(widget) ? t("actions.refresh") : t("homeGrid.openFull")}
-                        aria-label={["sensors", "mmu"].includes(widget) ? t("actions.refresh") : t("homeGrid.openFull")}
-                        disabled={(widget === "sensors" && sensorsLoading) || (widget === "mmu" && mmuLoading)}
-                        onClick={() => widget === "macros" ? openMacrosModal() : widget === "console" ? setKlipperConsoleOpen(true) : widget === "movement" ? setMovementOpen(true) : widget === "sensors" ? setSensorRefreshToken((token) => token + 1) : setMmuRefreshToken((token) => token + 1)}>
-                        {["sensors", "mmu"].includes(widget) ? <FcRefresh className="action-icon" /> : <MdOpenInFull className="action-icon" />}
-                      </button>
+                      {widget === "mmu" && <RichTooltip content={t("mmu.mapTools")} placement="bottom"><button className="modal-icon-button" type="button" aria-label={t("mmu.mapTools")}
+                        disabled={!mmuState?.available || mmuGateCount < 1} onClick={() => setMmuMapOpen(true)}><MdDeviceHub /></button></RichTooltip>}
+                      {widget === "tray" ? null : widget === "mmu" ? <RichTooltip content={t("actions.refresh")} placement="bottom">
+                        <button className="modal-icon-button" type="button" aria-label={t("actions.refresh")} disabled={mmuLoading}
+                          onClick={() => setMmuRefreshToken((token) => token + 1)}><FcRefresh className="action-icon" /></button>
+                      </RichTooltip> : <button className="modal-icon-button" type="button" title={widget === "sensors" ? t("actions.refresh") : t("homeGrid.openFull")}
+                        aria-label={widget === "sensors" ? t("actions.refresh") : t("homeGrid.openFull")}
+                        disabled={widget === "sensors" && sensorsLoading}
+                        onClick={() => widget === "macros" ? openMacrosModal() : widget === "console" ? setKlipperConsoleOpen(true) : widget === "movement" ? setMovementOpen(true) : setSensorRefreshToken((token) => token + 1)}>
+                        {widget === "sensors" ? <FcRefresh className="action-icon" /> : <MdOpenInFull className="action-icon" />}
+                      </button>}
                     </div>
                   </header>
                   <div className="home-widget-body">
@@ -6646,7 +6862,8 @@ function Editor() {
                         <div className="home-console-log" role="log" aria-label={t("panels.klipperConsole")}>
                           {klipperConsoleTimeline.slice(0, 30).map((item) => (
                             <div className="home-console-entry" key={item.id}>
-                              {item.kind === "store" ? <KlipperStoreMessage message={item.entry.message} /> : <pre>{`${item.entry.script}\n${item.entry.message}`}</pre>}
+                              <time>{item.kind === "store" ? formatTimestamp(item.entry.time) : item.entry.timestamp}</time>
+                              {item.kind === "store" ? <KlipperStoreMessage message={item.entry.message} /> : <pre>{`${item.entry.script}\n${item.entry.status === "error" ? parseKlipperError(item.entry.message).summary : formatKlipperResponse(item.entry.message)}`}</pre>}
                             </div>
                           ))}
                         </div>
@@ -6751,6 +6968,8 @@ function Editor() {
                           })}
                         </div>
                       </>
+                    ) : widget === "tray" ? (
+                      <PurgeTrayWidget apiBase={appBasePath} locale={localeCode} />
                     ) : (
                       <div className={`mmu-widget ${mmuDragActive ? "drop-active" : ""}`}
                         onDragEnter={(event) => { event.preventDefault(); setMmuDragActive(true); }}
@@ -6771,6 +6990,7 @@ function Editor() {
                               const gateColor = mmuColor(valueArray(mmu.gate_color)[gate]);
                               const name = String(valueArray(mmu.gate_filament_name)[gate] ?? "");
                               const material = String(valueArray(mmu.gate_material)[gate] ?? "");
+                              const vendor = String(valueArray(mmu.gate_vendor)[gate] ?? "");
                               const temperature = Number(valueArray(mmu.gate_temperature)[gate] ?? 0);
                               const tools = mmuTtgMap.flatMap((mappedGate, tool) => mappedGate === gate ? [tool] : []);
                               const selected = gate === mmuSelectedGate;
@@ -6779,29 +6999,37 @@ function Editor() {
                               const spoolMaterial = gateStatus === 0 ? "" : material || "?";
                               return <div className={`mmu-gate ${selected ? "selected" : ""} ${loaded ? "loaded" : ""}`} key={gate}
                                 style={{ zIndex: selected ? 20 : 1 }}>
-                                <button className="mmu-spool" type="button" onClick={() => setMmuMenuGate((current) => current === gate ? null : gate)}
-                                  aria-expanded={mmuMenuGate === gate} title={[name, material, temperature > 0 ? `${temperature} C` : ""].filter(Boolean).join(" | ")}>
-                                  <img src={apiPath(`/api/printer/mmu/spool?color=${encodeURIComponent(spoolColor)}&material=${encodeURIComponent(spoolMaterial)}&empty=${gateStatus === 0 ? "1" : "0"}&v=2`)}
-                                    alt="" aria-hidden="true" draggable={false} />
-                                </button>
+                                <RichTooltip content={<span className="rich-tooltip-stack">
+                                  <strong>{name || `${t("mmu.gate")} ${gate}`}</strong>
+                                  <span className="mmu-tooltip-vendor"><i style={{ background: gateColor }} aria-hidden="true" />{vendor || "--"}</span>
+                                  <span>{gateStatus === 0 ? t("homeGrid.empty") : [material || t("mmu.unknown"), temperature > 0 ? `${temperature} C` : ""].filter(Boolean).join(" | ")}</span>
+                                </span>}>
+                                  <button className="mmu-spool" type="button" onClick={() => setMmuMenuGate((current) => current === gate ? null : gate)}
+                                    aria-expanded={mmuMenuGate === gate} aria-label={`${t("mmu.gate")} ${gate}`}>
+                                    <img src={apiPath(`/api/printer/mmu/spool?color=${encodeURIComponent(spoolColor)}&material=${encodeURIComponent(spoolMaterial)}&empty=${gateStatus === 0 ? "1" : "0"}&v=2`)}
+                                      alt="" aria-hidden="true" draggable={false} />
+                                  </button>
+                                </RichTooltip>
                                 <div className="mmu-tool-list">
-                                  {(tools.length ? tools : [-1]).map((tool) => tool >= 0 ? <button key={tool} type="button" disabled={mmuManualDisabled || tool === mmuSelectedTool}
-                                    className={tool === mmuSelectedTool ? "active" : ""} onClick={() => void runMmuAction("tool", { tool })}>T{tool}</button> : <span key="unmapped">G{gate}</span>)}
+                                  {(tools.length ? tools : [-1]).map((tool) => tool >= 0 ? <RichTooltip key={tool} content={`${t("mmu.select")} T${tool}`} placement="bottom">
+                                    <button type="button" disabled={mmuManualDisabled || tool === mmuSelectedTool}
+                                      className={tool === mmuSelectedTool ? "active" : ""} onClick={() => void runMmuAction("tool", { tool })}>T{tool}</button>
+                                  </RichTooltip> : <span key="unmapped">G{gate}</span>)}
                                 </div>
                                 <div className="mmu-gate-caption"><strong>{gateStatus === 0 ? "..." : material || t("mmu.unknown")}</strong><span>{temperature > 0 ? `${temperature} C` : "--"}</span></div>
                               </div>;
                             })}
-                            {Boolean(mmu.has_bypass) && <button type="button" className={`mmu-bypass ${mmuSelectedGate === -2 ? "active" : ""}`}
-                              disabled={mmuManualDisabled || mmuSelectedGate === -2} onClick={() => void runMmuAction("bypass")}>{t("mmu.bypass")}</button>}
+                            {Boolean(mmu.has_bypass) && <RichTooltip content={t("mmu.bypass")}><button type="button" className={`mmu-bypass ${mmuSelectedGate === -2 ? "active" : ""}`}
+                              disabled={mmuManualDisabled || mmuSelectedGate === -2} onClick={() => void runMmuAction("bypass")}>{t("mmu.bypass")}</button></RichTooltip>}
                           </div>
                           <div className="mmu-gate-menu">
                             <strong>{mmuMenuGate === null ? "G--" : `G${mmuMenuGate}`}</strong>
                             {([
                               ["select", mdiSwapHorizontal, "mmu.select"], ["preload", mdiTrayArrowDown, "mmu.preload"],
                               ["eject", mdiEject, "mmu.eject"], ["check", mdiCheckCircleOutline, "mmu.check"]
-                            ] as const).map(([action, icon, label]) => <button type="button" key={action}
+                            ] as const).map(([action, icon, label]) => <RichTooltip key={action} content={t(label)}><button type="button"
                               disabled={mmuMenuGate === null || mmuManualDisabled || (action === "select" && mmuMenuGate === mmuSelectedGate) || (action === "preload" && mmuMenuGateStatus > 0) || (action === "eject" && mmuMenuGateStatus === 0)}
-                              onClick={() => void runMmuAction(action, { gate: mmuMenuGate })}><MdiIcon path={icon} size={0.75} /><span>{t(label)}</span></button>)}
+                              onClick={() => void runMmuAction(action, { gate: mmuMenuGate })}><MdiIcon path={icon} size={0.75} /><span>{t(label)}</span></button></RichTooltip>)}
                           </div>
                           {(mmuEncoder || mmuFlowguard) && <div className="mmu-monitoring">
                             {mmuEncoder && <MmuEncoderMeter encoder={mmuEncoder} label={t("mmu.flowrate")} />}
@@ -6813,19 +7041,29 @@ function Editor() {
                             {([
                               ["home", mdiHome, "mmu.home", false], ["recover", mdiAutoFix, "mmu.recover", false],
                               ["load", mdiTrayArrowDown, "mmu.load", mmuFilamentPosition !== 0], ["unload", mdiTrayArrowUp, "mmu.unload", mmuFilamentPosition === 0]
-                            ] as const).map(([action, icon, label, disabled]) => <button key={action} type="button" disabled={mmuManualDisabled || disabled}
-                              title={t(label)} aria-label={t(label)} onClick={() => void runMmuAction(action)}><MdiIcon path={icon} size={0.82} /><span>{t(label)}</span></button>)}
-                            {Boolean(mmu.is_paused && mmu.is_locked) && <button type="button" disabled={mmuManualDisabled} onClick={() => void runMmuAction("unlock")}>
-                              <MdiIcon path={mdiLockOpenVariant} size={0.82} /><span>{t("mmu.unlock")}</span></button>}
+                            ] as const).map(([action, icon, label, disabled]) => <RichTooltip key={action} content={t(label)}><button type="button" disabled={mmuManualDisabled || disabled}
+                              aria-label={t(label)} onClick={() => void runMmuAction(action)}><MdiIcon path={icon} size={0.82} /><span>{t(label)}</span></button></RichTooltip>)}
+                            {Boolean(mmu.is_paused && mmu.is_locked) && <RichTooltip content={t("mmu.unlock")}><button type="button" disabled={mmuManualDisabled} onClick={() => void runMmuAction("unlock")}>
+                              <MdiIcon path={mdiLockOpenVariant} size={0.82} /><span>{t("mmu.unlock")}</span></button></RichTooltip>}
+                            <RichTooltip content={<span className="rich-tooltip-stack"><strong>{t("mmu.checkAll")}</strong><span>{t("mmu.checkAllHelp")}</span></span>}>
+                              <button type="button" disabled={mmuManualDisabled} aria-label={t("mmu.checkAll")} onClick={() => void runMmuAction("check-all")}>
+                                <MdiIcon path={mdiCheckAll} size={0.82} /><span>{t("mmu.checkAll")}</span>
+                              </button>
+                            </RichTooltip>
+                            <RichTooltip content={<span className="rich-tooltip-stack"><strong>{t("mmu.motorsOff")}</strong><span>{t("mmu.motorsOffHelp")}</span></span>}>
+                              <button className="mmu-icon-command" type="button" disabled={mmuManualDisabled} aria-label={t("mmu.motorsOff")} onClick={() => void runMmuAction("motors-off")}>
+                                <MdiIcon path={mdiEngineOff} size={0.9} />
+                              </button>
+                            </RichTooltip>
                           </div>
                         </>}
                         <div className="mmu-import-panel">
                           <input ref={mmuImportInputRef} type="file" accept=".gcode" hidden onChange={(event) => { const file = event.target.files?.[0]; if (file) void importMmuGcode(file); event.currentTarget.value = ""; }} />
-                          <button className="mmu-import-trigger" type="button" onClick={() => mmuImportInputRef.current?.click()}>
+                          <RichTooltip content={t("mmu.dropGcode")}><button className="mmu-import-trigger" type="button" onClick={() => mmuImportInputRef.current?.click()}>
                             <MdiIcon path={mdiDatabaseImportOutline} size={0.9} /><span>{mmuImportProfile ? mmuImportProfile.filename : t("mmu.dropGcode")}</span>
-                          </button>
-                          {mmuImportProfile && <button className="modal-icon-button" type="button" onClick={() => setMmuImportOpen((open) => !open)}
-                            title={t("mmu.preview")} aria-label={t("mmu.preview")}><MdKeyboardArrowDown className={mmuImportOpen ? "rotated" : ""} /></button>}
+                          </button></RichTooltip>
+                          {mmuImportProfile && <RichTooltip content={t("mmu.preview")}><button className="modal-icon-button" type="button" onClick={() => setMmuImportOpen((open) => !open)}
+                            aria-label={t("mmu.preview")}><MdKeyboardArrowDown className={mmuImportOpen ? "rotated" : ""} /></button></RichTooltip>}
                         </div>
                         {mmuImportOpen && mmuImportProfile && <div className="mmu-import-preview">
                           {mmuImportProfile.filaments.map((filament) => {
@@ -6833,9 +7071,9 @@ function Editor() {
                             return <div key={filament.tool}><span className="mmu-color-swatch" style={{ background: mmuColor(filament.color) }} />
                               <strong>T{filament.tool} &gt; G{gate}</strong><span>{filament.name}</span><small>{[filament.vendor, filament.material, filament.temperature ? `${filament.temperature} C` : ""].filter(Boolean).join(" | ")}</small></div>;
                           })}
-                          <button className="dialog-button primary" type="button" disabled={mmuManualDisabled || mmuGateCount < 1 || Boolean(mmuAction)} onClick={() => void applyMmuImport()}>
+                          <RichTooltip content={t("mmu.applyImport")}><button className="dialog-button primary" type="button" disabled={mmuManualDisabled || mmuGateCount < 1 || Boolean(mmuAction)} onClick={() => void applyMmuImport()}>
                             <MdiIcon path={mdiDatabaseImportOutline} size={0.8} />{t("mmu.applyImport")}
-                          </button>
+                          </button></RichTooltip>
                         </div>}
                         {mmuDragActive && <div className="mmu-drop-overlay"><MdiIcon path={mdiDatabaseImportOutline} size={1.4} /><span>{t("mmu.releaseGcode")}</span></div>}
                       </div>
@@ -6900,6 +7138,7 @@ function Editor() {
             <div className="editor-grid" style={{ "--outline-width": `${outlineWidth}px` } as CSSProperties}>
               <div className="code-host">
                 <CodeMirror
+                  key={activeFile.path}
                   value={activeFile.content}
                   height="100%"
                   maxHeight="100%"
@@ -6912,6 +7151,10 @@ function Editor() {
                   }}
                   onCreateEditor={(view) => {
                     editorViewRef.current = view;
+                    restoreEditorView(activeFile.path, view);
+                  }}
+                  onUpdate={(update) => {
+                    captureEditorView(activeFile.path, update.view);
                   }}
                   onChange={(value) => {
                     setOpenFiles((files) =>
@@ -7508,7 +7751,7 @@ function Editor() {
                       <button
                         className="movement-action-button"
                         type="button"
-                        disabled={quickCommandDisabled}
+                        disabled={movementQuickCommandDisabled}
                         onClick={() => void runQuickCommand("home-all", t("actions.homeAll"))}
                       >
                         <MdHome className="movement-action-icon" />
@@ -7518,7 +7761,7 @@ function Editor() {
                         <button
                           className="movement-action-button"
                           type="button"
-                          disabled={quickCommandDisabled}
+                          disabled={movementQuickCommandDisabled}
                           onClick={() => void runQuickCommand("z-tilt", t("actions.zTilt"))}
                         >
                           {t("movement.zTilt").toUpperCase()}
@@ -7529,7 +7772,7 @@ function Editor() {
                     <button
                       className="movement-action-button"
                       type="button"
-                      disabled={quickCommandDisabled}
+                      disabled={movementQuickCommandDisabled}
                       onClick={() => void runQuickCommand("home-x", t("actions.homeX"))}
                     >
                       X
@@ -7537,7 +7780,7 @@ function Editor() {
                     <button
                       className="movement-action-button"
                       type="button"
-                      disabled={quickCommandDisabled}
+                      disabled={movementQuickCommandDisabled}
                       onClick={() => void runQuickCommand("home-y", t("actions.homeY"))}
                     >
                       Y
@@ -7545,7 +7788,7 @@ function Editor() {
                     <button
                       className="movement-action-button"
                       type="button"
-                      disabled={quickCommandDisabled}
+                      disabled={movementQuickCommandDisabled}
                       onClick={() => void runQuickCommand("home-z", t("actions.homeZ"))}
                     >
                       Z
@@ -8820,14 +9063,14 @@ function Editor() {
                 </div>
               </div>
               <form className="klipper-console-body" onSubmit={sendKlipperConsoleCommand}>
-                <p className="setting-help">{t("klipperConsole.help")}</p>
+                <p className="setting-help">{t(klipperConsoleSingleLine ? "klipperConsole.singleLineHelp" : "klipperConsole.help")}</p>
                 <label className="klipper-console-field">
                   <span>{t("panels.klipperConsole")}</span>
                   <textarea
                     ref={klipperConsoleInputRef}
                     autoFocus
                     value={klipperConsoleInput}
-                    placeholder={t("klipperConsole.placeholder")}
+                    placeholder={t(klipperConsoleSingleLine ? "klipperConsole.singleLinePlaceholder" : "klipperConsole.placeholder")}
                     spellCheck={false}
                     autoCapitalize="off"
                     onChange={(event) => setKlipperConsoleInput(event.target.value)}
@@ -8837,7 +9080,7 @@ function Editor() {
                         return;
                       }
 
-                      if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+                      if (!event.nativeEvent.isComposing && event.key === "Enter" && ((klipperConsoleSingleLine && !event.shiftKey) || event.ctrlKey || event.metaKey)) {
                         event.preventDefault();
                         void sendKlipperConsoleCommand();
                       }
@@ -8845,6 +9088,13 @@ function Editor() {
                   />
                 </label>
                 <div className="dialog-actions">
+                  <label className="klipper-console-single-line">
+                    <input type="checkbox" checked={klipperConsoleSingleLine} onChange={(event) => {
+                      setKlipperConsoleSingleLine(event.target.checked);
+                      preferences.setItem(klipperConsoleSingleLineKey, String(event.target.checked));
+                    }} />
+                    <span>{t("klipperConsole.disableMultiline")}</span>
+                  </label>
                   <button className="dialog-button" type="button" onClick={() => setKlipperConsoleOpen(false)}>
                     {t("actions.cancel")}
                   </button>
@@ -8904,6 +9154,12 @@ function Editor() {
                               <time>{formatTimestamp(item.entry.time)}</time>
                               <KlipperStoreMessage message={item.entry.message} />
                             </article>
+                          ) : item.entry.status === "error" ? (
+                            <KlipperConsoleErrorEntry key={item.id} entry={item.entry} labels={{
+                              macro: t("klipperConsole.macroError"), generic: t("klipperConsole.genericError"),
+                              show: t("klipperConsole.showErrorDetails"), hide: t("klipperConsole.hideErrorDetails"),
+                              copy: t("klipperConsole.copyError"), copied: t("klipperConsole.errorCopied")
+                            }} />
                           ) : (
                             <article key={item.id} className={`klipper-console-entry ${item.entry.status}`}>
                               <div className="klipper-console-entry-header">
@@ -8913,7 +9169,7 @@ function Editor() {
                                 <time>{item.entry.timestamp}</time>
                               </div>
                               <pre>{item.entry.script}</pre>
-                              <p>{item.entry.message}</p>
+                              <p>{formatKlipperResponse(item.entry.message)}</p>
                               <div className="klipper-command-actions">
                                 <button
                                   type="button"
@@ -9609,16 +9865,16 @@ function Editor() {
         )}
 
         <footer className="statusbar">
-          <span>{message}</span>
+          <span className="statusbar-message" title={message}>{message}</span>
           {printerStatus && (
-            <span title={printerStatus.webhooksMessage || printerStatus.error}>
+            <span className="statusbar-printer" title={printerStatus.webhooksMessage || printerStatus.error}>
               {t("status.printerState", { state: printerStatus.printState })}
               {printerStatus.filename ? ` - ${printerStatus.filename}` : ""}
               {printerStatus.printing ? ` - ${formatProgress(printerStatus.progress)}` : ""}
             </span>
           )}
           {activeFile && (
-            <span>
+            <span className="statusbar-file" title={activeFile.path}>
               {activeFile.path}
               {activeFile.kind !== "image" && activeFile.content !== activeFile.savedContent
                 ? ` - ${t("status.modified")}`

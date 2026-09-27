@@ -48,9 +48,10 @@ export async function POST(request: NextRequest) {
       const tool = integer(body.tool);
       if (gateCount > 0 && tool >= gateCount) throw new Error("MMU tool is out of range");
       script = `T${tool}`;
-    } else if (["home", "recover", "load", "unload", "unlock"].includes(action)) {
+    } else if (["home", "recover", "load", "unload", "unlock", "check-all", "motors-off"].includes(action)) {
       const commands: Record<string, string> = {
-        home: "MMU_HOME", recover: "MMU_RECOVER", load: "MMU_LOAD", unload: "MMU_UNLOAD", unlock: "MMU_UNLOCK"
+        home: "MMU_HOME", recover: "MMU_RECOVER", load: "MMU_LOAD", unload: "MMU_UNLOAD", unlock: "MMU_UNLOCK",
+        "check-all": "MMU_CHECK_GATE ALL=1", "motors-off": "MMU_MOTORS_OFF"
       };
       script = commands[action];
     } else if (action === "apply-map") {

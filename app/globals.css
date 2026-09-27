@@ -1537,7 +1537,7 @@ h1 {
   background: var(--panel);
 }
 
-.purge-tray-widget { display: grid; gap: 10px; min-width: 0; }
+.purge-tray-widget { --tray-brush-color: #3e91b8; display: grid; gap: 10px; min-width: 0; }
 .purge-tray-summary { display: flex; align-items: center; gap: 14px; min-width: 0; color: var(--muted); font-size: 12px; }
 .purge-tray-summary > span { min-width: 0; }
 .purge-tray-summary > span:not(:first-child) { margin-left: auto; }
@@ -1547,25 +1547,30 @@ h1 {
 .purge-tray-state::before { width: 8px; height: 8px; border-radius: 50%; background: #45c96b; content: ""; }
 .purge-tray-state.error::before, .purge-tray-state.full::before { background: #ff5252; }
 .purge-tray-state:not(.idle)::before { animation: tray-status-pulse 1s ease-in-out infinite; }
-.purge-tray-scene { position: relative; min-height: 155px; overflow: hidden; border-block: 1px solid var(--border-soft); background: #11161c; }
-.purge-tray-scene svg { display: block; width: 100%; height: 180px; max-height: 28vh; }
+.purge-tray-scene { position: relative; min-height: 175px; overflow: hidden; border-block: 1px solid var(--border-soft); background: #11161c; }
+.purge-tray-scene svg { display: block; width: 100%; height: 205px; max-height: 30vh; }
 .tray-frame, .tray-scale { fill: none; stroke: #65717e; stroke-width: 2.5; }
 .tray-frame circle { fill: #202832; stroke-width: 2; }
 .tray-carriage { transform-box: fill-box; transform-origin: center; transition: transform 500ms ease-in-out; }
 .tray-carriage.moving { transition-duration: 900ms; }
 .tray-arm { fill: #2a323b; stroke: #8c99a6; stroke-width: 1.5; }
 .tray-bin { fill: none; stroke: #8c99a6; stroke-width: 2; }
-.tray-bin-fill { fill: var(--tray-filament-color); opacity: .9; }
+.tray-bin-fill { fill: var(--tray-brush-color); opacity: .9; }
 .tray-bin-label { fill: var(--text); stroke: none; font-size: 9px; text-anchor: middle; }
 .tray-slide { transform-box: fill-box; transform-origin: center; }
 .tray-slide.releasing { animation: tray-bed-release 1.5s ease-in-out infinite; }
 .tray-slide-base { fill: var(--accent); stroke: color-mix(in srgb, var(--accent) 72%, white); stroke-width: 1.5; }
 .tray-bed { fill: #909ca8; stroke: #b6c0ca; stroke-width: 1; }
 .tray-stop { fill: #151a20; stroke: #9aa5b0; stroke-width: 1; }
-.tray-brush path:first-child { fill: #193849; stroke: #3e91b8; stroke-width: 1; }
+.tray-brush path:first-child { fill: #193849; stroke: var(--tray-brush-color); stroke-width: 1; }
 .tray-brush path:not(:first-child) { fill: none; stroke: #55bce9; stroke-width: 2.5; }
+.tray-height-block { fill: #252d36; stroke: #8c99a6; stroke-width: 1; }
+.tray-height-arrow { fill: none; stroke: #8c99a6; stroke-width: 1; }
 .tray-brush.brushing { animation: tray-brush-motion 180ms ease-in-out infinite alternate; }
 .tray-nozzle { fill: #c8a735; stroke: #f1cf4f; stroke-width: 1; transition: transform 450ms ease-in-out; }
+.tray-nozzle-body { fill: #d4b337; }
+.tray-nozzle-tip { fill: #c69f25; }
+.tray-nozzle-neck { fill: #e0c54a; }
 .tray-nozzle.purging { animation: tray-nozzle-pulse 700ms ease-in-out infinite; }
 .tray-nozzle.cleaning { animation: tray-nozzle-clean 360ms ease-in-out infinite alternate; }
 .tray-blob { fill: var(--tray-filament-color); opacity: 0; filter: drop-shadow(0 2px 4px #000); transform-box: fill-box; transform-origin: center; }
@@ -1595,6 +1600,10 @@ h1 {
 .purge-tray-settings > footer { justify-content: flex-end; border-top: 1px solid var(--border); border-bottom: 0; }
 .purge-tray-settings-body { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; min-height: 0; overflow: auto; padding: 14px; }
 .purge-tray-settings-body > label { grid-column: 1 / -1; }
+.purge-tray-config-sync { grid-column: 1 / -1; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 9px; border-left: 3px solid #ffb020; background: rgba(255,176,32,.08); color: #ffd27a; font-size: 12px; }
+.purge-tray-config-sync span { flex: 1 1 260px; }
+.purge-tray-config-sync button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 32px; padding: 0 10px; border: 1px solid var(--border); border-radius: var(--control-radius); background: var(--panel-soft); color: var(--text); cursor: pointer; }
+.purge-tray-config-sync button:disabled { cursor: not-allowed; opacity: .45; }
 .purge-tray-settings-body fieldset { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; min-width: 0; margin: 0; padding: 12px; border: 1px solid var(--border); }
 .purge-tray-settings-body legend { padding: 0 5px; color: var(--text); font-size: 12px; font-weight: 800; }
 .purge-tray-settings-body label { display: grid; gap: 5px; min-width: 0; color: var(--muted); font-size: 11px; }

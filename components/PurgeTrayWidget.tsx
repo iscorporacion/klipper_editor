@@ -9,6 +9,7 @@ type TrayPayload = {
   available: boolean;
   servoAvailable: boolean;
   filamentColor: string;
+  allAxesHomed: boolean;
   printing: boolean;
   state: Record<string, unknown> | null;
   settings: Record<string, unknown> | null;
@@ -31,6 +32,7 @@ type TrayForm = {
   brushY: number;
   brushZ: number;
   purgeLength: number;
+  blobDescent: number;
   servoReceiveAngle: number;
   servoReleaseAngle: number;
   servoDwell: number;
@@ -49,7 +51,7 @@ type SyncStatus = {
 const defaults: TrayForm = {
   profile: "Stealthburner", safePosition: 30, purgePosition: 25, brushPosition: 25, dropPosition: 50,
   purgeX: 0, purgeY: 0, purgeZ: 0, brushX1: 0, brushX2: 0, brushY: 0, brushZ: 0,
-  purgeLength: 60, servoReceiveAngle: 90, servoReleaseAngle: 0, servoDwell: 700, maxBlobs: 80
+  purgeLength: 60, blobDescent: 5, servoReceiveAngle: 90, servoReleaseAngle: 0, servoDwell: 700, maxBlobs: 80
 };
 
 function number(value: unknown, fallback = 0) {
@@ -79,14 +81,14 @@ export default function PurgeTrayWidget({ apiBase = "", locale = "es" }: { apiBa
     position: "Posicion", bucket: "Deposito", homed: "HOME", required: "Requerido", close: "Cerrar", save: "Guardar configuracion",
     profile: "Perfil", tray: "Posiciones de bandeja", toolhead: "Cabezal", brush: "Cepillo", purgeConfig: "Purga y deposito", servo: "Cama movil (servo 9g)", servoPending: "Servo pendiente de configurar",
     error: "No se pudo controlar la bandeja", refresh: "Actualizar", printing: "Controles bloqueados durante impresion", servoMissing: "Servo pendiente", testReceive: "Probar recepcion", testRelease: "Probar descarga",
-    install: "Instalar configuracion", update: "Actualizar configuracion", restart: "Reiniciar Klipper", confirmRestart: "¿Reiniciar Klipper para cargar la configuracion de la bandeja?", readOnly: "Moonraker no permite escribir en config."
+    install: "Instalar configuracion", update: "Actualizar configuracion", restart: "Reiniciar Klipper", confirmRestart: "¿Reiniciar Klipper para cargar la configuracion de la bandeja?", readOnly: "Moonraker no permite escribir en config.", xyzRequired: "HOME XYZ requerido", configOutdated: "La configuracion instalada no coincide con esta version del widget."
   } : {
     unavailable: "The purge tray configuration is not installed.", idle: "Ready", home: "Home", safe: "Safe",
     purge: "Test purge", clean: "Test cleaning", drop: "Drop", reset: "Empty bucket", settings: "Configure",
     position: "Position", bucket: "Bucket", homed: "HOME", required: "Required", close: "Close", save: "Save configuration",
     profile: "Profile", tray: "Tray positions", toolhead: "Toolhead", brush: "Brush", purgeConfig: "Purge and bucket", servo: "Moving bed (9g servo)", servoPending: "Servo configuration pending",
     error: "Unable to control purge tray", refresh: "Refresh", printing: "Controls locked while printing", servoMissing: "Servo pending", testReceive: "Test receive", testRelease: "Test release",
-    install: "Install configuration", update: "Update configuration", restart: "Restart Klipper", confirmRestart: "Restart Klipper to load the purge tray configuration?", readOnly: "Moonraker does not allow writes to config."
+    install: "Install configuration", update: "Update configuration", restart: "Restart Klipper", confirmRestart: "Restart Klipper to load the purge tray configuration?", readOnly: "Moonraker does not allow writes to config.", xyzRequired: "XYZ HOME required", configOutdated: "The installed configuration does not match this widget version."
   }, [es]);
   const [data, setData] = useState<TrayPayload | null>(null);
   const [busy, setBusy] = useState("");
@@ -104,7 +106,7 @@ export default function PurgeTrayWidget({ apiBase = "", locale = "es" }: { apiBa
       setData(payload);
       setMessage("");
       const vars = payload.settings;
-      if (payload.available && vars) setForm({
+      if (payload.available && vars && !settingsOpen) setForm({
         profile: String(vars.profile_name ?? defaults.profile),
         safePosition: setting(vars, "safe_position", defaults.safePosition),
         purgePosition: setting(vars, "purge_position", defaults.purgePosition),
@@ -114,13 +116,14 @@ export default function PurgeTrayWidget({ apiBase = "", locale = "es" }: { apiBa
         brushX1: setting(vars, "brush_x1", 0), brushX2: setting(vars, "brush_x2", 0),
         brushY: setting(vars, "brush_y", 0), brushZ: setting(vars, "brush_z", 0),
         purgeLength: setting(vars, "purge_length", defaults.purgeLength),
+        blobDescent: setting(vars, "blob_descent", defaults.blobDescent),
         servoReceiveAngle: setting(vars, "servo_receive_angle", defaults.servoReceiveAngle),
         servoReleaseAngle: setting(vars, "servo_release_angle", defaults.servoReleaseAngle),
         servoDwell: setting(vars, "servo_dwell", defaults.servoDwell),
         maxBlobs: setting(vars, "max_blobs", defaults.maxBlobs)
       });
     } catch (error) { setMessage(friendlyError(error, text.error)); }
-  }, [apiBase, text.error]);
+  }, [apiBase, settingsOpen, text.error]);
 
   useEffect(() => { void load(); }, [load]);
   const loadSyncStatus = useCallback(async () => {
@@ -134,16 +137,22 @@ export default function PurgeTrayWidget({ apiBase = "", locale = "es" }: { apiBa
   useEffect(() => { void loadSyncStatus(); }, [loadSyncStatus]);
   const operation = String(data?.state?.state ?? "idle").toLowerCase();
   useEffect(() => {
-    if (!data?.available || operation === "idle" || operation === "error" || operation === "full") return;
-    const timer = window.setInterval(() => void load(), 700);
+    if (!data?.available) return;
+    const active = operation !== "idle" && operation !== "error" && operation !== "full";
+    const timer = window.setInterval(() => void load(), active ? 700 : 2500);
     return () => window.clearInterval(timer);
   }, [data?.available, load, operation]);
 
   const run = async (action: string, extra: Record<string, unknown> = {}) => {
     setBusy(action); setMessage("");
     const optimistic: Record<string, string> = { home: "homing", safe: "moving_safe", purge: "purging", clean: "cleaning", drop: "dropping" };
-    if (optimistic[action]) {
-      setData((current) => current ? { ...current, state: { ...(current.state ?? {}), state: optimistic[action] } } : current);
+    if (optimistic[action] && !(action === "home" && !data?.allAxesHomed)) {
+      const targetPosition = action === "home" ? 0
+        : action === "clean" ? form.brushPosition
+          : action === "purge" ? form.purgePosition
+            : action === "safe" ? form.safePosition
+              : action === "drop" ? form.dropPosition : undefined;
+      setData((current) => current ? { ...current, state: { ...(current.state ?? {}), state: optimistic[action], ...(targetPosition !== undefined ? { target_position: targetPosition } : {}) } } : current);
     }
     try {
       const response = await fetch(`${apiBase}/api/printer/tray`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, ...extra }) });
@@ -182,13 +191,15 @@ export default function PurgeTrayWidget({ apiBase = "", locale = "es" }: { apiBa
   const full = blobs >= capacity;
   const fillPercent = Math.min(100, Math.max(0, blobs / capacity * 100));
   const moving = ["homing", "moving_safe", "positioning", "dropping"].includes(operation);
-  const trayY = 28 + (moving ? target : position) * 1.9;
+  const trayY = 57 + (moving ? target : position) * 1.5;
   const disabled = busy !== "" || Boolean(data?.printing);
   const input = (key: keyof TrayForm, label: string, min = -1000, max = 1000) => <label><span>{label}</span><input type="number" min={min} max={max} step="0.1" value={form[key] as number}
     onChange={(event) => setForm((current) => ({ ...current, [key]: Number(event.target.value) }))} /></label>;
   const nozzleGraphic = <g className={`tray-nozzle ${operation === "purging" ? "purging" : ""} ${operation === "cleaning" ? "cleaning" : ""}`}
     style={operation === "cleaning" ? { "--tray-clean-y": `${trayY - 69}px` } as CSSProperties : undefined}>
-    <path d="M195 3h25v32l-8 14h-9l-8-14z" /><path d="M200 3V-14h15V3" />
+    <path className="tray-nozzle-body" d="M194 0h27v25h-27z" />
+    <path className="tray-nozzle-tip" d="M199 25h17v14l-6 11h-5l-6-11z" />
+    <path className="tray-nozzle-neck" d="M201 0v-12h13V0" />
   </g>;
 
   return <div className={`purge-tray-widget state-${operation}`} style={{ "--tray-filament-color": data?.filamentColor || "#7457e8" } as CSSProperties}>
@@ -208,11 +219,13 @@ export default function PurgeTrayWidget({ apiBase = "", locale = "es" }: { apiBa
         <span>{text.bucket} <strong className={full ? "danger" : ""}>{blobs} / {capacity}</strong></span>
       </div>
       <div className="purge-tray-scene" aria-label={`${text.position}: ${position.toFixed(1)} mm`}>
-        <svg viewBox="0 0 460 180" role="img">
-          <g className="tray-frame"><path d="M356 15v150M376 15v150M346 165h40" /><circle cx="366" cy="159" r="13" /></g>
+        <svg viewBox="0 0 460 205" role="img">
+          <g className="tray-frame"><path d="M356 32v158M376 32v158M346 190h40" /><circle cx="366" cy="184" r="13" /></g>
           {operation === "cleaning" && nozzleGraphic}
           <g className={`tray-carriage ${moving ? "moving" : ""}`} style={{ transform: `translateY(${trayY}px)` }}>
             <path className="tray-arm" d="M357 0H251v22h106" />
+            <path className="tray-height-block" d="M342-13h34v48h-34z" />
+            <path className="tray-height-arrow" d="M377 0h14m0 0-5-4m5 4-5 4" />
             <path className="tray-bin" d="M155 16v44h96V16" />
             <rect className="tray-bin-fill" x="159" y={56 - (36 * fillPercent / 100)} width="88" height={36 * fillPercent / 100} />
             <text className="tray-bin-label" x="203" y="53">{Math.round(fillPercent)}%</text>
@@ -225,18 +238,19 @@ export default function PurgeTrayWidget({ apiBase = "", locale = "es" }: { apiBa
           </g>
           {operation !== "cleaning" && nozzleGraphic}
           <g className="tray-blob-level" style={{ transform: `translateY(${trayY}px)` }}><circle className={`tray-blob ${operation === "purging" ? "forming" : ""} ${operation === "dropping" ? "falling" : ""}`} cx="208" cy="-14" r="8" /></g>
-          <g className="tray-scale"><path d="M402 28v95" />{[0,10,20,30,40,50].map((tick) => <g key={tick}><path d={`M395 ${28 + tick * 1.9}h14`} /><text x="415" y={32 + tick * 1.9}>{tick}</text></g>)}</g>
+          <g className="tray-scale"><path d="M402 57v75" />{[0,10,20,30,40,50].map((tick) => <g key={tick}><path d={`M395 ${57 + tick * 1.5}h14`} /><text x="415" y={61 + tick * 1.5}>{tick}</text></g>)}</g>
         </svg>
         <div className="purge-tray-temperature">{Math.round(data.temperature)} / {Math.round(data.target)} C</div>
       </div>
       <div className="purge-tray-status-row">
         <span className={homed ? "ok" : "warn"}>{text.homed}: {homed ? "OK" : text.required}</span>
+        {!data.allAxesHomed && <span className="warn">{text.xyzRequired}</span>}
         {!data.servoAvailable && <span className="warn">{text.servoMissing}</span>}
         {data.printing && <span>{text.printing}</span>}
       </div>
       {message && <p className="purge-tray-message">{message}</p>}
       <div className="purge-tray-actions">
-        <button type="button" disabled={disabled} onClick={() => void run("home")}><MdHome />{text.home}</button>
+        <button type="button" disabled={disabled || !data.allAxesHomed} onClick={() => void run("home")} title={!data.allAxesHomed ? text.xyzRequired : text.home}><MdHome />{text.home}</button>
         <button type="button" disabled={disabled || !homed} onClick={() => void run("safe")}><MdKeyboardArrowDown />{text.safe}</button>
         <button type="button" disabled={disabled || !homed || full || !data.servoAvailable} onClick={() => void run("purge")}><MdKeyboardArrowUp />{text.purge}</button>
         <button type="button" disabled={disabled || !homed} onClick={() => void run("clean")}><FaBroom />{text.clean}</button>
@@ -249,11 +263,16 @@ export default function PurgeTrayWidget({ apiBase = "", locale = "es" }: { apiBa
       <section className="options-modal purge-tray-settings" role="dialog" aria-modal="true" aria-labelledby="purge-tray-settings-title" onMouseDown={(event) => event.stopPropagation()}>
         <header><h2 id="purge-tray-settings-title">{text.settings}</h2><button className="modal-icon-button" type="button" onClick={() => setSettingsOpen(false)} aria-label={text.close}><MdClose /></button></header>
         <div className="purge-tray-settings-body">
+          {syncStatus?.enabled && (!syncStatus.current || syncStatus.restartRequired) && <div className="purge-tray-config-sync">
+            <span>{text.configOutdated}</span>
+            {!syncStatus.current && <button type="button" disabled={syncBusy !== "" || !syncStatus.writable} onClick={() => void manageConfig("install")}><MdCloudUpload />{text.update}</button>}
+            {syncStatus.restartRequired && <button type="button" disabled={syncBusy !== ""} onClick={() => void manageConfig("restart")}><MdRestartAlt />{text.restart}</button>}
+          </div>}
           <label><span>{text.profile}</span><input value={form.profile} maxLength={32} onChange={(event) => setForm((current) => ({ ...current, profile: event.target.value }))} /></label>
           <fieldset><legend>{text.tray}</legend>{input("safePosition", "Segura", 0, 50)}{input("purgePosition", "Purga", 0, 50)}{input("brushPosition", "Cepillo", 0, 50)}{input("dropPosition", "Descarga", 0, 50)}</fieldset>
           <fieldset><legend>{text.toolhead}</legend>{input("purgeX", "Purga X")}{input("purgeY", "Purga Y")}{input("purgeZ", "Purga Z", -5, 500)}</fieldset>
           <fieldset><legend>{text.brush}</legend>{input("brushX1", "X inicial")}{input("brushX2", "X final")}{input("brushY", "Y")}{input("brushZ", "Z", -5, 500)}</fieldset>
-          <fieldset><legend>{text.purgeConfig}</legend>{input("purgeLength", "Filamento (mm)", 0, 500)}{input("maxBlobs", "Capacidad", 1, 10000)}</fieldset>
+          <fieldset><legend>{text.purgeConfig}</legend>{input("purgeLength", "Filamento (mm)", 0, 500)}{input("blobDescent", "Descenso durante purga (mm)", 0.1, 50)}{input("maxBlobs", "Capacidad", 1, 10000)}</fieldset>
           <fieldset className="purge-tray-servo-settings"><legend>{text.servo}</legend>{input("servoReceiveAngle", "Angulo de recepcion", 0, 180)}{input("servoReleaseAngle", "Angulo de descarga", 0, 180)}{input("servoDwell", "Espera (ms)", 100, 10000)}
             <div className="purge-tray-servo-tests">
               <button type="button" disabled={busy !== "" || !data?.servoAvailable} onClick={() => void run("servo-test", { angle: form.servoReceiveAngle })}><MdKeyboardArrowUp />{text.testReceive}</button>

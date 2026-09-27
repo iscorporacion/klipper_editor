@@ -33,6 +33,9 @@ export async function POST(request: NextRequest) {
     if (status.printing) {
       return NextResponse.json({ error: "Manual tray controls are disabled while printing" }, { status: 409 });
     }
+    if (action === "home" && !status.allAxesHomed) {
+      return NextResponse.json({ error: "XYZ HOME is required before homing the purge tray" }, { status: 409 });
+    }
 
     let script = commands[action];
     if (action === "move") {
@@ -54,6 +57,7 @@ export async function POST(request: NextRequest) {
         BRUSH_Y: finite(body.brushY, -1000, 1000, "brush Y"),
         BRUSH_Z: finite(body.brushZ, -100, 1000, "brush Z"),
         PURGE_LENGTH: finite(body.purgeLength, 0, 500, "purge length"),
+        BLOB_DESCENT: finite(body.blobDescent, 0.1, 50, "blob descent"),
         SERVO_RECEIVE: finite(body.servoReceiveAngle, 0, 180, "servo receive angle"),
         SERVO_RELEASE: finite(body.servoReleaseAngle, 0, 180, "servo release angle"),
         SERVO_DWELL: finite(body.servoDwell, 100, 10000, "servo dwell"),

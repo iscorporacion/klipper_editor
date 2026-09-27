@@ -114,6 +114,7 @@ export type TrayStatus = {
   available: boolean;
   servoAvailable: boolean;
   filamentColor: string;
+  allAxesHomed: boolean;
   printing: boolean;
   state: Record<string, unknown> | null;
   settings: Record<string, unknown> | null;
@@ -1063,7 +1064,7 @@ export async function getTrayStatus(): Promise<TrayStatus> {
   const stateObject = "gcode_macro _BANDEJA_STATE";
   const settingsObject = "gcode_macro _BANDEJA_VARS";
   if (!objects.includes(stateObject) || !objects.includes(settingsObject)) {
-    return { available: false, servoAvailable: false, filamentColor: "#7457e8", printing: false, state: null, settings: null, temperature: 0, target: 0 };
+    return { available: false, servoAvailable: false, filamentColor: "#7457e8", allAxesHomed: false, printing: false, state: null, settings: null, temperature: 0, target: 0 };
   }
 
   const params = new URLSearchParams();
@@ -1071,6 +1072,7 @@ export async function getTrayStatus(): Promise<TrayStatus> {
   params.append(settingsObject, "");
   if (objects.includes("print_stats")) params.append("print_stats", "state");
   if (objects.includes("extruder")) params.append("extruder", "temperature,target");
+  if (objects.includes("toolhead")) params.append("toolhead", "homed_axes");
   if (objects.includes("mmu")) params.append("mmu", "gate,gate_color");
   const payload = await moonrakerFetch(`/printer/objects/query?${params.toString()}`);
   const status = payload?.result?.status ?? payload?.status ?? {};
@@ -1082,6 +1084,9 @@ export async function getTrayStatus(): Promise<TrayStatus> {
     available: true,
     servoAvailable: objects.includes("servo bandeja_cama"),
     filamentColor,
+    allAxesHomed: String(status.toolhead?.homed_axes ?? "").toLowerCase().includes("x")
+      && String(status.toolhead?.homed_axes ?? "").toLowerCase().includes("y")
+      && String(status.toolhead?.homed_axes ?? "").toLowerCase().includes("z"),
     printing: String(status.print_stats?.state ?? "").toLowerCase() === "printing",
     state: status[stateObject] && typeof status[stateObject] === "object" ? status[stateObject] : {},
     settings: status[settingsObject] && typeof status[settingsObject] === "object" ? status[settingsObject] : {},

@@ -40,6 +40,20 @@ export async function POST(request: NextRequest) {
     let script = commands[action];
     if (action === "move") {
       script = `BANDEJA_MOVE POS=${finite(body.position, 0, 50, "tray position")}`;
+    } else if (action === "calibrate-position") {
+      if (!status.allAxesHomed) {
+        return NextResponse.json({ error: "XYZ HOME is required before calibrating a toolhead position" }, { status: 409 });
+      }
+      const mode = String(body.mode ?? "").toUpperCase();
+      if (!["PURGE", "BRUSH_START", "BRUSH_END"].includes(mode)) {
+        return NextResponse.json({ error: "Unsupported calibration position" }, { status: 400 });
+      }
+      const values = {
+        TRAY: finite(body.trayPosition, 0, 50, "tray calibration position"),
+        X: finite(body.x, -1000, 1000, "calibration X"),
+        Y: finite(body.y, -1000, 1000, "calibration Y")
+      };
+      script = `BANDEJA_CALIBRATE_POSITION MODE=${mode} ${Object.entries(values).map(([key, value]) => `${key}=${value}`).join(" ")}`;
     } else if (action === "servo-test") {
       script = `BANDEJA_SERVO ANGLE=${finite(body.angle, 0, 180, "servo angle")}`;
     } else if (action === "configure") {
@@ -51,11 +65,10 @@ export async function POST(request: NextRequest) {
         DROP: finite(body.dropPosition, 0, 50, "drop position"),
         PURGE_X: finite(body.purgeX, -1000, 1000, "purge X"),
         PURGE_Y: finite(body.purgeY, -1000, 1000, "purge Y"),
-        PURGE_Z: finite(body.purgeZ, -100, 1000, "purge Z"),
+        BED_SAFE_Z: finite(body.bedSafeZ, 0, 1000, "safe bed Z"),
         BRUSH_X1: finite(body.brushX1, -1000, 1000, "brush start X"),
         BRUSH_X2: finite(body.brushX2, -1000, 1000, "brush end X"),
         BRUSH_Y: finite(body.brushY, -1000, 1000, "brush Y"),
-        BRUSH_Z: finite(body.brushZ, -100, 1000, "brush Z"),
         PURGE_LENGTH: finite(body.purgeLength, 0, 500, "purge length"),
         BLOB_DESCENT: finite(body.blobDescent, 0.1, 50, "blob descent"),
         SERVO_RECEIVE: finite(body.servoReceiveAngle, 0, 180, "servo receive angle"),

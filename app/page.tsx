@@ -6,6 +6,7 @@ import { preferences } from "@/lib/preferences-client";
 import Image from "next/image";
 import PidChart, { type PidSample } from "@/components/PidChart";
 import PurgeTrayWidget from "@/components/PurgeTrayWidget";
+import RichTooltip from "@/components/RichTooltip";
 import type { BedMeshViewerData } from "@/components/BedMeshViewer";
 import type {
   ChangeEvent,
@@ -15,8 +16,7 @@ import type {
   MouseEvent as ReactMouseEvent,
   ReactNode
 } from "react";
-import { Fragment, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import MdiIcon from "@mdi/react";
 import {
   mdiArrowCollapseLeft, mdiArrowCollapseRight, mdiAutoFix, mdiCheckAll, mdiCheckCircleOutline, mdiConsoleLine,
@@ -68,6 +68,17 @@ import {
 } from "react-icons/md";
 import { IoClose, IoDocumentTextOutline, IoHelpCircleOutline, IoPower } from "react-icons/io5";
 import logoWhite from "@/components/logoWhite.png";
+import kEditorMark from "@/public/img/k-editor-mark.svg";
+import orbysLogo from "@/public/img/orbys.svg";
+import mainsailLogo from "@/public/mainsail-themes/logo.svg";
+import bttLogo from "@/public/mainsail-themes/sidebarLogo-btt.svg";
+import klipperLogo from "@/public/mainsail-themes/sidebarLogo-klipper.svg";
+import ldoLogo from "@/public/mainsail-themes/sidebarLogo-ldo.svg";
+import multecLogo from "@/public/mainsail-themes/sidebarLogo-multec.svg";
+import prusaLogo from "@/public/mainsail-themes/sidebarLogo-prusa.svg";
+import voronLogo from "@/public/mainsail-themes/sidebarLogo-voron.svg";
+import vzbotLogo from "@/public/mainsail-themes/sidebarLogo-vzbot.svg";
+import yumiLogo from "@/public/mainsail-themes/sidebarLogo-yumi.svg";
 import { klipperConfigParser } from "@/lib/codemirror/klipper-config";
 import { bundledLocaleOptions, bundledLocales } from "@/lib/locales";
 
@@ -151,7 +162,7 @@ function readHomeGridPreferences(widgets: HomeWidget[]) {
 }
 
 function apiPath(path: string) {
-  return `${appBasePath}${path}`;
+  return appBasePath && path.startsWith(`${appBasePath}/`) ? path : `${appBasePath}${path}`;
 }
 
 function moonrakerWebSocketUrl(serverUrl?: string) {
@@ -454,22 +465,22 @@ const fallbackMainsailTheme: MainsailVisualTheme = {
   logo: "#D41216",
   primary: "#2196f3",
   logoPath: null,
-  logoUrl: "/mainsail-themes/logo.svg",
+  logoUrl: mainsailLogo.src,
   logoMask: true
 };
 
 const availableThemeLogos = [
-  { theme: "k-editor", label: "K-Editor", logoUrl: "/img/k-editor-mark.svg", logoMask: false },
-  { theme: "orbys", label: "Orbys", logoUrl: "/img/orbys.svg", logoMask: true },
-  { theme: "mainsail", label: "Mainsail", logoUrl: "/mainsail-themes/logo.svg", logoMask: true },
-  { theme: "btt", label: "BTT", logoUrl: "/mainsail-themes/sidebarLogo-btt.svg", logoMask: true },
-  { theme: "klipper", label: "Klipper", logoUrl: "/mainsail-themes/sidebarLogo-klipper.svg", logoMask: true },
-  { theme: "ldo", label: "LDO", logoUrl: "/mainsail-themes/sidebarLogo-ldo.svg", logoMask: true },
-  { theme: "multec", label: "Multec", logoUrl: "/mainsail-themes/sidebarLogo-multec.svg", logoMask: true },
-  { theme: "prusa", label: "Prusa", logoUrl: "/mainsail-themes/sidebarLogo-prusa.svg", logoMask: true },
-  { theme: "voron", label: "Voron", logoUrl: "/mainsail-themes/sidebarLogo-voron.svg", logoMask: true },
-  { theme: "vzbot", label: "VzBot", logoUrl: "/mainsail-themes/sidebarLogo-vzbot.svg", logoMask: true },
-  { theme: "yumi", label: "Yumi", logoUrl: "/mainsail-themes/sidebarLogo-yumi.svg", logoMask: true }
+  { theme: "k-editor", label: "K-Editor", logoUrl: kEditorMark.src, logoMask: false },
+  { theme: "orbys", label: "Orbys", logoUrl: orbysLogo.src, logoMask: true },
+  { theme: "mainsail", label: "Mainsail", logoUrl: mainsailLogo.src, logoMask: true },
+  { theme: "btt", label: "BTT", logoUrl: bttLogo.src, logoMask: true },
+  { theme: "klipper", label: "Klipper", logoUrl: klipperLogo.src, logoMask: true },
+  { theme: "ldo", label: "LDO", logoUrl: ldoLogo.src, logoMask: true },
+  { theme: "multec", label: "Multec", logoUrl: multecLogo.src, logoMask: true },
+  { theme: "prusa", label: "Prusa", logoUrl: prusaLogo.src, logoMask: true },
+  { theme: "voron", label: "Voron", logoUrl: voronLogo.src, logoMask: true },
+  { theme: "vzbot", label: "VzBot", logoUrl: vzbotLogo.src, logoMask: true },
+  { theme: "yumi", label: "Yumi", logoUrl: yumiLogo.src, logoMask: true }
 ];
 
 type ThemeVariables = CSSProperties & Record<`--${string}`, string>;
@@ -510,7 +521,7 @@ function normalizeEditorTheme(value: unknown): MainsailVisualTheme {
     logo: normalizeCssColor(source.logo, fallbackMainsailTheme.logo),
     primary: normalizeCssColor(source.primary, fallbackMainsailTheme.primary),
     logoPath: typeof source.logoPath === "string" && source.logoPath.trim() && !isKEditor ? source.logoPath.trim() : null,
-    logoUrl: isKEditor ? logoOption.logoUrl : typeof source.logoUrl === "string" && source.logoUrl.trim() ? source.logoUrl.trim() : logoOption.logoUrl,
+    logoUrl: logoOption.logoUrl,
     logoMask: isKEditor ? false : Boolean(source.logoMask ?? logoOption.logoMask)
   };
 }
@@ -2070,6 +2081,7 @@ function isBackupFilePath(path: string) {
   const name = basename(path).toLowerCase();
   return (
     /-\d{8}[-_]\d{6}(?:-\d+)?(?:\.[^.]+){1,2}$/.test(name) ||
+    /-\d{8}t\d{6}z(?:-\d+)?(?:\.[^.]+){1,2}$/.test(name) ||
     /\.(bak|backup|bkp|old|orig)$/.test(name) ||
     /\.(bak|backup|bkp)\.?\d{8}/.test(name) ||
     /~$/.test(name)
@@ -2605,78 +2617,6 @@ function objectValue(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
 }
 
-function RichTooltip({ content, children, placement = "top" }: {
-  content: ReactNode;
-  children: ReactNode;
-  placement?: "top" | "bottom";
-}) {
-  const id = useId();
-  const triggerRef = useRef<HTMLSpanElement>(null);
-  const tooltipRef = useRef<HTMLSpanElement>(null);
-  const [open, setOpen] = useState(false);
-  const [position, setPosition] = useState({ top: 0, left: 0, arrowLeft: 20, placement, ready: false, theme: {} as CSSProperties });
-
-  const updatePosition = useCallback(() => {
-    const trigger = triggerRef.current;
-    const tooltip = tooltipRef.current;
-    if (!trigger || !tooltip) return;
-    const triggerRect = trigger.getBoundingClientRect();
-    const tooltipRect = tooltip.getBoundingClientRect();
-    const triggerStyle = window.getComputedStyle(trigger);
-    const margin = 10;
-    const gap = 9;
-    const resolvedPlacement = placement === "top" && triggerRect.top >= tooltipRect.height + gap + margin ? "top"
-      : placement === "bottom" && window.innerHeight - triggerRect.bottom >= tooltipRect.height + gap + margin ? "bottom"
-      : triggerRect.top >= tooltipRect.height + gap + margin ? "top" : "bottom";
-    const idealLeft = triggerRect.left + triggerRect.width / 2 - tooltipRect.width / 2;
-    const left = Math.min(Math.max(margin, idealLeft), Math.max(margin, window.innerWidth - tooltipRect.width - margin));
-    const top = resolvedPlacement === "top" ? triggerRect.top - tooltipRect.height - gap : triggerRect.bottom + gap;
-    setPosition({
-      top: Math.max(margin, Math.min(top, window.innerHeight - tooltipRect.height - margin)),
-      left,
-      arrowLeft: Math.min(Math.max(12, triggerRect.left + triggerRect.width / 2 - left), tooltipRect.width - 12),
-      placement: resolvedPlacement,
-      ready: true,
-      theme: {
-        "--tooltip-panel": triggerStyle.getPropertyValue("--panel-strong"),
-        "--tooltip-border": triggerStyle.getPropertyValue("--border"),
-        "--tooltip-accent": triggerStyle.getPropertyValue("--accent"),
-        "--tooltip-text": triggerStyle.getPropertyValue("--text"),
-        "--tooltip-muted": triggerStyle.getPropertyValue("--muted")
-      } as CSSProperties
-    });
-  }, [placement]);
-
-  useEffect(() => {
-    if (!open) return;
-    const frame = window.requestAnimationFrame(updatePosition);
-    window.addEventListener("resize", updatePosition);
-    window.addEventListener("scroll", updatePosition, true);
-    return () => {
-      window.cancelAnimationFrame(frame);
-      window.removeEventListener("resize", updatePosition);
-      window.removeEventListener("scroll", updatePosition, true);
-    };
-  }, [open, updatePosition]);
-
-  const show = () => {
-    setPosition((current) => ({ ...current, ready: false }));
-    setOpen(true);
-  };
-
-  return <span className="rich-tooltip"
-    onMouseEnter={show} onMouseLeave={() => setOpen(false)}
-    onFocusCapture={show}
-    onBlurCapture={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setOpen(false); }}>
-    <span ref={triggerRef} className="rich-tooltip-trigger" aria-describedby={open ? id : undefined}>{children}</span>
-    {open && typeof document !== "undefined" && createPortal(
-      <span ref={tooltipRef} className={`rich-tooltip-content rich-tooltip-${position.placement} ${position.ready ? "ready" : ""}`} id={id} role="tooltip"
-        style={{ ...position.theme, top: position.top, left: position.left, "--tooltip-arrow-left": `${position.arrowLeft}px` } as CSSProperties}>{content}</span>,
-      document.body
-    )}
-  </span>;
-}
-
 const mmuMeterCircumference = 2 * Math.PI * 50;
 
 function useMeterTransition(value: number) {
@@ -2896,6 +2836,8 @@ function Editor() {
   const [printerStatus, setPrinterStatus] = useState<PrinterStatus | null>(null);
   const [printerInitializing, setPrinterInitializing] = useState(false);
   const [restartingFirmware, setRestartingFirmware] = useState(false);
+  const [restartingKlipper, setRestartingKlipper] = useState(false);
+  const [dismissedPrinterIssue, setDismissedPrinterIssue] = useState("");
   const [emergencyStopping, setEmergencyStopping] = useState(false);
   const [runningQuickCommand, setRunningQuickCommand] = useState<QuickCommand | null>(null);
   const [machinePowerMenuOpen, setMachinePowerMenuOpen] = useState(false);
@@ -3109,7 +3051,7 @@ function Editor() {
   }, [mainsailTheme.logo, mainsailTheme.primary]);
   const showKEditorLogo = mainsailTheme.theme === "k-editor";
   const mainsailLogoUrl = showKEditorLogo
-    ? "/img/k-editor-mark.svg"
+    ? apiPath(kEditorMark.src)
     : mainsailTheme.logoPath
     ? apiPath(`/api/download?path=${encodeURIComponent(mainsailTheme.logoPath)}&inline=1`)
     : mainsailTheme.logoUrl
@@ -4372,6 +4314,25 @@ function Editor() {
       setRestartingFirmware(false);
     }
   }, [confirmDialog, loadPrinterStatus, loadTree, printerStatus, reloadOpenTextFiles, restartingFirmware, t]);
+
+  const restartKlipper = useCallback(async () => {
+    if (restartingKlipper || !printerStatus || printerStatus.printing) return;
+    setRestartingKlipper(true);
+    setPrinterInitializing(true);
+    setDismissedPrinterIssue("");
+    try {
+      const response = await fetch(apiPath("/api/printer/restart"), { method: "POST" });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? "No se pudo reiniciar Klipper");
+      setMessage("Klipper se esta reiniciando");
+      await Promise.all([loadPrinterStatus(), loadTree(), reloadOpenTextFiles()]);
+    } catch (error) {
+      setPrinterInitializing(false);
+      setMessage(error instanceof Error ? error.message : "No se pudo reiniciar Klipper");
+    } finally {
+      setRestartingKlipper(false);
+    }
+  }, [loadPrinterStatus, loadTree, printerStatus, reloadOpenTextFiles, restartingKlipper]);
 
   const runQuickCommand = useCallback(
     async (command: QuickCommand, label: string) => {
@@ -5683,7 +5644,7 @@ function Editor() {
     const storedTheme = hasStoredTheme
       ? readStoredEditorTheme()
       : preferences.getItem(useAccentLogoKey) === "true"
-        ? normalizeEditorTheme({ ...fallbackMainsailTheme, theme: "k-editor", logoUrl: "/img/k-editor-mark.svg", logoMask: false })
+        ? normalizeEditorTheme({ ...fallbackMainsailTheme, theme: "k-editor", logoUrl: kEditorMark.src, logoMask: false })
         : fallbackMainsailTheme;
     setMainsailTheme(storedTheme);
     if (!hasStoredTheme && storedTheme.theme === "k-editor") {
@@ -6146,37 +6107,38 @@ function Editor() {
   const machinePowerDisabled =
     runningMachinePowerAction !== null || !printerStatus || Boolean(printerStatus.error) || printerStatus.printing;
   const powerMenuDisabled = restartingFirmware || runningMachinePowerAction !== null || !printerStatus;
-  const showPrinterInitializing = printerInitializing || isPrinterInitializingStatus(printerStatus);
-  const printerInitializingState = printerStatus?.webhooksState?.trim() || "unknown";
+  const hasPrinterIssue = printerInitializing || isPrinterInitializingStatus(printerStatus) || Boolean(printerStatus?.error);
+  const printerInitializingState = printerStatus?.error ? "error" : printerStatus?.webhooksState?.trim() || "unknown";
   const printerInitializingMessage = printerStatus?.webhooksMessage?.trim() || printerStatus?.error || "";
-  const canRestartFromInitializing = Boolean(printerStatus) && !printerStatus?.printing && !restartingFirmware;
+  const printerIssueKey = `${printerInitializingState}\n${printerInitializingMessage}`;
+  const showPrinterInitializing = hasPrinterIssue && dismissedPrinterIssue !== printerIssueKey;
+  const canRestartFromInitializing = Boolean(printerStatus) && !printerStatus?.printing && !restartingFirmware && !restartingKlipper;
 
   return (
     <main className={sidebarCollapsed ? "workspace-shell sidebar-collapsed" : "workspace-shell"} style={themeStyle}>
       {showPrinterInitializing && (
-        <div className="printer-initializing-overlay" role="status" aria-live="polite">
+        <div className="printer-initializing-overlay" role="dialog" aria-modal="true" aria-labelledby="printer-issue-title">
           <div className="printer-initializing-card">
             <div className="printer-initializing-title">
               <IoPower className="printer-initializing-icon" />
-              <span>{t("status.printerInitializing")}</span>
+              <span id="printer-issue-title">{t("status.printerInitializing")}</span>
+              <button className="printer-initializing-close" type="button" onClick={() => setDismissedPrinterIssue(printerIssueKey)} title={t("actions.close")} aria-label={t("actions.close")}><IoClose /></button>
             </div>
             <div className="printer-initializing-bar" />
             <div className="printer-initializing-status">
               <strong>{t("status.printerReported", { state: printerInitializingState.toUpperCase() })}</strong>
               {printerInitializingMessage && <p>{printerInitializingMessage}</p>}
             </div>
-            <button
-              className="printer-initializing-action"
-              type="button"
-              disabled={!canRestartFromInitializing}
-              onClick={() => void restartFirmware(false)}
-            >
-              <FcRefresh className="printer-initializing-action-icon" />
-              <span>{restartingFirmware ? t("actions.restartingFirmware") : t("actions.restartFirmwareLong")}</span>
-            </button>
+            <div className="printer-initializing-actions">
+              <button className="printer-initializing-action" type="button" disabled={!canRestartFromInitializing} onClick={() => void restartKlipper()}><FcRefresh className="printer-initializing-action-icon" /><span>{restartingKlipper ? "Reiniciando Klipper" : "Reiniciar Klipper"}</span></button>
+              <button className="printer-initializing-action" type="button" disabled={!canRestartFromInitializing} onClick={() => void restartFirmware(false)}><FcRefresh className="printer-initializing-action-icon" /><span>{restartingFirmware ? t("actions.restartingFirmware") : t("actions.restartFirmwareLong")}</span></button>
+              <a className="printer-initializing-action" href={apiPath("/api/printer/log?name=klippy.log")} download><FcDownload className="printer-initializing-action-icon" /><span>Registro de Klipper</span></a>
+              <a className="printer-initializing-action" href={apiPath("/api/printer/log?name=moonraker.log")} download><FcDownload className="printer-initializing-action-icon" /><span>Registro de Moonraker</span></a>
+            </div>
           </div>
         </div>
       )}
+      {hasPrinterIssue && !showPrinterInitializing && <button className="printer-issue-reopen" type="button" onClick={() => setDismissedPrinterIssue("")}><IoPower /><span>{t("status.printerReported", { state: printerInitializingState.toUpperCase() })}</span></button>}
       <aside className="sidebar">
         <div className="sidebar-header">
           <div className="sidebar-brand">

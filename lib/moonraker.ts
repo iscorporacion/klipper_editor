@@ -386,6 +386,12 @@ export async function klipperRestart() {
   return payload?.result ?? payload;
 }
 
+export async function downloadPrinterLog(name: "klippy.log" | "moonraker.log") {
+  const response = await fetch(`${moonrakerUrl}/server/files/logs/${encodeURIComponent(name)}`, { cache: "no-store" });
+  if (!response.ok) throw new Error(`Unable to download ${name}: ${response.status} ${response.statusText}`);
+  return response.arrayBuffer();
+}
+
 export async function emergencyStop() {
   const payload = await moonrakerFetch("/printer/emergency_stop", { method: "POST" });
   return payload?.result ?? payload;

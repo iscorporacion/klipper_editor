@@ -33,6 +33,7 @@ function isBackupName(name: string) {
     lower.endsWith(".bak") ||
     lower.includes(".bak.") ||
     /\b\d{8}[_-]\d{6}\b/.test(lower) ||
+    /\b\d{8}t\d{6}z\b/.test(lower) ||
     /^config-\d{8}-\d{6}\.zip$/.test(lower)
   );
 }

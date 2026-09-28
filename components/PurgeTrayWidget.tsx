@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
-import { MdCloudUpload, MdClose, MdHome, MdKeyboardArrowDown, MdKeyboardArrowUp, MdRefresh, MdRestartAlt, MdSettings } from "react-icons/md";
+import { MdAdd, MdCloudUpload, MdClose, MdHelpOutline, MdHome, MdKeyboardArrowDown, MdKeyboardArrowUp, MdPlayArrow, MdRefresh, MdRemove, MdRestartAlt, MdSettings } from "react-icons/md";
 import { FaBroom } from "react-icons/fa6";
+import RichTooltip from "@/components/RichTooltip";
 
 type TrayPayload = {
   available: boolean;
@@ -26,11 +27,10 @@ type TrayForm = {
   dropPosition: number;
   purgeX: number;
   purgeY: number;
-  purgeZ: number;
+  bedSafeZ: number;
   brushX1: number;
   brushX2: number;
   brushY: number;
-  brushZ: number;
   purgeLength: number;
   blobDescent: number;
   servoReceiveAngle: number;
@@ -50,7 +50,7 @@ type SyncStatus = {
 
 const defaults: TrayForm = {
   profile: "Stealthburner", safePosition: 30, purgePosition: 25, brushPosition: 25, dropPosition: 50,
-  purgeX: 0, purgeY: 0, purgeZ: 0, brushX1: 0, brushX2: 0, brushY: 0, brushZ: 0,
+  purgeX: 0, purgeY: 0, bedSafeZ: 10, brushX1: 0, brushX2: 0, brushY: 0,
   purgeLength: 60, blobDescent: 5, servoReceiveAngle: 90, servoReleaseAngle: 0, servoDwell: 700, maxBlobs: 80
 };
 
@@ -81,14 +81,51 @@ export default function PurgeTrayWidget({ apiBase = "", locale = "es" }: { apiBa
     position: "Posicion", bucket: "Deposito", homed: "HOME", required: "Requerido", close: "Cerrar", save: "Guardar configuracion",
     profile: "Perfil", tray: "Posiciones de bandeja", toolhead: "Cabezal", brush: "Cepillo", purgeConfig: "Purga y deposito", servo: "Cama movil (servo 9g)", servoPending: "Servo pendiente de configurar",
     error: "No se pudo controlar la bandeja", refresh: "Actualizar", printing: "Controles bloqueados durante impresion", servoMissing: "Servo pendiente", testReceive: "Probar recepcion", testRelease: "Probar descarga",
-    install: "Instalar configuracion", update: "Actualizar configuracion", restart: "Reiniciar Klipper", confirmRestart: "¿Reiniciar Klipper para cargar la configuracion de la bandeja?", readOnly: "Moonraker no permite escribir en config.", xyzRequired: "HOME XYZ requerido", configOutdated: "La configuracion instalada no coincide con esta version del widget."
+    install: "Instalar configuracion", update: "Actualizar configuracion", restart: "Reiniciar Klipper", confirmRestart: "¿Reiniciar Klipper para cargar la configuracion de la bandeja?", readOnly: "Moonraker no permite escribir en config.", xyzRequired: "HOME XYZ requerido", configOutdated: "La configuracion instalada no coincide con esta version del widget.", increment: "Incremento de movimiento", testPosition: "Probar posicion", testStart: "Probar inicio", testEnd: "Probar final"
   } : {
     unavailable: "The purge tray configuration is not installed.", idle: "Ready", home: "Home", safe: "Safe",
     purge: "Test purge", clean: "Test cleaning", drop: "Drop", reset: "Empty bucket", settings: "Configure",
     position: "Position", bucket: "Bucket", homed: "HOME", required: "Required", close: "Close", save: "Save configuration",
     profile: "Profile", tray: "Tray positions", toolhead: "Toolhead", brush: "Brush", purgeConfig: "Purge and bucket", servo: "Moving bed (9g servo)", servoPending: "Servo configuration pending",
     error: "Unable to control purge tray", refresh: "Refresh", printing: "Controls locked while printing", servoMissing: "Servo pending", testReceive: "Test receive", testRelease: "Test release",
-    install: "Install configuration", update: "Update configuration", restart: "Restart Klipper", confirmRestart: "Restart Klipper to load the purge tray configuration?", readOnly: "Moonraker does not allow writes to config.", xyzRequired: "XYZ HOME required", configOutdated: "The installed configuration does not match this widget version."
+    install: "Install configuration", update: "Update configuration", restart: "Restart Klipper", confirmRestart: "Restart Klipper to load the purge tray configuration?", readOnly: "Moonraker does not allow writes to config.", xyzRequired: "XYZ HOME required", configOutdated: "The installed configuration does not match this widget version.", increment: "Movement increment", testPosition: "Test position", testStart: "Test start", testEnd: "Test end"
+  }, [es]);
+  const help: Record<keyof TrayForm | "profile", string> = useMemo(() => es ? {
+    profile: "Nombre del conjunto de ajustes para distinguir cabezales o impresoras.",
+    safePosition: "Posicion de auxiliar_z a la que vuelve la bandeja despues de HOME y al terminar.",
+    purgePosition: "Posicion absoluta de auxiliar_z donde comienza la formacion de la bola.",
+    brushPosition: "Posicion absoluta de auxiliar_z durante la limpieza. No es el eje Z del cabezal.",
+    dropPosition: "Posicion de auxiliar_z donde el servo retrae la cama y descarga la bola.",
+    purgeX: "Coordenada X absoluta del cabezal donde se realiza la purga.",
+    purgeY: "Coordenada Y absoluta del cabezal que lo alinea con la bandeja.",
+    bedSafeZ: "Posicion Z de seguridad de la impresora. En una Trident mueve la cama principal y no ajusta la altura de la bandeja.",
+    brushX1: "Primer extremo X del recorrido de limpieza sobre las cerdas.",
+    brushX2: "Segundo extremo X del recorrido de limpieza sobre las cerdas.",
+    brushY: "Coordenada Y del cabezal que lo alinea con el cepillo.",
+    purgeLength: "Cantidad total de filamento, en milimetros, extruida para formar cada bola.",
+    blobDescent: "Distancia que baja lentamente auxiliar_z mientras se extruye la bola.",
+    maxBlobs: "Numero estimado de bolas que caben antes de marcar el deposito como lleno.",
+    servoReceiveAngle: "Angulo que coloca la cama movil debajo de la boquilla para recibir la bola.",
+    servoReleaseAngle: "Angulo que retrae la cama movil para dejar caer la bola.",
+    servoDwell: "Tiempo de espera en milisegundos despues de cada movimiento del servo."
+  } : {
+    profile: "Name of this settings set, used to distinguish toolheads or printers.",
+    safePosition: "Auxiliary Z position used after HOME and when an operation finishes.",
+    purgePosition: "Absolute auxiliary Z position where blob formation begins.",
+    brushPosition: "Absolute auxiliary Z position used while cleaning. This is not toolhead Z.",
+    dropPosition: "Auxiliary Z position where the servo retracts the bed and drops the blob.",
+    purgeX: "Absolute toolhead X coordinate used for purging.",
+    purgeY: "Absolute toolhead Y coordinate that aligns it with the purge tray.",
+    bedSafeZ: "Safe printer Z position. On a Trident this moves the main bed and does not adjust tray height.",
+    brushX1: "First X endpoint of the wiping travel across the brush.",
+    brushX2: "Second X endpoint of the wiping travel across the brush.",
+    brushY: "Toolhead Y coordinate that aligns the nozzle with the brush.",
+    purgeLength: "Total millimeters of filament extruded to create each blob.",
+    blobDescent: "Distance auxiliary Z slowly lowers while the blob is extruded.",
+    maxBlobs: "Estimated number of blobs the bucket holds before being marked full.",
+    servoReceiveAngle: "Angle that positions the moving bed below the nozzle to receive a blob.",
+    servoReleaseAngle: "Angle that retracts the moving bed and releases the blob.",
+    servoDwell: "Delay in milliseconds after each servo movement."
   }, [es]);
   const [data, setData] = useState<TrayPayload | null>(null);
   const [busy, setBusy] = useState("");
@@ -97,6 +134,7 @@ export default function PurgeTrayWidget({ apiBase = "", locale = "es" }: { apiBa
   const [form, setForm] = useState<TrayForm>(defaults);
   const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
   const [syncBusy, setSyncBusy] = useState("");
+  const [movementIncrement, setMovementIncrement] = useState(1);
 
   const load = useCallback(async () => {
     try {
@@ -112,9 +150,9 @@ export default function PurgeTrayWidget({ apiBase = "", locale = "es" }: { apiBa
         purgePosition: setting(vars, "purge_position", defaults.purgePosition),
         brushPosition: setting(vars, "brush_position", defaults.brushPosition),
         dropPosition: setting(vars, "drop_position", defaults.dropPosition),
-        purgeX: setting(vars, "purge_x", 0), purgeY: setting(vars, "purge_y", 0), purgeZ: setting(vars, "purge_z", 0),
+        purgeX: setting(vars, "purge_x", 0), purgeY: setting(vars, "purge_y", 0), bedSafeZ: setting(vars, "clear_z", defaults.bedSafeZ),
         brushX1: setting(vars, "brush_x1", 0), brushX2: setting(vars, "brush_x2", 0),
-        brushY: setting(vars, "brush_y", 0), brushZ: setting(vars, "brush_z", 0),
+        brushY: setting(vars, "brush_y", 0),
         purgeLength: setting(vars, "purge_length", defaults.purgeLength),
         blobDescent: setting(vars, "blob_descent", defaults.blobDescent),
         servoReceiveAngle: setting(vars, "servo_receive_angle", defaults.servoReceiveAngle),
@@ -193,8 +231,27 @@ export default function PurgeTrayWidget({ apiBase = "", locale = "es" }: { apiBa
   const moving = ["homing", "moving_safe", "positioning", "dropping"].includes(operation);
   const trayY = 57 + (moving ? target : position) * 1.5;
   const disabled = busy !== "" || Boolean(data?.printing);
-  const input = (key: keyof TrayForm, label: string, min = -1000, max = 1000) => <label><span>{label}</span><input type="number" min={min} max={max} step="0.1" value={form[key] as number}
+  const fieldTitle = (label: string, description: string) => <span className="purge-tray-field-title"><span>{label}</span><RichTooltip placement="top" content={<span className="rich-tooltip-stack"><strong>{label}</strong><span>{description}</span></span>}><span className="purge-tray-help" role="button" tabIndex={0} aria-label={`${label}: ${description}`}><MdHelpOutline /></span></RichTooltip></span>;
+  const input = (key: keyof TrayForm, label: string, min = -1000, max = 1000) => <label>{fieldTitle(label, help[key])}<input type="number" min={min} max={max} step="0.1" value={form[key] as number}
     onChange={(event) => setForm((current) => ({ ...current, [key]: Number(event.target.value) }))} /></label>;
+  const nudge = (key: keyof TrayForm, direction: -1 | 1, min = -1000, max = 1000) => {
+    setForm((current) => ({ ...current, [key]: Math.min(max, Math.max(min, Number(((current[key] as number) + movementIncrement * direction).toFixed(3)))) }));
+  };
+  const calibrationInput = (key: keyof TrayForm, label: string, min = -1000, max = 1000, onTest?: () => void) => <label>{fieldTitle(label, help[key])}<span className="purge-tray-calibration-input">
+    <button type="button" onClick={() => nudge(key, -1, min, max)} aria-label={`${label} -${movementIncrement}`}><MdRemove /></button>
+    <input type="number" min={min} max={max} step="0.1" value={form[key] as number} onChange={(event) => setForm((current) => ({ ...current, [key]: Number(event.target.value) }))} />
+    <button type="button" onClick={() => nudge(key, 1, min, max)} aria-label={`${label} +${movementIncrement}`}><MdAdd /></button>
+    {onTest && <RichTooltip placement="top" content={text.testPosition}><button className="purge-tray-inline-test" type="button" disabled={busy !== "" || !homed || Boolean(data?.printing)} onClick={onTest} aria-label={`${text.testPosition}: ${label}`}><MdPlayArrow /></button></RichTooltip>}
+  </span></label>;
+  const testCalibration = (mode: "PURGE" | "BRUSH_START" | "BRUSH_END") => {
+    const purge = mode === "PURGE";
+    return run("calibrate-position", {
+      mode,
+      trayPosition: purge ? form.purgePosition : form.brushPosition,
+      x: purge ? form.purgeX : mode === "BRUSH_START" ? form.brushX1 : form.brushX2,
+      y: purge ? form.purgeY : form.brushY
+    });
+  };
   const nozzleGraphic = <g className={`tray-nozzle ${operation === "purging" ? "purging" : ""} ${operation === "cleaning" ? "cleaning" : ""}`}
     style={operation === "cleaning" ? { "--tray-clean-y": `${trayY - 69}px` } as CSSProperties : undefined}>
     <path className="tray-nozzle-body" d="M194 0h27v25h-27z" />
@@ -268,10 +325,13 @@ export default function PurgeTrayWidget({ apiBase = "", locale = "es" }: { apiBa
             {!syncStatus.current && <button type="button" disabled={syncBusy !== "" || !syncStatus.writable} onClick={() => void manageConfig("install")}><MdCloudUpload />{text.update}</button>}
             {syncStatus.restartRequired && <button type="button" disabled={syncBusy !== ""} onClick={() => void manageConfig("restart")}><MdRestartAlt />{text.restart}</button>}
           </div>}
-          <label><span>{text.profile}</span><input value={form.profile} maxLength={32} onChange={(event) => setForm((current) => ({ ...current, profile: event.target.value }))} /></label>
-          <fieldset><legend>{text.tray}</legend>{input("safePosition", "Segura", 0, 50)}{input("purgePosition", "Purga", 0, 50)}{input("brushPosition", "Cepillo", 0, 50)}{input("dropPosition", "Descarga", 0, 50)}</fieldset>
-          <fieldset><legend>{text.toolhead}</legend>{input("purgeX", "Purga X")}{input("purgeY", "Purga Y")}{input("purgeZ", "Purga Z", -5, 500)}</fieldset>
-          <fieldset><legend>{text.brush}</legend>{input("brushX1", "X inicial")}{input("brushX2", "X final")}{input("brushY", "Y")}{input("brushZ", "Z", -5, 500)}</fieldset>
+          <div className="purge-tray-settings-heading"><label>{fieldTitle(text.profile, help.profile)}<input value={form.profile} maxLength={32} onChange={(event) => setForm((current) => ({ ...current, profile: event.target.value }))} /></label>
+            <label className="purge-tray-increment">{fieldTitle(text.increment, es ? "Cantidad que suman o restan los botones de calibracion." : "Amount added or subtracted by the calibration buttons.")}<input type="number" min="0.01" max="50" step="0.01" value={movementIncrement} onChange={(event) => setMovementIncrement(Math.min(50, Math.max(0.01, Number(event.target.value) || 0.01)))} /></label>
+            {calibrationInput("bedSafeZ", es ? "Cama Z segura" : "Safe bed Z", 0, 500)}
+          </div>
+          <fieldset><legend>{text.tray}</legend>{calibrationInput("safePosition", "Segura", 0, 50, () => void run("move", { position: form.safePosition }))}{calibrationInput("purgePosition", "Purga", 0, 50, () => void run("move", { position: form.purgePosition }))}{calibrationInput("brushPosition", "Cepillo", 0, 50, () => void run("move", { position: form.brushPosition }))}{calibrationInput("dropPosition", "Descarga", 0, 50, () => void run("move", { position: form.dropPosition }))}</fieldset>
+          <fieldset><legend>{text.toolhead}</legend>{calibrationInput("purgeX", "Purga X", -1000, 1000, () => void testCalibration("PURGE"))}{calibrationInput("purgeY", "Purga Y", -1000, 1000, () => void testCalibration("PURGE"))}</fieldset>
+          <fieldset><legend>{text.brush}</legend>{calibrationInput("brushX1", "X inicial", -1000, 1000, () => void testCalibration("BRUSH_START"))}{calibrationInput("brushX2", "X final", -1000, 1000, () => void testCalibration("BRUSH_END"))}{calibrationInput("brushY", "Y", -1000, 1000, () => void testCalibration("BRUSH_START"))}</fieldset>
           <fieldset><legend>{text.purgeConfig}</legend>{input("purgeLength", "Filamento (mm)", 0, 500)}{input("blobDescent", "Descenso durante purga (mm)", 0.1, 50)}{input("maxBlobs", "Capacidad", 1, 10000)}</fieldset>
           <fieldset className="purge-tray-servo-settings"><legend>{text.servo}</legend>{input("servoReceiveAngle", "Angulo de recepcion", 0, 180)}{input("servoReleaseAngle", "Angulo de descarga", 0, 180)}{input("servoDwell", "Espera (ms)", 100, 10000)}
             <div className="purge-tray-servo-tests">

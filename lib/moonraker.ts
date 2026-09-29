@@ -122,6 +122,18 @@ export type TrayStatus = {
   target: number;
 };
 
+export type StatusBarStatus = {
+  available: boolean;
+  printing: boolean;
+  state: Record<string, unknown> | null;
+  settings: Record<string, unknown> | null;
+  bedTemperature: number;
+  bedTarget: number;
+  printProgress: number;
+  printState: string;
+  filamentColor: string;
+};
+
 export type MainsailUiSettings = {
   mode: string;
   theme: string;
@@ -319,7 +331,7 @@ export async function getMoonrakerStatus(): Promise<MoonrakerStatus> {
 
   return {
     webhooksState: String(webhooks.state ?? "unknown"),
-    webhooksMessage: String(webhooks.message ?? ""),
+    webhooksMessage: String(webhooks.state_message ?? webhooks.message ?? ""),
     printState,
     filename,
     progress: Math.min(Math.max(toNumber(virtualSdcard.progress), 0), 1),
@@ -1098,6 +1110,41 @@ export async function getTrayStatus(): Promise<TrayStatus> {
     settings: status[settingsObject] && typeof status[settingsObject] === "object" ? status[settingsObject] : {},
     temperature: Number(status.extruder?.temperature) || 0,
     target: Number(status.extruder?.target) || 0
+  };
+}
+
+export async function getStatusBarStatus(): Promise<StatusBarStatus> {
+  const objectsPayload = await moonrakerFetch("/printer/objects/list");
+  const rawObjects = objectsPayload?.result?.objects ?? objectsPayload?.objects ?? [];
+  const objects = Array.isArray(rawObjects) ? rawObjects.filter((name): name is string => typeof name === "string") : [];
+  const stateObject = "gcode_macro STATUS_BAR_STATE";
+  const settingsObject = "gcode_macro _STATUS_BAR_VARS";
+  if (!objects.includes(stateObject) || !objects.includes(settingsObject)) {
+    return { available: false, printing: false, state: null, settings: null, bedTemperature: 0, bedTarget: 0, printProgress: 0, printState: "unknown", filamentColor: "#0078ff" };
+  }
+  const params = new URLSearchParams();
+  params.append(stateObject, "");
+  params.append(settingsObject, "");
+  if (objects.includes("heater_bed")) params.append("heater_bed", "temperature,target");
+  if (objects.includes("virtual_sdcard")) params.append("virtual_sdcard", "progress");
+  if (objects.includes("print_stats")) params.append("print_stats", "state");
+  if (objects.includes("mmu")) params.append("mmu", "gate,gate_color");
+  const payload = await moonrakerFetch(`/printer/objects/query?${params.toString()}`);
+  const status = payload?.result?.status ?? payload?.status ?? {};
+  const printState = String(status.print_stats?.state ?? "unknown").toLowerCase();
+  const gate = Number(status.mmu?.gate);
+  const gateColors = Array.isArray(status.mmu?.gate_color) ? status.mmu.gate_color : [];
+  const rawColor = Number.isInteger(gate) && gate >= 0 ? String(gateColors[gate] ?? "") : "";
+  return {
+    available: true,
+    printing: printState === "printing" || printState === "paused",
+    state: status[stateObject] && typeof status[stateObject] === "object" ? status[stateObject] : {},
+    settings: status[settingsObject] && typeof status[settingsObject] === "object" ? status[settingsObject] : {},
+    bedTemperature: Number(status.heater_bed?.temperature) || 0,
+    bedTarget: Number(status.heater_bed?.target) || 0,
+    printProgress: Math.min(1, Math.max(0, Number(status.virtual_sdcard?.progress) || 0)),
+    printState,
+    filamentColor: /^#?[0-9a-f]{6}([0-9a-f]{2})?$/i.test(rawColor) ? `#${rawColor.replace(/^#/, "").slice(0, 6)}` : "#0078ff"
   };
 }
 

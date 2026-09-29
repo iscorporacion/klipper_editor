@@ -237,12 +237,12 @@ export default function PurgeTrayWidget({ apiBase = "", locale = "es" }: { apiBa
   const nudge = (key: keyof TrayForm, direction: -1 | 1, min = -1000, max = 1000) => {
     setForm((current) => ({ ...current, [key]: Math.min(max, Math.max(min, Number(((current[key] as number) + movementIncrement * direction).toFixed(3)))) }));
   };
-  const calibrationInput = (key: keyof TrayForm, label: string, min = -1000, max = 1000, onTest?: () => void) => <label>{fieldTitle(label, help[key])}<span className="purge-tray-calibration-input">
+  const calibrationInput = (key: keyof TrayForm, label: string, min = -1000, max = 1000, onTest?: () => void) => <div className="purge-tray-calibration-field">{fieldTitle(label, help[key])}<span className="purge-tray-calibration-input">
     <button type="button" onClick={() => nudge(key, -1, min, max)} aria-label={`${label} -${movementIncrement}`}><MdRemove /></button>
     <input type="number" min={min} max={max} step="0.1" value={form[key] as number} onChange={(event) => setForm((current) => ({ ...current, [key]: Number(event.target.value) }))} />
     <button type="button" onClick={() => nudge(key, 1, min, max)} aria-label={`${label} +${movementIncrement}`}><MdAdd /></button>
     {onTest && <RichTooltip placement="top" content={text.testPosition}><button className="purge-tray-inline-test" type="button" disabled={busy !== "" || !homed || Boolean(data?.printing)} onClick={onTest} aria-label={`${text.testPosition}: ${label}`}><MdPlayArrow /></button></RichTooltip>}
-  </span></label>;
+  </span></div>;
   const testCalibration = (mode: "PURGE" | "BRUSH_START" | "BRUSH_END") => {
     const purge = mode === "PURGE";
     return run("calibrate-position", {

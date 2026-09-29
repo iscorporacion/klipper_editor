@@ -11,6 +11,11 @@ const registry = {
     source: "mmu_config/bandeja.cfg",
     remote: "bandeja.cfg",
     include: "[include bandeja.cfg]"
+  },
+  statusbar: {
+    source: "mmu_config/statusbar_leds.cfg",
+    remote: "statusbar_leds.cfg",
+    include: "[include statusbar_leds.cfg]"
   }
 } as const;
 

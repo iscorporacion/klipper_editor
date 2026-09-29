@@ -30,6 +30,7 @@ mkdir -p "${DEST_DIR}/.next"
 cp -a "${APP_DIR}/.next/standalone/." "${DEST_DIR}/"
 cp -a "${APP_DIR}/.next/static" "${DEST_DIR}/.next/static"
 cp -a "${APP_DIR}/locales" "${DEST_DIR}/locales"
+cp -a "${APP_DIR}/mmu_config" "${DEST_DIR}/mmu_config"
 mkdir -p "${DEST_DIR}/scripts"
 cp -a "${APP_DIR}/scripts/." "${DEST_DIR}/scripts/"
 for required_script in klipper-editor-mcp.mjs klipper-editor-mcp-tunnel.mjs install-cloudflared.sh configure-host.sh terminal-pty.py; do

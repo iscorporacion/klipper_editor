@@ -10,6 +10,7 @@
     "homeGrid.widgetSensors": "Sensors",
     "homeGrid.widgetMmu": "MMU",
     "homeGrid.widgetTray": "Purge tray",
+    "homeGrid.widgetStatusbar": "LED status bar",
     "homeGrid.openHome": "Show widgets",
     "homeGrid.showEndstops": "Show endstops",
     "homeGrid.detected": "Detected",

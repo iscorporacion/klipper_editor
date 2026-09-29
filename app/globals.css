@@ -64,6 +64,8 @@ button {
 }
 
 .printer-initializing-card {
+  --printer-issue-color: var(--accent);
+  --printer-issue-soft: var(--accent-soft);
   width: min(760px, calc(100vw - 48px));
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -71,6 +73,10 @@ button {
   background: rgba(31, 35, 40, 0.74);
   box-shadow: 0 28px 70px rgba(0, 0, 0, 0.52);
 }
+
+.printer-initializing-card.severity-error { --printer-issue-color: #ff5252; --printer-issue-soft: rgba(255,82,82,.12); }
+.printer-initializing-card.severity-shutdown { --printer-issue-color: #ff9800; --printer-issue-soft: rgba(255,152,0,.12); }
+.printer-initializing-card.severity-info { --printer-issue-color: #42a5f5; --printer-issue-soft: rgba(66,165,245,.12); }
 
 .printer-initializing-title {
   display: flex;
@@ -91,7 +97,7 @@ button {
   width: 22px;
   height: 22px;
   flex: 0 0 auto;
-  color: #ffffff;
+  color: var(--printer-issue-color);
 }
 
 .printer-initializing-bar {
@@ -106,7 +112,7 @@ button {
   position: absolute;
   inset: 0;
   width: 42%;
-  background: #ffffff;
+  background: var(--printer-issue-color);
   content: "";
   animation: printer-initializing-slide 1.15s ease-in-out infinite;
 }
@@ -114,8 +120,8 @@ button {
 .printer-initializing-status {
   margin: 0 16px 14px;
   padding: 12px;
-  border: 1px solid rgba(255, 160, 0, 0.28);
-  border-left: 4px solid var(--accent);
+  border: 1px solid color-mix(in srgb, var(--printer-issue-color) 36%, transparent);
+  border-left: 4px solid var(--printer-issue-color);
   border-radius: var(--control-radius);
   background: rgba(0, 0, 0, 0.18);
   color: var(--text);
@@ -123,7 +129,7 @@ button {
 
 .printer-initializing-status strong {
   display: block;
-  color: var(--accent);
+  color: var(--printer-issue-color);
   font-size: 13px;
   font-weight: 800;
   text-transform: uppercase;
@@ -133,7 +139,7 @@ button {
   max-height: min(42vh, 360px);
   overflow: auto;
   margin-top: 8px;
-  color: #ffb43b;
+  color: var(--printer-issue-color);
   font-family:
     "JetBrains Mono",
     "Cascadia Mono",
@@ -153,10 +159,10 @@ button {
   width: 100%;
   min-height: 34px;
   margin: 0;
-  border: 1px solid rgba(255, 160, 0, 0.36);
+  border: 1px solid color-mix(in srgb, var(--printer-issue-color) 42%, transparent);
   border-radius: var(--control-radius);
-  background: rgba(255, 160, 0, 0.08);
-  color: var(--accent);
+  background: var(--printer-issue-soft);
+  color: var(--printer-issue-color);
   font-size: 12px;
   font-weight: 800;
   text-transform: uppercase;
@@ -172,8 +178,8 @@ button {
 
 .printer-initializing-action:hover,
 .printer-initializing-action:focus-visible {
-  border-color: var(--accent);
-  background: var(--accent-soft);
+  border-color: var(--printer-issue-color);
+  background: var(--printer-issue-soft);
   outline: 0;
 }
 
@@ -1550,6 +1556,52 @@ h1 {
 }
 
 .purge-tray-widget { --tray-brush-color: #3e91b8; display: grid; gap: 10px; min-width: 0; }
+.statusbar-widget { display: grid; gap: 12px; min-width: 0; }
+.statusbar-summary { display: flex; align-items: center; gap: 9px; min-width: 0; color: var(--muted); font-size: 12px; }
+.statusbar-summary strong { color: var(--text); }
+.statusbar-summary span:last-child { margin-left: auto; }
+.statusbar-live-dot { width: 8px; height: 8px; flex: 0 0 auto; border-radius: 50%; background: var(--status-led-primary); box-shadow: 0 0 8px var(--status-led-primary); }
+.statusbar-strip, .statusbar-mini-preview { display: grid; grid-template-columns: repeat(18, minmax(5px, 1fr)); gap: clamp(2px, .45vw, 6px); align-items: center; min-height: 44px; padding: 9px 10px; border: 1px solid var(--border); background: #0b0e12; }
+.statusbar-strip > span, .statusbar-mini-preview > i { display: block; aspect-ratio: 1; min-width: 0; border-radius: 50%; background: var(--status-led-secondary); box-shadow: 0 0 4px color-mix(in srgb, var(--status-led-secondary) 60%, transparent); opacity: .42; }
+.statusbar-widget.is-hidden .statusbar-strip > span { background: #171b21; box-shadow: none; opacity: .25; animation: none !important; }
+.statusbar-widget.effect-static .statusbar-strip > span, .statusbar-mini-preview.effect-static > i { background: var(--status-led-primary); box-shadow: 0 0 7px var(--status-led-primary); opacity: 1; }
+.statusbar-widget.effect-progress .statusbar-strip > span.filled, .statusbar-widget.effect-heater .statusbar-strip > span.filled, .statusbar-mini-preview.effect-progress > i:nth-child(-n+10), .statusbar-mini-preview.effect-heater > i:nth-child(-n+10) { background: var(--status-led-primary); box-shadow: 0 0 7px var(--status-led-primary); opacity: 1; }
+.statusbar-widget.effect-cylon .statusbar-strip > span, .statusbar-mini-preview.effect-cylon > i { animation: statusbar-scan calc(var(--status-led-speed) * 2) linear infinite; animation-delay: calc(var(--status-led-index) * -80ms); }
+.statusbar-widget.effect-comet .statusbar-strip > span, .statusbar-widget.effect-fire .statusbar-strip > span, .statusbar-mini-preview.effect-comet > i, .statusbar-mini-preview.effect-fire > i { animation: statusbar-comet calc(var(--status-led-speed) * 2.5) linear infinite; animation-delay: calc(var(--status-led-index) * -90ms); }
+.statusbar-widget.effect-breathing .statusbar-strip > span, .statusbar-mini-preview.effect-breathing > i { background: var(--status-led-primary); animation: statusbar-breathe calc(var(--status-led-speed) * 2) ease-in-out infinite; }
+.statusbar-widget.effect-blink .statusbar-strip > span, .statusbar-mini-preview.effect-blink > i { background: var(--status-led-primary); animation: statusbar-blink var(--status-led-speed) steps(1) infinite; }
+.statusbar-metrics { min-height: 16px; color: var(--muted); font-family: "Cascadia Code", Consolas, monospace; font-size: 11px; text-align: right; }
+.statusbar-actions { display: flex; gap: 7px; }
+.statusbar-actions button { display: inline-grid; place-items: center; width: 34px; height: 34px; padding: 0; border: 1px solid var(--border); border-radius: var(--control-radius); background: var(--panel-soft); color: var(--text); cursor: pointer; }
+.statusbar-actions button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.statusbar-message { margin: 0; padding: 7px 9px; border-left: 3px solid #ff5252; background: rgba(255,82,82,.08); color: #ffaaaa; font-size: 11px; white-space: pre-wrap; }
+.statusbar-unavailable { display: grid; gap: 10px; color: var(--muted); }
+.statusbar-unavailable p { margin: 0; }
+.statusbar-unavailable > div { display: flex; flex-wrap: wrap; gap: 7px; }
+.statusbar-unavailable button, .statusbar-config-sync button { display: inline-flex; align-items: center; gap: 6px; min-height: 34px; padding: 0 10px; border: 1px solid var(--border); border-radius: var(--control-radius); background: var(--panel-soft); color: var(--text); cursor: pointer; }
+.options-modal.statusbar-settings { display: flex; width: min(1060px, calc(100vw - 32px)); max-height: calc(100vh - 32px); flex-direction: column; overflow: hidden; }
+.statusbar-settings > header, .statusbar-settings > footer { display: flex; align-items: center; gap: 9px; padding: 12px 14px; border-bottom: 1px solid var(--border); }
+.statusbar-settings > header h2 { margin: 0; font-size: 15px; }
+.statusbar-settings > header button { margin-left: auto; }
+.statusbar-settings > footer { justify-content: flex-end; border-top: 1px solid var(--border); border-bottom: 0; }
+.statusbar-settings-body { min-height: 0; overflow: auto; padding: 14px; }
+.statusbar-config-sync { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; padding: 9px; border-left: 3px solid #ffb020; background: rgba(255,176,32,.08); color: #ffd27a; font-size: 12px; }
+.statusbar-config-sync span { flex: 1; }
+.statusbar-general { display: grid; grid-template-columns: minmax(240px, 1fr) minmax(260px, 1fr); align-items: end; gap: 14px; margin-bottom: 14px; }
+.statusbar-general > label:first-child { display: grid; gap: 7px; color: var(--muted); font-size: 11px; }
+.statusbar-state-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.statusbar-state-grid fieldset { display: grid; grid-template-columns: minmax(125px, 1fr) 58px 58px 78px 34px; align-items: end; gap: 7px; min-width: 0; margin: 0; padding: 10px; border: 1px solid var(--border); }
+.statusbar-state-grid legend { padding: 0 5px; color: var(--text); font-size: 12px; font-weight: 800; }
+.statusbar-mini-preview { grid-column: 1 / -1; min-height: 30px; padding: 5px 7px; }
+.statusbar-state-grid label { display: grid; gap: 4px; min-width: 0; color: var(--muted); font-size: 10px; }
+.statusbar-state-grid select, .statusbar-state-grid input[type="number"] { width: 100%; height: 32px; min-width: 0; border: 1px solid var(--border); border-radius: var(--control-radius); background: var(--editor); color: var(--text); }
+.statusbar-state-grid input[type="color"] { width: 100%; height: 32px; padding: 2px; border: 1px solid var(--border); border-radius: var(--control-radius); background: var(--editor); }
+.statusbar-test { display: inline-grid; place-items: center; width: 34px; height: 32px; padding: 0; border: 1px solid var(--border); border-radius: var(--control-radius); background: var(--panel-soft); color: var(--accent); cursor: pointer; }
+@keyframes statusbar-scan { 0%,100% { background: var(--status-led-secondary); opacity: .3; } 45%,55% { background: var(--status-led-primary); box-shadow: 0 0 8px var(--status-led-primary); opacity: 1; } }
+@keyframes statusbar-comet { 0%,100% { background: var(--status-led-secondary); opacity: .3; } 30% { background: var(--status-led-primary); box-shadow: 0 0 8px var(--status-led-primary); opacity: 1; } 50% { background: var(--status-led-primary); opacity: .65; } }
+@keyframes statusbar-breathe { 0%,100% { opacity: .18; box-shadow: none; } 50% { opacity: 1; box-shadow: 0 0 8px var(--status-led-primary); } }
+@keyframes statusbar-blink { 0%,49% { opacity: 1; box-shadow: 0 0 8px var(--status-led-primary); } 50%,100% { opacity: .12; box-shadow: none; } }
+@media (max-width: 760px) { .statusbar-state-grid { grid-template-columns: 1fr; } .statusbar-general { grid-template-columns: 1fr; } }
 .purge-tray-summary { display: flex; align-items: center; gap: 14px; min-width: 0; color: var(--muted); font-size: 12px; }
 .purge-tray-summary > span { min-width: 0; }
 .purge-tray-summary > span:not(:first-child) { margin-left: auto; }
@@ -1618,7 +1670,7 @@ h1 {
 .purge-tray-config-sync button:disabled { cursor: not-allowed; opacity: .45; }
 .purge-tray-settings-body fieldset { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; min-width: 0; margin: 0; padding: 12px; border: 1px solid var(--border); }
 .purge-tray-settings-body legend { padding: 0 5px; color: var(--text); font-size: 12px; font-weight: 800; }
-.purge-tray-settings-body label { display: grid; gap: 5px; min-width: 0; color: var(--muted); font-size: 11px; }
+.purge-tray-settings-body label, .purge-tray-calibration-field { display: grid; gap: 5px; min-width: 0; color: var(--muted); font-size: 11px; }
 .purge-tray-settings-body input { width: 100%; min-width: 0; height: 34px; padding: 0 9px; border: 1px solid var(--border); border-radius: var(--control-radius); background: var(--editor); color: var(--text); }
 .purge-tray-calibration-input { display: grid; grid-template-columns: 30px minmax(52px, 92px) 30px 30px; justify-content: start; gap: 4px; }
 .purge-tray-calibration-input button { display: inline-grid; place-items: center; min-width: 0; height: 34px; align-self: start; padding: 0; border: 1px solid var(--border); border-radius: var(--control-radius); background: var(--panel-soft); color: var(--text); cursor: pointer; }

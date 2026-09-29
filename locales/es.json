@@ -10,6 +10,7 @@
     "homeGrid.widgetSensors": "Sensores",
     "homeGrid.widgetMmu": "MMU",
     "homeGrid.widgetTray": "Bandeja de purga",
+    "homeGrid.widgetStatusbar": "Barra LED de estado",
     "homeGrid.openHome": "Mostrar widgets",
     "homeGrid.showEndstops": "Mostrar finales de carrera",
     "homeGrid.detected": "Detectado",

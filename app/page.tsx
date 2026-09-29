@@ -6,6 +6,7 @@ import { preferences } from "@/lib/preferences-client";
 import Image from "next/image";
 import PidChart, { type PidSample } from "@/components/PidChart";
 import PurgeTrayWidget from "@/components/PurgeTrayWidget";
+import StatusBarWidget from "@/components/StatusBarWidget";
 import RichTooltip from "@/components/RichTooltip";
 import type { BedMeshViewerData } from "@/components/BedMeshViewer";
 import type {
@@ -48,6 +49,7 @@ import {
 import {
   MdDelete,
   MdDeviceHub,
+  MdDownload,
   MdDragIndicator,
   MdContentCopy,
   MdAcUnit,
@@ -55,6 +57,7 @@ import {
   MdFunctions,
   MdGridOn,
   MdOpenInFull,
+  MdRestartAlt,
   MdHome,
   MdKeyboardArrowDown,
   MdKeyboardArrowLeft,
@@ -107,7 +110,7 @@ const sensorHiddenKey = "klipper-editor-sensors-hidden";
 const mmuLastImportKey = "klipper-editor-mmu-last-import";
 const homeTabPath = "__keditor_home__";
 const terminalTabPath = "__keditor_terminal__";
-const availableHomeWidgets = ["macros", "console", "movement", "sensors", "mmu", "tray"] as const;
+const availableHomeWidgets = ["macros", "console", "movement", "sensors", "mmu", "tray", "statusbar"] as const;
 type HomeWidget = typeof availableHomeWidgets[number];
 type HomeViewport = "desktop" | "tablet" | "mobile";
 type HomeGridLayout = Record<HomeViewport, HomeWidget[][]>;
@@ -666,11 +669,7 @@ function readablePrinterMessage(value: unknown) {
     // Plain Moonraker messages should pass through unchanged.
   }
 
-  return raw
-    .replace(/\\n/g, "\n")
-    .split("\n")
-    .map((line) => line.trim())
-    .find((line) => line && !line.toLowerCase().startsWith("traceback")) ?? raw;
+  return raw.replace(/\\n/g, "\n").trim();
 }
 
 function normalizePrinterStatus(value: unknown, fallbackMessage: string): PrinterStatus {
@@ -1149,6 +1148,7 @@ const defaultMessages: Messages = {
   "homeGrid.widgetMovement": "Movimiento XY/Z",
   "homeGrid.widgetSensors": "Sensores",
   "homeGrid.widgetMmu": "MMU",
+  "homeGrid.widgetStatusbar": "Barra LED de estado",
   "homeGrid.openHome": "Mostrar widgets",
   "homeGrid.showEndstops": "Mostrar finales de carrera",
   "homeGrid.detected": "Detectado",
@@ -4015,6 +4015,7 @@ function Editor() {
       if (widget === "sensors") return t("homeGrid.widgetSensors");
       if (widget === "mmu") return mmuState?.displayName?.trim() || t("homeGrid.widgetMmu");
       if (widget === "tray") return t("homeGrid.widgetTray");
+      if (widget === "statusbar") return t("homeGrid.widgetStatusbar");
       return t("homeGrid.widgetMovement");
     },
     [mmuState?.displayName, t]
@@ -6113,12 +6114,15 @@ function Editor() {
   const printerIssueKey = `${printerInitializingState}\n${printerInitializingMessage}`;
   const showPrinterInitializing = hasPrinterIssue && dismissedPrinterIssue !== printerIssueKey;
   const canRestartFromInitializing = Boolean(printerStatus) && !printerStatus?.printing && !restartingFirmware && !restartingKlipper;
+  const printerIssueSeverity = printerInitializingState.toLowerCase() === "error" ? "error"
+    : printerInitializingState.toLowerCase() === "shutdown" ? "shutdown" : "info";
+  const showPrinterDiagnosticLogs = printerIssueSeverity === "error" || printerIssueSeverity === "shutdown";
 
   return (
     <main className={sidebarCollapsed ? "workspace-shell sidebar-collapsed" : "workspace-shell"} style={themeStyle}>
       {showPrinterInitializing && (
         <div className="printer-initializing-overlay" role="dialog" aria-modal="true" aria-labelledby="printer-issue-title">
-          <div className="printer-initializing-card">
+          <div className={`printer-initializing-card severity-${printerIssueSeverity}`}>
             <div className="printer-initializing-title">
               <IoPower className="printer-initializing-icon" />
               <span id="printer-issue-title">{t("status.printerInitializing")}</span>
@@ -6130,10 +6134,10 @@ function Editor() {
               {printerInitializingMessage && <p>{printerInitializingMessage}</p>}
             </div>
             <div className="printer-initializing-actions">
-              <button className="printer-initializing-action" type="button" disabled={!canRestartFromInitializing} onClick={() => void restartKlipper()}><FcRefresh className="printer-initializing-action-icon" /><span>{restartingKlipper ? "Reiniciando Klipper" : "Reiniciar Klipper"}</span></button>
-              <button className="printer-initializing-action" type="button" disabled={!canRestartFromInitializing} onClick={() => void restartFirmware(false)}><FcRefresh className="printer-initializing-action-icon" /><span>{restartingFirmware ? t("actions.restartingFirmware") : t("actions.restartFirmwareLong")}</span></button>
-              <a className="printer-initializing-action" href={apiPath("/api/printer/log?name=klippy.log")} download><FcDownload className="printer-initializing-action-icon" /><span>Registro de Klipper</span></a>
-              <a className="printer-initializing-action" href={apiPath("/api/printer/log?name=moonraker.log")} download><FcDownload className="printer-initializing-action-icon" /><span>Registro de Moonraker</span></a>
+              <button className="printer-initializing-action" type="button" disabled={!canRestartFromInitializing} onClick={() => void restartKlipper()}><MdRestartAlt className="printer-initializing-action-icon" /><span>{restartingKlipper ? "Reiniciando Klipper" : "Reiniciar Klipper"}</span></button>
+              <button className="printer-initializing-action" type="button" disabled={!canRestartFromInitializing} onClick={() => void restartFirmware(false)}><MdRestartAlt className="printer-initializing-action-icon" /><span>{restartingFirmware ? t("actions.restartingFirmware") : t("actions.restartFirmwareLong")}</span></button>
+              {showPrinterDiagnosticLogs && <a className="printer-initializing-action" href={apiPath("/api/printer/log?name=klippy.log")} download><MdDownload className="printer-initializing-action-icon" /><span>Registro de Klipper</span></a>}
+              {showPrinterDiagnosticLogs && <a className="printer-initializing-action" href={apiPath("/api/printer/log?name=moonraker.log")} download><MdDownload className="printer-initializing-action-icon" /><span>Registro de Moonraker</span></a>}
             </div>
           </div>
         </div>
@@ -6786,7 +6790,7 @@ function Editor() {
                     <div className="home-widget-header-actions">
                       {widget === "mmu" && <RichTooltip content={t("mmu.mapTools")} placement="bottom"><button className="modal-icon-button" type="button" aria-label={t("mmu.mapTools")}
                         disabled={!mmuState?.available || mmuGateCount < 1} onClick={() => setMmuMapOpen(true)}><MdDeviceHub /></button></RichTooltip>}
-                      {widget === "tray" ? null : widget === "mmu" ? <RichTooltip content={t("actions.refresh")} placement="bottom">
+                      {widget === "tray" || widget === "statusbar" ? null : widget === "mmu" ? <RichTooltip content={t("actions.refresh")} placement="bottom">
                         <button className="modal-icon-button" type="button" aria-label={t("actions.refresh")} disabled={mmuLoading}
                           onClick={() => setMmuRefreshToken((token) => token + 1)}><FcRefresh className="action-icon" /></button>
                       </RichTooltip> : <button className="modal-icon-button" type="button" title={widget === "sensors" ? t("actions.refresh") : t("homeGrid.openFull")}
@@ -6932,6 +6936,8 @@ function Editor() {
                       </>
                     ) : widget === "tray" ? (
                       <PurgeTrayWidget apiBase={appBasePath} locale={localeCode} />
+                    ) : widget === "statusbar" ? (
+                      <StatusBarWidget apiBase={appBasePath} locale={localeCode} />
                     ) : (
                       <div className={`mmu-widget ${mmuDragActive ? "drop-active" : ""}`}
                         onDragEnter={(event) => { event.preventDefault(); setMmuDragActive(true); }}

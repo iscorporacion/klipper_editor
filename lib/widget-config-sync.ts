@@ -22,7 +22,7 @@ const registry = {
 export type ManagedWidgetConfig = keyof typeof registry;
 
 export function widgetConfigSyncEnabled() {
-  return process.env.KEDITOR_REMOTE_WIDGET_CONFIG === "true";
+  return process.env.KEDITOR_REMOTE_WIDGET_CONFIG !== "false";
 }
 
 function definition(widget: string) {

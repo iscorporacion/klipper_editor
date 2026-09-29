@@ -1002,6 +1002,7 @@ const defaultMessages: Messages = {
   "status.firmwareRestarting": "Reiniciando firmware",
   "status.firmwareRestarted": "Reinicio de firmware solicitado",
   "status.printerInitializing": "Inicializando",
+  "status.serverRestarting": "K-Editor se esta reiniciando. Reconectando...",
   "status.printerReported": "Reporta Klipper: {state}",
   "status.terminalConnected": "Terminal conectada",
   "status.terminalDisconnected": "Terminal desconectada",
@@ -3429,6 +3430,10 @@ function Editor() {
   const loadPrinterStatus = useCallback(async () => {
     try {
       const response = await fetch(apiPath("/api/printer/status"), { cache: "no-store" });
+      const contentType = response.headers.get("content-type") ?? "";
+      if (!contentType.toLowerCase().includes("application/json")) {
+        throw new Error(t("status.serverRestarting"));
+      }
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? t("errors.printerStatus"));
       const nextStatus = normalizePrinterStatus(payload, t("errors.printerStatus"));
@@ -3437,11 +3442,9 @@ function Editor() {
         setPrinterInitializing(false);
       }
       return nextStatus;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : t("errors.printerStatus");
-      const nextStatus = normalizePrinterStatus({ error: message }, t("errors.printerStatus"));
-      setPrinterStatus(nextStatus);
-      return nextStatus;
+    } catch {
+      setMessage(t("status.serverRestarting"));
+      return null;
     }
   }, [t]);
 

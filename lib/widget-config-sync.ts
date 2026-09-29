@@ -10,7 +10,9 @@ const registry = {
   tray: {
     source: "mmu_config/purge_tray.cfg",
     remote: "purge_tray.cfg",
-    include: "[include purge_tray.cfg]"
+    include: "[include purge_tray.cfg]",
+    hardwareSource: "mmu_config/purge_tray_hardware.cfg",
+    hardwareRemote: "purge_tray_hardware.cfg"
   },
   statusbar: {
     source: "mmu_config/statusbar_leds.cfg",
@@ -107,6 +109,14 @@ export async function installWidgetConfig(widget: string) {
     const backup = backupName(item.remote);
     await uploadMoonrakerConfigFile(backup, existing);
     backups.push(backup);
+  }
+
+  if ("hardwareSource" in item && "hardwareRemote" in item) {
+    const existingHardware = await optionalRemoteFile(item.hardwareRemote);
+    if (existingHardware === null) {
+      const hardwareSource = await fs.readFile(path.join(process.cwd(), item.hardwareSource), "utf8");
+      await uploadMoonrakerConfigFile(item.hardwareRemote, hardwareSource);
+    }
   }
 
   await uploadMoonrakerConfigFile(item.remote, source);

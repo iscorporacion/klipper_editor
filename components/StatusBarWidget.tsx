@@ -32,6 +32,11 @@ function csvColor(value: unknown, fallback: string) {
   return parts.length === 3 && parts.every(Number.isFinite) ? `#${parts.map((part) => Math.max(0, Math.min(255, part)).toString(16).padStart(2, "0")).join("")}` : fallback;
 }
 
+function isTransientKlipperDisconnect(value: unknown) {
+  const message = value instanceof Error ? value.message : String(value ?? "");
+  return /Klippy Host not connected|HTTP 503|"code"\s*:\s*503|fetch failed|Unexpected token ['"]?<['"]?/i.test(message);
+}
+
 export default function StatusBarWidget({ apiBase = "", locale = "es" }: { apiBase?: string; locale?: string }) {
   const es = locale.toLowerCase().startsWith("es");
   const labels = useMemo(() => es ? {
@@ -67,7 +72,9 @@ export default function StatusBarWidget({ apiBase = "", locale = "es" }: { apiBa
         };
         setForm(next);
       }
-    } catch (error) { setMessage(error instanceof Error ? error.message : "Status bar unavailable"); }
+    } catch (error) {
+      setMessage(isTransientKlipperDisconnect(error) ? "" : error instanceof Error ? error.message : "Status bar unavailable");
+    }
   }, [apiBase, open]);
 
   useEffect(() => { void load(); }, [load]);

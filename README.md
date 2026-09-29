@@ -49,7 +49,7 @@ KLIPPER_EDITOR_ENABLE_TERMINAL=false
 KEDITOR_REMOTE_WIDGET_CONFIG=true
 ```
 
-`KEDITOR_REMOTE_WIDGET_CONFIG` enables the development-only managed widget configuration sync. It is disabled by default and should remain unset in printer releases.
+`KEDITOR_REMOTE_WIDGET_CONFIG` enables managed widget configuration installation through Moonraker. Printer releases enable it by default; set it to `false` before installation to disable remote configuration changes.
 
 ## Install on printer host
 

@@ -252,6 +252,7 @@
     "status.firmwareRestarted": "Firmware restart requested",
     "status.printerInitializing": "Initializing",
     "status.serverRestarting": "K-Editor is restarting. Reconnecting...",
+    "status.printerReconnecting": "Klipper is restarting. Reconnecting...",
     "status.printerReported": "Klipper reports: {state}",
     "status.terminalConnected": "Terminal connected",
     "status.terminalDisconnected": "Terminal disconnected",

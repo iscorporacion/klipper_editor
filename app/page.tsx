@@ -672,6 +672,11 @@ function readablePrinterMessage(value: unknown) {
   return raw.replace(/\\n/g, "\n").trim();
 }
 
+function isTransientKlipperDisconnectMessage(value: unknown) {
+  const message = typeof value === "string" ? value : String(value ?? "");
+  return /Klippy Host not connected|HTTP 503|"code"\s*:\s*503|fetch failed/i.test(message);
+}
+
 function normalizePrinterStatus(value: unknown, fallbackMessage: string): PrinterStatus {
   const status = value && typeof value === "object" ? (value as Partial<PrinterStatus>) : {};
   const position =
@@ -1003,6 +1008,7 @@ const defaultMessages: Messages = {
   "status.firmwareRestarted": "Reinicio de firmware solicitado",
   "status.printerInitializing": "Inicializando",
   "status.serverRestarting": "K-Editor se esta reiniciando. Reconectando...",
+  "status.printerReconnecting": "Klipper se esta reiniciando. Reconectando...",
   "status.printerReported": "Reporta Klipper: {state}",
   "status.terminalConnected": "Terminal conectada",
   "status.terminalDisconnected": "Terminal desconectada",
@@ -6152,6 +6158,9 @@ function Editor() {
   const printerIssueSeverity = printerInitializingState.toLowerCase() === "error" ? "error"
     : printerInitializingState.toLowerCase() === "shutdown" ? "shutdown" : "info";
   const showPrinterDiagnosticLogs = printerIssueSeverity === "error" || printerIssueSeverity === "shutdown";
+  const statusBarMessage = isTransientKlipperDisconnectMessage(message)
+    ? t("status.printerReconnecting")
+    : readablePrinterMessage(message);
 
   return (
     <main className={sidebarCollapsed ? "workspace-shell sidebar-collapsed" : "workspace-shell"} style={themeStyle}>
@@ -9868,7 +9877,7 @@ function Editor() {
         )}
 
         <footer className="statusbar">
-          <span className="statusbar-message" title={message}>{message}</span>
+          <span className="statusbar-message" title={statusBarMessage}>{statusBarMessage}</span>
           {printerStatus && (
             <span className="statusbar-printer" title={printerStatus.webhooksMessage || printerStatus.error}>
               {t("status.printerState", { state: printerStatus.printState })}

@@ -5909,7 +5909,7 @@ function Editor() {
       const status = await loadPrinterStatus();
       if (cancelled) return;
 
-      if (status.printing && status.printState === "printing") {
+      if (status?.printing && status.printState === "printing") {
         const suggestedIntervalMs = suggestedXySnapshotInterval(status.speed);
         setXySnapshots((current) => {
           const next = [

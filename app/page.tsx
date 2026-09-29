@@ -3076,6 +3076,31 @@ function Editor() {
     (key: string, values?: Record<string, string | number>) => translate(messages, key, values),
     [messages]
   );
+  const transientStatusMessages = useMemo(() => new Set([
+    "status.gcodeSent",
+    "status.heatersRefreshed",
+    "status.heatersSet",
+    "status.auxiliariesRefreshed",
+    "status.moveDone",
+    "status.extruded",
+    "status.updatesLoaded",
+    "status.firmwareRestarted",
+    "status.terminalConnected",
+    "status.terminalDisconnected",
+    "status.terminalSettingSaved",
+    "status.mcpTunnelStopped",
+    "status.bedMeshActionDone",
+    "status.themeImported"
+  ].map((key) => t(key))), [t]);
+
+  useEffect(() => {
+    if (!transientStatusMessages.has(message)) return;
+    const timer = window.setTimeout(() => {
+      setMessage((current) => current === message ? t("status.ready") : current);
+    }, 5000);
+    return () => window.clearTimeout(timer);
+  }, [message, t, transientStatusMessages]);
+
   const printStatusLabel = useCallback(
     (status: string | undefined) => {
       const normalized = normalizedPrintStatus(status);

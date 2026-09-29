@@ -8,9 +8,9 @@ import {
 
 const registry = {
   tray: {
-    source: "mmu_config/bandeja.cfg",
-    remote: "bandeja.cfg",
-    include: "[include bandeja.cfg]"
+    source: "mmu_config/purge_tray.cfg",
+    remote: "purge_tray.cfg",
+    include: "[include purge_tray.cfg]"
   },
   statusbar: {
     source: "mmu_config/statusbar_leds.cfg",

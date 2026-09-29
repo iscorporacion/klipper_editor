@@ -1079,8 +1079,8 @@ export async function getTrayStatus(): Promise<TrayStatus> {
   const objectsPayload = await moonrakerFetch("/printer/objects/list");
   const rawObjects = objectsPayload?.result?.objects ?? objectsPayload?.objects ?? [];
   const objects = Array.isArray(rawObjects) ? rawObjects.filter((name): name is string => typeof name === "string") : [];
-  const stateObject = "gcode_macro _BANDEJA_STATE";
-  const settingsObject = "gcode_macro _BANDEJA_VARS";
+  const stateObject = "gcode_macro _PURGE_TRAY_STATE";
+  const settingsObject = "gcode_macro _PURGE_TRAY_VARS";
   if (!objects.includes(stateObject) || !objects.includes(settingsObject)) {
     return { available: false, servoAvailable: false, filamentColor: "#7457e8", allAxesHomed: false, printing: false, state: null, settings: null, temperature: 0, target: 0 };
   }
@@ -1100,7 +1100,7 @@ export async function getTrayStatus(): Promise<TrayStatus> {
   const filamentColor = /^#?[0-9a-f]{6}([0-9a-f]{2})?$/i.test(rawColor) ? `#${rawColor.replace(/^#/, "")}` : "#7457e8";
   return {
     available: true,
-    servoAvailable: objects.includes("servo bandeja_cama"),
+    servoAvailable: objects.includes("servo purge_tray_bed"),
     filamentColor,
     allAxesHomed: String(status.toolhead?.homed_axes ?? "").toLowerCase().includes("x")
       && String(status.toolhead?.homed_axes ?? "").toLowerCase().includes("y")

@@ -92,10 +92,10 @@ export default function PurgeTrayWidget({ apiBase = "", locale = "es" }: { apiBa
   }, [es]);
   const help: Record<keyof TrayForm | "profile", string> = useMemo(() => es ? {
     profile: "Nombre del conjunto de ajustes para distinguir cabezales o impresoras.",
-    safePosition: "Posicion de auxiliar_z a la que vuelve la bandeja despues de HOME y al terminar.",
-    purgePosition: "Posicion absoluta de auxiliar_z donde comienza la formacion de la bola.",
-    brushPosition: "Posicion absoluta de auxiliar_z durante la limpieza. No es el eje Z del cabezal.",
-    dropPosition: "Posicion de auxiliar_z donde el servo retrae la cama y descarga la bola.",
+    safePosition: "Posicion de purge_tray_lift a la que vuelve la bandeja despues de HOME y al terminar.",
+    purgePosition: "Posicion absoluta de purge_tray_lift donde comienza la formacion de la bola.",
+    brushPosition: "Posicion absoluta de purge_tray_lift durante la limpieza. No es el eje Z del cabezal.",
+    dropPosition: "Posicion de purge_tray_lift donde el servo retrae la cama y descarga la bola.",
     purgeX: "Coordenada X absoluta del cabezal donde se realiza la purga.",
     purgeY: "Coordenada Y absoluta del cabezal que lo alinea con la bandeja.",
     bedSafeZ: "Posicion Z de seguridad de la impresora. En una Trident mueve la cama principal y no ajusta la altura de la bandeja.",
@@ -103,7 +103,7 @@ export default function PurgeTrayWidget({ apiBase = "", locale = "es" }: { apiBa
     brushX2: "Segundo extremo X del recorrido de limpieza sobre las cerdas.",
     brushY: "Coordenada Y del cabezal que lo alinea con el cepillo.",
     purgeLength: "Cantidad total de filamento, en milimetros, extruida para formar cada bola.",
-    blobDescent: "Distancia que baja lentamente auxiliar_z mientras se extruye la bola.",
+    blobDescent: "Distancia que baja lentamente purge_tray_lift mientras se extruye la bola.",
     maxBlobs: "Numero estimado de bolas que caben antes de marcar el deposito como lleno.",
     servoReceiveAngle: "Angulo que coloca la cama movil debajo de la boquilla para recibir la bola.",
     servoReleaseAngle: "Angulo que retrae la cama movil para dejar caer la bola.",

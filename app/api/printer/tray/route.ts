@@ -2,12 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { getTrayStatus, runGcodeScript } from "@/lib/moonraker";
 
 const commands: Record<string, string> = {
-  home: "BANDEJA_HOME",
-  safe: "BANDEJA_SAFE",
-  purge: "BANDEJA_TEST_PURGE",
-  clean: "BANDEJA_TEST_CLEAN",
-  drop: "BANDEJA_DROP",
-  reset: "BANDEJA_RESET_COUNT"
+  home: "PURGE_TRAY_HOME",
+  safe: "PURGE_TRAY_SAFE",
+  purge: "PURGE_TRAY_TEST_PURGE",
+  clean: "PURGE_TRAY_TEST_CLEAN",
+  drop: "PURGE_TRAY_DROP",
+  reset: "PURGE_TRAY_RESET_COUNT"
 };
 
 function finite(value: unknown, minimum: number, maximum: number, name: string) {
@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
 
     let script = commands[action];
     if (action === "move") {
-      script = `BANDEJA_MOVE POS=${finite(body.position, 0, 50, "tray position")}`;
+      script = `PURGE_TRAY_MOVE POS=${finite(body.position, 0, 50, "tray position")}`;
     } else if (action === "calibrate-position") {
       if (!status.allAxesHomed) {
         return NextResponse.json({ error: "XYZ HOME is required before calibrating a toolhead position" }, { status: 409 });
@@ -53,9 +53,9 @@ export async function POST(request: NextRequest) {
         X: finite(body.x, -1000, 1000, "calibration X"),
         Y: finite(body.y, -1000, 1000, "calibration Y")
       };
-      script = `BANDEJA_CALIBRATE_POSITION MODE=${mode} ${Object.entries(values).map(([key, value]) => `${key}=${value}`).join(" ")}`;
+      script = `PURGE_TRAY_CALIBRATE_POSITION MODE=${mode} ${Object.entries(values).map(([key, value]) => `${key}=${value}`).join(" ")}`;
     } else if (action === "servo-test") {
-      script = `BANDEJA_SERVO ANGLE=${finite(body.angle, 0, 180, "servo angle")}`;
+      script = `PURGE_TRAY_SERVO ANGLE=${finite(body.angle, 0, 180, "servo angle")}`;
     } else if (action === "configure") {
       const profile = String(body.profile ?? "Custom").replace(/[^a-z0-9 _-]/gi, "").trim().slice(0, 32) || "Custom";
       const values = {
@@ -76,7 +76,7 @@ export async function POST(request: NextRequest) {
         SERVO_DWELL: finite(body.servoDwell, 100, 10000, "servo dwell"),
         MAX_BLOBS: finite(body.maxBlobs, 1, 10000, "bucket capacity")
       };
-      script = `BANDEJA_CONFIGURE PROFILE="${profile}" ${Object.entries(values).map(([key, value]) => `${key}=${value}`).join(" ")}`;
+      script = `PURGE_TRAY_CONFIGURE PROFILE="${profile}" ${Object.entries(values).map(([key, value]) => `${key}=${value}`).join(" ")}`;
     } else if (!script) {
       return NextResponse.json({ error: "Unsupported purge tray action" }, { status: 400 });
     }

@@ -2835,6 +2835,7 @@ function Editor() {
   const [dialogInputValue, setDialogInputValue] = useState("");
   const [message, setMessage] = useState(defaultLocaleMessages["status.ready"] ?? "Ready");
   const [printerStatus, setPrinterStatus] = useState<PrinterStatus | null>(null);
+  const [reportedPrinterError, setReportedPrinterError] = useState("");
   const [printerInitializing, setPrinterInitializing] = useState(false);
   const [restartingFirmware, setRestartingFirmware] = useState(false);
   const [restartingKlipper, setRestartingKlipper] = useState(false);
@@ -3100,6 +3101,12 @@ function Editor() {
     }, 5000);
     return () => window.clearTimeout(timer);
   }, [message, t, transientStatusMessages]);
+
+  useEffect(() => {
+    if (!/(?:gcode\.CommandError|Klippy disconnected|Printer is (?:shutdown|halted)|"code"\s*:\s*400|Moonraker request failed)/i.test(message)) return;
+    setReportedPrinterError(readablePrinterMessage(message));
+    setDismissedPrinterIssue("");
+  }, [message]);
 
   const printStatusLabel = useCallback(
     (status: string | undefined) => {
@@ -6136,9 +6143,9 @@ function Editor() {
   const machinePowerDisabled =
     runningMachinePowerAction !== null || !printerStatus || Boolean(printerStatus.error) || printerStatus.printing;
   const powerMenuDisabled = restartingFirmware || runningMachinePowerAction !== null || !printerStatus;
-  const hasPrinterIssue = printerInitializing || isPrinterInitializingStatus(printerStatus) || Boolean(printerStatus?.error);
-  const printerInitializingState = printerStatus?.error ? "error" : printerStatus?.webhooksState?.trim() || "unknown";
-  const printerInitializingMessage = printerStatus?.webhooksMessage?.trim() || printerStatus?.error || "";
+  const hasPrinterIssue = printerInitializing || isPrinterInitializingStatus(printerStatus) || Boolean(printerStatus?.error) || Boolean(reportedPrinterError);
+  const printerInitializingState = reportedPrinterError || printerStatus?.error ? "error" : printerStatus?.webhooksState?.trim() || "unknown";
+  const printerInitializingMessage = reportedPrinterError || printerStatus?.webhooksMessage?.trim() || printerStatus?.error || "";
   const printerIssueKey = `${printerInitializingState}\n${printerInitializingMessage}`;
   const showPrinterInitializing = hasPrinterIssue && dismissedPrinterIssue !== printerIssueKey;
   const canRestartFromInitializing = Boolean(printerStatus) && !printerStatus?.printing && !restartingFirmware && !restartingKlipper;

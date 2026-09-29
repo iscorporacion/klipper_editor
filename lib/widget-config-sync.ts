@@ -52,6 +52,27 @@ function backupName(filePath: string) {
   return `${filePath.slice(0, -extension.length)}-${timestamp()}${extension}`;
 }
 
+function insertManagedInclude(config: string, include: string) {
+  const newline = config.includes("\r\n") ? "\r\n" : "\n";
+  const saveConfigMarker = /^#\*#\s*<[-]+\s*SAVE_CONFIG\s*[-]+>/im.exec(config);
+  if (saveConfigMarker?.index !== undefined) {
+    const before = config.slice(0, saveConfigMarker.index).trimEnd();
+    const after = config.slice(saveConfigMarker.index).trimStart();
+    return `${before}${newline}${newline}${include}${newline}${newline}${after}`;
+  }
+
+  const lines = config.split(/\r?\n/);
+  let lastInclude = -1;
+  for (let index = 0; index < lines.length; index += 1) {
+    if (/^\s*\[include\s+[^\]]+\]\s*$/i.test(lines[index])) lastInclude = index;
+  }
+  if (lastInclude >= 0) {
+    lines.splice(lastInclude + 1, 0, include);
+    return lines.join(newline);
+  }
+  return `${include}${newline}${newline}${config.trimStart()}`;
+}
+
 export async function getWidgetConfigSyncStatus(widget: string) {
   if (!widgetConfigSyncEnabled()) return { enabled: false, writable: false, installed: false, current: false };
   const item = definition(widget);
@@ -92,7 +113,7 @@ export async function installWidgetConfig(widget: string) {
   const includeExists = printerConfig.split(/\r?\n/).some((line) => line.trim().toLowerCase() === item.include.toLowerCase());
   const updatedPrinterConfig = includeExists
     ? printerConfig
-    : `${printerConfig.trimEnd()}\n\n${item.include}\n`;
+    : insertManagedInclude(printerConfig, item.include);
   if (updatedPrinterConfig !== printerConfig) await uploadMoonrakerConfigFile("printer.cfg", updatedPrinterConfig);
 
   return { installed: true, current: true, remotePath: item.remote, backups, restartRequired: true };

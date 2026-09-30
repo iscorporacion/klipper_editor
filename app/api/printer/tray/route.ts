@@ -7,7 +7,9 @@ const commands: Record<string, string> = {
   purge: "PURGE_TRAY_TEST_PURGE",
   clean: "PURGE_TRAY_TEST_CLEAN",
   drop: "PURGE_TRAY_DROP",
-  reset: "PURGE_TRAY_EMPTY"
+  reset: "PURGE_TRAY_RESET_COUNT",
+  "empty-start": "PURGE_TRAY_EMPTY_START",
+  "empty-finish": "PURGE_TRAY_EMPTY_FINISH"
 };
 
 function finite(value: unknown, minimum: number, maximum: number, name: string) {

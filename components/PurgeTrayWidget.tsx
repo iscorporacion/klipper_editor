@@ -89,14 +89,16 @@ export default function PurgeTrayWidget({ apiBase = "", locale = "es" }: { apiBa
     position: "Posicion", bucket: "Deposito", homed: "HOME", required: "Requerido", close: "Cerrar", save: "Guardar configuracion",
     profile: "Perfil", tray: "Posiciones de bandeja", toolhead: "Cabezal", brush: "Cepillo", purgeConfig: "Purga y deposito", servo: "Cama movil (servo 9g)", servoPending: "Servo pendiente de configurar",
     error: "No se pudo controlar la bandeja", refresh: "Actualizar", printing: "Controles bloqueados durante impresion", servoMissing: "Servo pendiente", testReceive: "Probar recepcion", testRelease: "Probar descarga",
-    install: "Instalar configuracion", update: "Actualizar configuracion", restart: "Reiniciar Klipper", confirmRestart: "¿Reiniciar Klipper para cargar la configuracion de la bandeja?", readOnly: "Moonraker no permite escribir en config.", xyzRequired: "HOME XYZ requerido", configOutdated: "La configuracion instalada no coincide con esta version del widget.", increment: "Incremento de movimiento", testPosition: "Probar posicion", testStart: "Probar inicio", testEnd: "Probar final"
+    install: "Instalar configuracion", update: "Actualizar configuracion", restart: "Reiniciar Klipper", confirmRestart: "¿Reiniciar Klipper para cargar la configuracion de la bandeja?", readOnly: "Moonraker no permite escribir en config.", xyzRequired: "HOME XYZ requerido", configOutdated: "La configuracion instalada no coincide con esta version del widget.", increment: "Incremento de movimiento", testPosition: "Probar posicion", testStart: "Probar inicio", testEnd: "Probar final",
+    emptyTitle: "Vaciar deposito", emptyDescription: "Inicia el vaciado para bajar la cama, bajar la bandeja y abrir la cama movil. Pulsa terminar solo despues de retirar y volver a colocar el deposito.", emptyStart: "Iniciar", emptyFinish: "Terminar", cancel: "Cancelar"
   } : {
     unavailable: "The purge tray configuration is not installed.", idle: "Ready", home: "Home", safe: "Safe",
     purge: "Test purge", clean: "Test cleaning", drop: "Drop", reset: "Empty bucket", settings: "Configure",
     position: "Position", bucket: "Bucket", homed: "HOME", required: "Required", close: "Close", save: "Save configuration",
     profile: "Profile", tray: "Tray positions", toolhead: "Toolhead", brush: "Brush", purgeConfig: "Purge and bucket", servo: "Moving bed (9g servo)", servoPending: "Servo configuration pending",
     error: "Unable to control purge tray", refresh: "Refresh", printing: "Controls locked while printing", servoMissing: "Servo pending", testReceive: "Test receive", testRelease: "Test release",
-    install: "Install configuration", update: "Update configuration", restart: "Restart Klipper", confirmRestart: "Restart Klipper to load the purge tray configuration?", readOnly: "Moonraker does not allow writes to config.", xyzRequired: "XYZ HOME required", configOutdated: "The installed configuration does not match this widget version.", increment: "Movement increment", testPosition: "Test position", testStart: "Test start", testEnd: "Test end"
+    install: "Install configuration", update: "Update configuration", restart: "Restart Klipper", confirmRestart: "Restart Klipper to load the purge tray configuration?", readOnly: "Moonraker does not allow writes to config.", xyzRequired: "XYZ HOME required", configOutdated: "The installed configuration does not match this widget version.", increment: "Movement increment", testPosition: "Test position", testStart: "Test start", testEnd: "Test end",
+    emptyTitle: "Empty bucket", emptyDescription: "Start emptying to lower the bed, lower the tray and open the moving bed. Press finish only after removing and reinstalling the bucket.", emptyStart: "Start", emptyFinish: "Finish", cancel: "Cancel"
   }, [es]);
   const help: Record<keyof TrayForm | "profile", string> = useMemo(() => es ? {
     profile: "Nombre del conjunto de ajustes para distinguir cabezales o impresoras.",
@@ -153,6 +155,8 @@ export default function PurgeTrayWidget({ apiBase = "", locale = "es" }: { apiBa
   const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
   const [syncBusy, setSyncBusy] = useState("");
   const [movementIncrement, setMovementIncrement] = useState(0.1);
+  const [emptyDialogOpen, setEmptyDialogOpen] = useState(false);
+  const [emptyStarted, setEmptyStarted] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -206,7 +210,7 @@ export default function PurgeTrayWidget({ apiBase = "", locale = "es" }: { apiBa
 
   const run = async (action: string, extra: Record<string, unknown> = {}) => {
     setBusy(action); setMessage("");
-    const optimistic: Record<string, string> = { home: "homing", safe: "moving_safe", purge: "purging", clean: "cleaning", drop: "dropping", reset: "emptying" };
+    const optimistic: Record<string, string> = { home: "homing", safe: "moving_safe", purge: "purging", clean: "cleaning", drop: "dropping", reset: "idle", "empty-start": "emptying", "empty-finish": "moving_safe" };
     if (optimistic[action] && !(action === "home" && !data?.allAxesHomed)) {
       const targetPosition = action === "home" ? 0
         : action === "clean" ? form.brushPosition
@@ -220,8 +224,20 @@ export default function PurgeTrayWidget({ apiBase = "", locale = "es" }: { apiBa
       const payload = await response.json() as { status?: TrayPayload; error?: string };
       if (!response.ok) throw new Error(payload.error || text.error);
       if (payload.status) setData(payload.status);
-    } catch (error) { setMessage(friendlyError(error, text.error)); }
+      return true;
+    } catch (error) { setMessage(friendlyError(error, text.error)); return false; }
     finally { setBusy(""); }
+  };
+
+  const startEmptying = async () => {
+    if (await run("empty-start")) setEmptyStarted(true);
+  };
+
+  const finishEmptying = async () => {
+    if (await run("empty-finish")) {
+      setEmptyStarted(false);
+      setEmptyDialogOpen(false);
+    }
   };
 
   const manageConfig = async (action: "install" | "restart") => {
@@ -335,7 +351,7 @@ export default function PurgeTrayWidget({ apiBase = "", locale = "es" }: { apiBa
         <button type="button" disabled={disabled || !homed || full || !data.servoAvailable} onClick={() => void run("purge")}><MdKeyboardArrowUp />{text.purge}</button>
         <button type="button" disabled={disabled || !homed} onClick={() => void run("clean")}><FaBroom />{text.clean}</button>
         <button type="button" disabled={disabled || !homed || !data.servoAvailable} onClick={() => void run("drop")}><MdKeyboardArrowDown />{text.drop}</button>
-        <button type="button" disabled={disabled || !homed} onClick={() => void run("reset")} title={text.reset}>{text.reset}</button>
+        <button type="button" disabled={disabled || !homed} onClick={() => { setEmptyStarted(false); setEmptyDialogOpen(true); }} title={text.reset}>{text.reset}</button>
         <button className="icon-only" type="button" title={text.settings} aria-label={text.settings} onClick={() => setSettingsOpen(true)}><MdSettings /></button>
       </div>
     </>}
@@ -365,7 +381,21 @@ export default function PurgeTrayWidget({ apiBase = "", locale = "es" }: { apiBa
           </fieldset>
         </div>
         <footer><button type="button" className="dialog-button" onClick={() => setSettingsOpen(false)}>{text.close}</button><button type="button" className="dialog-button primary" disabled={busy !== ""}
-          onClick={() => void run("configure", form).then(() => setSettingsOpen(false))}>{text.save}</button></footer>
+          onClick={() => void run("configure", form).then((ok) => { if (ok) setSettingsOpen(false); })}>{text.save}</button></footer>
+      </section>
+    </div>, document.body)}
+    {emptyDialogOpen && typeof document !== "undefined" && createPortal(<div className="modal-backdrop" onMouseDown={() => !emptyStarted && setEmptyDialogOpen(false)}>
+      <section className="options-modal purge-tray-empty-dialog" role="dialog" aria-modal="true" aria-labelledby="purge-tray-empty-title" onMouseDown={(event) => event.stopPropagation()}>
+        <header><h2 id="purge-tray-empty-title">{text.emptyTitle}</h2>{!emptyStarted && <button className="modal-icon-button" type="button" onClick={() => setEmptyDialogOpen(false)} aria-label={text.close}><MdClose /></button>}</header>
+        <div className="purge-tray-empty-body">
+          <p>{text.emptyDescription}</p>
+          {message && <p className="purge-tray-message">{message}</p>}
+        </div>
+        <footer>
+          {!emptyStarted && <button type="button" className="dialog-button" disabled={busy !== ""} onClick={() => setEmptyDialogOpen(false)}>{text.cancel}</button>}
+          {!emptyStarted && <button type="button" className="dialog-button primary" disabled={busy !== ""} onClick={() => void startEmptying()}>{text.emptyStart}</button>}
+          {emptyStarted && <button type="button" className="dialog-button primary" disabled={busy !== ""} onClick={() => void finishEmptying()}>{text.emptyFinish}</button>}
+        </footer>
       </section>
     </div>, document.body)}
   </div>;

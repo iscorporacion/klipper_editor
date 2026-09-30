@@ -1658,10 +1658,17 @@ h1 {
 .purge-tray-unavailable-actions { display: flex; flex-wrap: wrap; gap: 7px; }
 .purge-tray-unavailable .purge-tray-message { width: 100%; color: #ffaaaa; }
 .options-modal.purge-tray-settings { display: flex; width: min(920px, calc(100vw - 32px)); max-height: calc(100vh - 32px); flex-direction: column; overflow: hidden; }
+.options-modal.purge-tray-empty-dialog { display: flex; width: min(520px, calc(100vw - 32px)); flex-direction: column; overflow: hidden; }
 .purge-tray-settings > header, .purge-tray-settings > footer { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--border); }
+.purge-tray-empty-dialog > header, .purge-tray-empty-dialog > footer { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--border); }
 .purge-tray-settings > header h2 { margin: 0; font-size: 15px; }
+.purge-tray-empty-dialog > header h2 { margin: 0; font-size: 15px; }
 .purge-tray-settings > header button { margin-left: auto; }
+.purge-tray-empty-dialog > header button { margin-left: auto; }
 .purge-tray-settings > footer { justify-content: flex-end; border-top: 1px solid var(--border); border-bottom: 0; }
+.purge-tray-empty-dialog > footer { justify-content: flex-end; border-top: 1px solid var(--border); border-bottom: 0; }
+.purge-tray-empty-body { padding: 16px; color: var(--muted); }
+.purge-tray-empty-body p { margin: 0; line-height: 1.45; }
 .purge-tray-settings-body { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; min-height: 0; overflow: auto; padding: 14px; }
 .purge-tray-settings-heading { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(180px, 1.1fr) minmax(140px, .8fr) minmax(130px, .7fr); gap: 12px; }
 .purge-tray-config-sync { grid-column: 1 / -1; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 9px; border-left: 3px solid #ffb020; background: rgba(255,176,32,.08); color: #ffd27a; font-size: 12px; }
@@ -1690,7 +1697,7 @@ h1 {
 .purge-tray-servo-tests button:hover:not(:disabled) { border-color: var(--accent); background: var(--accent-soft); }
 .purge-tray-servo-tests button:disabled { cursor: not-allowed; opacity: .4; }
 .purge-tray-servo-pending { grid-column: 1 / -1; margin: 0; color: #ffb020; font-size: 11px; }
-.purge-tray-settings .dialog-button.primary { border-color: var(--accent); background: var(--accent); color: var(--accent-contrast); }
+.purge-tray-settings .dialog-button.primary, .purge-tray-empty-dialog .dialog-button.primary { border-color: var(--accent); background: var(--accent); color: var(--accent-contrast); }
 @keyframes tray-status-pulse { 50% { opacity: .35; } }
 @keyframes tray-brush-motion { to { transform: translateX(6px); } }
 @keyframes tray-nozzle-pulse { 50% { transform: translateY(3px); } }

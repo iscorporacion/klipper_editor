@@ -2,6 +2,10 @@
 
 Last updated: 2026-09-29
 
+## Tracking rule
+
+- Any item explicitly deferred during testing or release work must be added here before closing the turn, especially when phrased as "dejemos eso para despues", "luego lo integramos", or equivalent.
+
 ## Hardware configuration UI
 
 Status: deferred until the Purge Tray and LED Status Bar widgets are stable on the printer.
@@ -22,6 +26,7 @@ Status: deferred until the Purge Tray and LED Status Bar widgets are stable on t
 
 Target file: `purge_tray_hardware.cfg`
 
+- Add `purge_descent_delay` to the Purge Tray configuration window so the delay before tray descent can be tuned without editing `purge_tray.cfg`.
 - Configure the `purge_tray_lift` manual stepper pins and motion limits.
 - Configure the TMC2209 UART pin, address, current and driver parameters.
 - Configure the lift endstop pin and polarity.

@@ -31,8 +31,12 @@ type TrayForm = {
   brushX1: number;
   brushX2: number;
   brushY: number;
+  odgeBrushY: number;
   purgeLength: number;
+  purgeDescentDelay: number;
+  purgeVelocityFan: number;
   blobDescent: number;
+  safeTravelSpeed: number;
   servoReceiveAngle: number;
   servoReleaseAngle: number;
   servoDwell: number;
@@ -51,7 +55,8 @@ type SyncStatus = {
 const defaults: TrayForm = {
   profile: "Stealthburner", safePosition: 30, purgePosition: 25, brushPosition: 25, dropPosition: 50,
   purgeX: 0, purgeY: 0, bedSafeZ: 10, brushX1: 0, brushX2: 0, brushY: 0,
-  purgeLength: 60, blobDescent: 5, servoReceiveAngle: 90, servoReleaseAngle: 0, servoDwell: 700, maxBlobs: 80
+  odgeBrushY: 8, purgeLength: 60, purgeDescentDelay: 1300, purgeVelocityFan: 0, blobDescent: 5,
+  safeTravelSpeed: 6, servoReceiveAngle: 90, servoReleaseAngle: 0, servoDwell: 700, maxBlobs: 80
 };
 
 function number(value: unknown, fallback = 0) {
@@ -102,8 +107,12 @@ export default function PurgeTrayWidget({ apiBase = "", locale = "es" }: { apiBa
     brushX1: "Primer extremo X del recorrido de limpieza sobre las cerdas.",
     brushX2: "Segundo extremo X del recorrido de limpieza sobre las cerdas.",
     brushY: "Coordenada Y del cabezal que lo alinea con el cepillo.",
+    odgeBrushY: "Distancia que resta a Y al terminar la limpieza para salir por otra ruta.",
     purgeLength: "Cantidad total de filamento, en milimetros, extruida para formar cada bola.",
+    purgeDescentDelay: "Espera en milisegundos despues del primer tramo de extrusion antes de iniciar el descenso.",
+    purgeVelocityFan: "Velocidad PWM del ventilador antes de descargar la bola. 0 lo deja apagado; 255 es 100%.",
     blobDescent: "Distancia que baja lentamente purge_tray_lift mientras se extruye la bola.",
+    safeTravelSpeed: "Velocidad de purge_tray_lift para viajes hacia la altura segura.",
     maxBlobs: "Numero estimado de bolas que caben antes de marcar el deposito como lleno.",
     servoReceiveAngle: "Angulo que coloca la cama movil debajo de la boquilla para recibir la bola.",
     servoReleaseAngle: "Angulo que retrae la cama movil para dejar caer la bola.",
@@ -120,8 +129,12 @@ export default function PurgeTrayWidget({ apiBase = "", locale = "es" }: { apiBa
     brushX1: "First X endpoint of the wiping travel across the brush.",
     brushX2: "Second X endpoint of the wiping travel across the brush.",
     brushY: "Toolhead Y coordinate that aligns the nozzle with the brush.",
+    odgeBrushY: "Y distance subtracted after the final wipe so the nozzle exits by another path.",
     purgeLength: "Total millimeters of filament extruded to create each blob.",
+    purgeDescentDelay: "Delay in milliseconds after the first extrusion segment before tray descent starts.",
+    purgeVelocityFan: "Fan PWM before dropping the blob. 0 keeps it off; 255 is 100%.",
     blobDescent: "Distance auxiliary Z slowly lowers while the blob is extruded.",
+    safeTravelSpeed: "purge_tray_lift speed for moves toward the safe height.",
     maxBlobs: "Estimated number of blobs the bucket holds before being marked full.",
     servoReceiveAngle: "Angle that positions the moving bed below the nozzle to receive a blob.",
     servoReleaseAngle: "Angle that retracts the moving bed and releases the blob.",
@@ -134,7 +147,7 @@ export default function PurgeTrayWidget({ apiBase = "", locale = "es" }: { apiBa
   const [form, setForm] = useState<TrayForm>(defaults);
   const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
   const [syncBusy, setSyncBusy] = useState("");
-  const [movementIncrement, setMovementIncrement] = useState(1);
+  const [movementIncrement, setMovementIncrement] = useState(0.1);
 
   const load = useCallback(async () => {
     try {
@@ -153,8 +166,12 @@ export default function PurgeTrayWidget({ apiBase = "", locale = "es" }: { apiBa
         purgeX: setting(vars, "purge_x", 0), purgeY: setting(vars, "purge_y", 0), bedSafeZ: setting(vars, "clear_z", defaults.bedSafeZ),
         brushX1: setting(vars, "brush_x1", 0), brushX2: setting(vars, "brush_x2", 0),
         brushY: setting(vars, "brush_y", 0),
+        odgeBrushY: setting(vars, "odge_brush_y", defaults.odgeBrushY),
         purgeLength: setting(vars, "purge_length", defaults.purgeLength),
+        purgeDescentDelay: setting(vars, "purge_descent_delay", defaults.purgeDescentDelay),
+        purgeVelocityFan: setting(vars, "purge_velocity_fan", defaults.purgeVelocityFan),
         blobDescent: setting(vars, "blob_descent", defaults.blobDescent),
+        safeTravelSpeed: setting(vars, "safe_travel_speed", defaults.safeTravelSpeed),
         servoReceiveAngle: setting(vars, "servo_receive_angle", defaults.servoReceiveAngle),
         servoReleaseAngle: setting(vars, "servo_release_angle", defaults.servoReleaseAngle),
         servoDwell: setting(vars, "servo_dwell", defaults.servoDwell),
@@ -232,14 +249,14 @@ export default function PurgeTrayWidget({ apiBase = "", locale = "es" }: { apiBa
   const trayY = 57 + (moving ? target : position) * 1.5;
   const disabled = busy !== "" || Boolean(data?.printing);
   const fieldTitle = (label: string, description: string) => <span className="purge-tray-field-title"><span>{label}</span><RichTooltip placement="top" content={<span className="rich-tooltip-stack"><strong>{label}</strong><span>{description}</span></span>}><span className="purge-tray-help" role="button" tabIndex={0} aria-label={`${label}: ${description}`}><MdHelpOutline /></span></RichTooltip></span>;
-  const input = (key: keyof TrayForm, label: string, min = -1000, max = 1000) => <label>{fieldTitle(label, help[key])}<input type="number" min={min} max={max} step="0.1" value={form[key] as number}
+  const input = (key: keyof TrayForm, label: string, min = -1000, max = 1000) => <label>{fieldTitle(label, help[key])}<input type="number" inputMode="decimal" min={min} max={max} step="any" value={form[key] as number}
     onChange={(event) => setForm((current) => ({ ...current, [key]: Number(event.target.value) }))} /></label>;
   const nudge = (key: keyof TrayForm, direction: -1 | 1, min = -1000, max = 1000) => {
     setForm((current) => ({ ...current, [key]: Math.min(max, Math.max(min, Number(((current[key] as number) + movementIncrement * direction).toFixed(3)))) }));
   };
   const calibrationInput = (key: keyof TrayForm, label: string, min = -1000, max = 1000, onTest?: () => void) => <div className="purge-tray-calibration-field">{fieldTitle(label, help[key])}<span className="purge-tray-calibration-input">
     <button type="button" onClick={() => nudge(key, -1, min, max)} aria-label={`${label} -${movementIncrement}`}><MdRemove /></button>
-    <input type="number" min={min} max={max} step="0.1" value={form[key] as number} onChange={(event) => setForm((current) => ({ ...current, [key]: Number(event.target.value) }))} />
+    <input type="number" inputMode="decimal" min={min} max={max} step="any" value={form[key] as number} onChange={(event) => setForm((current) => ({ ...current, [key]: Number(event.target.value) }))} />
     <button type="button" onClick={() => nudge(key, 1, min, max)} aria-label={`${label} +${movementIncrement}`}><MdAdd /></button>
     {onTest && <RichTooltip placement="top" content={text.testPosition}><button className="purge-tray-inline-test" type="button" disabled={busy !== "" || !homed || Boolean(data?.printing)} onClick={onTest} aria-label={`${text.testPosition}: ${label}`}><MdPlayArrow /></button></RichTooltip>}
   </span></div>;
@@ -329,10 +346,10 @@ export default function PurgeTrayWidget({ apiBase = "", locale = "es" }: { apiBa
             <label className="purge-tray-increment">{fieldTitle(text.increment, es ? "Cantidad que suman o restan los botones de calibracion." : "Amount added or subtracted by the calibration buttons.")}<input type="number" min="0.01" max="50" step="0.01" value={movementIncrement} onChange={(event) => setMovementIncrement(Math.min(50, Math.max(0.01, Number(event.target.value) || 0.01)))} /></label>
             {calibrationInput("bedSafeZ", es ? "Cama Z segura" : "Safe bed Z", 0, 500)}
           </div>
-          <fieldset><legend>{text.tray}</legend>{calibrationInput("safePosition", "Segura", 0, 50, () => void run("move", { position: form.safePosition }))}{calibrationInput("purgePosition", "Purga", 0, 50, () => void run("move", { position: form.purgePosition }))}{calibrationInput("brushPosition", "Cepillo", 0, 50, () => void run("move", { position: form.brushPosition }))}{calibrationInput("dropPosition", "Descarga", 0, 50, () => void run("move", { position: form.dropPosition }))}</fieldset>
+          <fieldset><legend>{text.tray}</legend>{calibrationInput("safePosition", "Segura", 0, 50, () => void run("move", { position: form.safePosition }))}{calibrationInput("purgePosition", "Purga", 0, 50, () => void run("move", { position: form.purgePosition }))}{calibrationInput("brushPosition", "Cepillo", 0, 50, () => void run("move", { position: form.brushPosition }))}{calibrationInput("dropPosition", "Descarga", 0, 50, () => void run("move", { position: form.dropPosition }))}{input("safeTravelSpeed", es ? "Velocidad segura" : "Safe speed", 0.05, 50)}</fieldset>
           <fieldset><legend>{text.toolhead}</legend>{calibrationInput("purgeX", "Purga X", -1000, 1000, () => void testCalibration("PURGE"))}{calibrationInput("purgeY", "Purga Y", -1000, 1000, () => void testCalibration("PURGE"))}</fieldset>
-          <fieldset><legend>{text.brush}</legend>{calibrationInput("brushX1", "X inicial", -1000, 1000, () => void testCalibration("BRUSH_START"))}{calibrationInput("brushX2", "X final", -1000, 1000, () => void testCalibration("BRUSH_END"))}{calibrationInput("brushY", "Y", -1000, 1000, () => void testCalibration("BRUSH_START"))}</fieldset>
-          <fieldset><legend>{text.purgeConfig}</legend>{input("purgeLength", "Filamento (mm)", 0, 500)}{input("blobDescent", "Descenso durante purga (mm)", 0.1, 50)}{input("maxBlobs", "Capacidad", 1, 10000)}</fieldset>
+          <fieldset><legend>{text.brush}</legend>{calibrationInput("brushX1", "X inicial", -1000, 1000, () => void testCalibration("BRUSH_START"))}{calibrationInput("brushX2", "X final", -1000, 1000, () => void testCalibration("BRUSH_END"))}{calibrationInput("brushY", "Y", -1000, 1000, () => void testCalibration("BRUSH_START"))}{input("odgeBrushY", es ? "Salida Y" : "Exit Y", 0, 1000)}</fieldset>
+          <fieldset><legend>{text.purgeConfig}</legend>{input("purgeLength", "Filamento (mm)", 0, 500)}{input("blobDescent", "Descenso durante purga (mm)", 0.1, 50)}{input("purgeDescentDelay", es ? "Retardo descenso (ms)" : "Descent delay (ms)", 0, 10000)}{input("purgeVelocityFan", es ? "Ventilador descarga" : "Drop fan", 0, 255)}{input("maxBlobs", "Capacidad", 1, 10000)}</fieldset>
           <fieldset className="purge-tray-servo-settings"><legend>{text.servo}</legend>{input("servoReceiveAngle", "Angulo de recepcion", 0, 180)}{input("servoReleaseAngle", "Angulo de descarga", 0, 180)}{input("servoDwell", "Espera (ms)", 100, 10000)}
             <div className="purge-tray-servo-tests">
               <button type="button" disabled={busy !== "" || !data?.servoAvailable} onClick={() => void run("servo-test", { angle: form.servoReceiveAngle })}><MdKeyboardArrowUp />{text.testReceive}</button>

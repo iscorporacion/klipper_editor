@@ -331,7 +331,7 @@ export async function getMoonrakerStatus(): Promise<MoonrakerStatus> {
 
   return {
     webhooksState: String(webhooks.state ?? "unknown"),
-    webhooksMessage: String(webhooks.state_message ?? webhooks.message ?? ""),
+    webhooksMessage: String(webhooks.state_message ?? webhooks.message ?? printStats.message ?? displayStatus.message ?? ""),
     printState,
     filename,
     progress: Math.min(Math.max(toNumber(virtualSdcard.progress), 0), 1),

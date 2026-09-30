@@ -677,6 +677,11 @@ function isTransientKlipperDisconnectMessage(value: unknown) {
   return /Klippy Host not connected|HTTP 503|"code"\s*:\s*503|fetch failed/i.test(message);
 }
 
+function isDismissiblePrinterNotice(value: unknown) {
+  const message = typeof value === "string" ? value : String(value ?? "");
+  return /Requested temperature .* out of range|gcode\.CommandError/i.test(message);
+}
+
 function normalizePrinterStatus(value: unknown, fallbackMessage: string): PrinterStatus {
   const status = value && typeof value === "object" ? (value as Partial<PrinterStatus>) : {};
   const position =
@@ -771,7 +776,7 @@ function normalizePrinterStatus(value: unknown, fallbackMessage: string): Printe
 function isPrinterInitializingStatus(status: PrinterStatus | null) {
   if (!status || status.error) return false;
   const state = status.webhooksState.toLowerCase();
-  return state !== "ready" && ["startup", "shutdown", "initializing", "connecting"].includes(state);
+  return state !== "ready" && ["startup", "shutdown", "initializing", "connecting", "error", "halted"].includes(state);
 }
 
 type HeaterStatus = {
@@ -3478,6 +3483,8 @@ function Editor() {
       setPrinterStatus(nextStatus);
       if (nextStatus.webhooksState.toLowerCase() === "ready" && !nextStatus.error) {
         setPrinterInitializing(false);
+        setReportedPrinterError("");
+        setDismissedPrinterIssue("");
       }
       return nextStatus;
     } catch {
@@ -6155,8 +6162,10 @@ function Editor() {
   const printerIssueKey = `${printerInitializingState}\n${printerInitializingMessage}`;
   const showPrinterInitializing = hasPrinterIssue && dismissedPrinterIssue !== printerIssueKey;
   const canRestartFromInitializing = Boolean(printerStatus) && !printerStatus?.printing && !restartingFirmware && !restartingKlipper;
-  const printerIssueSeverity = printerInitializingState.toLowerCase() === "error" ? "error"
-    : printerInitializingState.toLowerCase() === "shutdown" ? "shutdown" : "info";
+  const printerIssueState = printerInitializingState.toLowerCase();
+  const printerIssueSeverity = ["error", "halted"].includes(printerIssueState) ? "error"
+    : printerIssueState === "shutdown" ? "shutdown" : "info";
+  const printerIssueDismissibleNotice = isDismissiblePrinterNotice(printerInitializingMessage);
   const showPrinterDiagnosticLogs = printerIssueSeverity === "error" || printerIssueSeverity === "shutdown";
   const statusBarMessage = isTransientKlipperDisconnectMessage(message)
     ? t("status.printerReconnecting")
@@ -6170,7 +6179,10 @@ function Editor() {
             <div className="printer-initializing-title">
               <IoPower className="printer-initializing-icon" />
               <span id="printer-issue-title">{t("status.printerInitializing")}</span>
-              <button className="printer-initializing-close" type="button" onClick={() => setDismissedPrinterIssue(printerIssueKey)} title={t("actions.close")} aria-label={t("actions.close")}><IoClose /></button>
+              <button className="printer-initializing-close" type="button" onClick={() => {
+                if (printerIssueDismissibleNotice) setReportedPrinterError("");
+                setDismissedPrinterIssue(printerIssueKey);
+              }} title={t("actions.close")} aria-label={t("actions.close")}><IoClose /></button>
             </div>
             <div className="printer-initializing-bar" />
             <div className="printer-initializing-status">
@@ -6186,7 +6198,7 @@ function Editor() {
           </div>
         </div>
       )}
-      {hasPrinterIssue && !showPrinterInitializing && <button className="printer-issue-reopen" type="button" onClick={() => setDismissedPrinterIssue("")}><IoPower /><span>{t("status.printerReported", { state: printerInitializingState.toUpperCase() })}</span></button>}
+      {hasPrinterIssue && !showPrinterInitializing && !printerIssueDismissibleNotice && <button className="printer-issue-reopen" type="button" onClick={() => setDismissedPrinterIssue("")}><IoPower /><span>{t("status.printerReported", { state: printerInitializingState.toUpperCase() })}</span></button>}
       <aside className="sidebar">
         <div className="sidebar-header">
           <div className="sidebar-brand">

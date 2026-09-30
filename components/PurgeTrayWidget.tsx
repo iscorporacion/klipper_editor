@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { MdAdd, MdCloudUpload, MdClose, MdHelpOutline, MdHome, MdKeyboardArrowDown, MdKeyboardArrowUp, MdPlayArrow, MdRefresh, MdRemove, MdRestartAlt, MdSettings } from "react-icons/md";
+import MdiIcon from "@mdi/react";
+import { mdiArrowCollapseLeft, mdiArrowCollapseRight } from "@mdi/js";
 import { FaBroom } from "react-icons/fa6";
 import RichTooltip from "@/components/RichTooltip";
 
@@ -28,6 +30,7 @@ type TrayForm = {
   purgeX: number;
   purgeY: number;
   bedSafeZ: number;
+  bedZEmpty: number;
   brushX1: number;
   brushX2: number;
   brushY: number;
@@ -54,7 +57,7 @@ type SyncStatus = {
 
 const defaults: TrayForm = {
   profile: "Stealthburner", safePosition: 30, purgePosition: 25, brushPosition: 25, dropPosition: 50,
-  purgeX: 0, purgeY: 0, bedSafeZ: 10, brushX1: 0, brushX2: 0, brushY: 0,
+  purgeX: 0, purgeY: 0, bedSafeZ: 10, bedZEmpty: 50, brushX1: 0, brushX2: 0, brushY: 0,
   odgeBrushY: 8, purgeLength: 60, purgeDescentDelay: 1300, purgeVelocityFan: 0, blobDescent: 5,
   safeTravelSpeed: 6, servoReceiveAngle: 90, servoReleaseAngle: 0, servoDwell: 700, maxBlobs: 80
 };
@@ -104,6 +107,7 @@ export default function PurgeTrayWidget({ apiBase = "", locale = "es" }: { apiBa
     purgeX: "Coordenada X absoluta del cabezal donde se realiza la purga.",
     purgeY: "Coordenada Y absoluta del cabezal que lo alinea con la bandeja.",
     bedSafeZ: "Posicion Z de seguridad de la impresora. En una Trident mueve la cama principal y no ajusta la altura de la bandeja.",
+    bedZEmpty: "Posicion Z de la cama principal para acceder comodamente al deposito al vaciarlo.",
     brushX1: "Primer extremo X del recorrido de limpieza sobre las cerdas.",
     brushX2: "Segundo extremo X del recorrido de limpieza sobre las cerdas.",
     brushY: "Coordenada Y del cabezal que lo alinea con el cepillo.",
@@ -126,6 +130,7 @@ export default function PurgeTrayWidget({ apiBase = "", locale = "es" }: { apiBa
     purgeX: "Absolute toolhead X coordinate used for purging.",
     purgeY: "Absolute toolhead Y coordinate that aligns it with the purge tray.",
     bedSafeZ: "Safe printer Z position. On a Trident this moves the main bed and does not adjust tray height.",
+    bedZEmpty: "Main bed Z position used to comfortably access the bucket when emptying it.",
     brushX1: "First X endpoint of the wiping travel across the brush.",
     brushX2: "Second X endpoint of the wiping travel across the brush.",
     brushY: "Toolhead Y coordinate that aligns the nozzle with the brush.",
@@ -164,6 +169,7 @@ export default function PurgeTrayWidget({ apiBase = "", locale = "es" }: { apiBa
         brushPosition: setting(vars, "brush_position", defaults.brushPosition),
         dropPosition: setting(vars, "drop_position", defaults.dropPosition),
         purgeX: setting(vars, "purge_x", 0), purgeY: setting(vars, "purge_y", 0), bedSafeZ: setting(vars, "clear_z", defaults.bedSafeZ),
+        bedZEmpty: setting(vars, "bed_z_empty", defaults.bedZEmpty),
         brushX1: setting(vars, "brush_x1", 0), brushX2: setting(vars, "brush_x2", 0),
         brushY: setting(vars, "brush_y", 0),
         odgeBrushY: setting(vars, "odge_brush_y", defaults.odgeBrushY),
@@ -200,7 +206,7 @@ export default function PurgeTrayWidget({ apiBase = "", locale = "es" }: { apiBa
 
   const run = async (action: string, extra: Record<string, unknown> = {}) => {
     setBusy(action); setMessage("");
-    const optimistic: Record<string, string> = { home: "homing", safe: "moving_safe", purge: "purging", clean: "cleaning", drop: "dropping" };
+    const optimistic: Record<string, string> = { home: "homing", safe: "moving_safe", purge: "purging", clean: "cleaning", drop: "dropping", reset: "emptying" };
     if (optimistic[action] && !(action === "home" && !data?.allAxesHomed)) {
       const targetPosition = action === "home" ? 0
         : action === "clean" ? form.brushPosition
@@ -329,7 +335,7 @@ export default function PurgeTrayWidget({ apiBase = "", locale = "es" }: { apiBa
         <button type="button" disabled={disabled || !homed || full || !data.servoAvailable} onClick={() => void run("purge")}><MdKeyboardArrowUp />{text.purge}</button>
         <button type="button" disabled={disabled || !homed} onClick={() => void run("clean")}><FaBroom />{text.clean}</button>
         <button type="button" disabled={disabled || !homed || !data.servoAvailable} onClick={() => void run("drop")}><MdKeyboardArrowDown />{text.drop}</button>
-        <button type="button" disabled={disabled || blobs === 0} onClick={() => void run("reset")} title={text.reset}>{text.reset}</button>
+        <button type="button" disabled={disabled || !homed} onClick={() => void run("reset")} title={text.reset}>{text.reset}</button>
         <button className="icon-only" type="button" title={text.settings} aria-label={text.settings} onClick={() => setSettingsOpen(true)}><MdSettings /></button>
       </div>
     </>}
@@ -344,16 +350,16 @@ export default function PurgeTrayWidget({ apiBase = "", locale = "es" }: { apiBa
           </div>}
           <div className="purge-tray-settings-heading"><label>{fieldTitle(text.profile, help.profile)}<input value={form.profile} maxLength={32} onChange={(event) => setForm((current) => ({ ...current, profile: event.target.value }))} /></label>
             <label className="purge-tray-increment">{fieldTitle(text.increment, es ? "Cantidad que suman o restan los botones de calibracion." : "Amount added or subtracted by the calibration buttons.")}<input type="number" min="0.01" max="50" step="0.01" value={movementIncrement} onChange={(event) => setMovementIncrement(Math.min(50, Math.max(0.01, Number(event.target.value) || 0.01)))} /></label>
-            {calibrationInput("bedSafeZ", es ? "Cama Z segura" : "Safe bed Z", 0, 500)}
+            {input("safeTravelSpeed", es ? "Velocidad segura" : "Safe speed", 0.05, 50)}
           </div>
-          <fieldset><legend>{text.tray}</legend>{calibrationInput("safePosition", "Segura", 0, 50, () => void run("move", { position: form.safePosition }))}{calibrationInput("purgePosition", "Purga", 0, 50, () => void run("move", { position: form.purgePosition }))}{calibrationInput("brushPosition", "Cepillo", 0, 50, () => void run("move", { position: form.brushPosition }))}{calibrationInput("dropPosition", "Descarga", 0, 50, () => void run("move", { position: form.dropPosition }))}{input("safeTravelSpeed", es ? "Velocidad segura" : "Safe speed", 0.05, 50)}</fieldset>
-          <fieldset><legend>{text.toolhead}</legend>{calibrationInput("purgeX", "Purga X", -1000, 1000, () => void testCalibration("PURGE"))}{calibrationInput("purgeY", "Purga Y", -1000, 1000, () => void testCalibration("PURGE"))}</fieldset>
+          <fieldset><legend>{text.tray}</legend>{calibrationInput("safePosition", "Segura", 0, 50, () => void run("move", { position: form.safePosition }))}{calibrationInput("purgePosition", "Purga", 0, 50, () => void run("move", { position: form.purgePosition }))}{calibrationInput("brushPosition", "Cepillo", 0, 50, () => void run("move", { position: form.brushPosition }))}{calibrationInput("dropPosition", "Descarga", 0, 50, () => void run("move", { position: form.dropPosition }))}</fieldset>
+          <fieldset><legend>{text.toolhead}</legend>{calibrationInput("purgeX", "Purga X", -1000, 1000, () => void testCalibration("PURGE"))}{calibrationInput("purgeY", "Purga Y", -1000, 1000, () => void testCalibration("PURGE"))}{input("purgeDescentDelay", es ? "Retardo descenso (ms)" : "Descent delay (ms)", 0, 10000)}{input("bedZEmpty", es ? "Cama Z vaciado" : "Empty bed Z", 0, 1000)}{calibrationInput("bedSafeZ", es ? "Cama Z segura" : "Safe bed Z", 0, 500)}</fieldset>
           <fieldset><legend>{text.brush}</legend>{calibrationInput("brushX1", "X inicial", -1000, 1000, () => void testCalibration("BRUSH_START"))}{calibrationInput("brushX2", "X final", -1000, 1000, () => void testCalibration("BRUSH_END"))}{calibrationInput("brushY", "Y", -1000, 1000, () => void testCalibration("BRUSH_START"))}{input("odgeBrushY", es ? "Salida Y" : "Exit Y", 0, 1000)}</fieldset>
-          <fieldset><legend>{text.purgeConfig}</legend>{input("purgeLength", "Filamento (mm)", 0, 500)}{input("blobDescent", "Descenso durante purga (mm)", 0.1, 50)}{input("purgeDescentDelay", es ? "Retardo descenso (ms)" : "Descent delay (ms)", 0, 10000)}{input("purgeVelocityFan", es ? "Ventilador descarga" : "Drop fan", 0, 255)}{input("maxBlobs", "Capacidad", 1, 10000)}</fieldset>
+          <fieldset><legend>{text.purgeConfig}</legend>{input("purgeLength", "Filamento (mm)", 0, 500)}{input("blobDescent", "Descenso durante purga (mm)", 0.1, 50)}{input("purgeVelocityFan", es ? "Ventilador descarga" : "Drop fan", 0, 255)}{input("maxBlobs", "Capacidad", 1, 10000)}</fieldset>
           <fieldset className="purge-tray-servo-settings"><legend>{text.servo}</legend>{input("servoReceiveAngle", "Angulo de recepcion", 0, 180)}{input("servoReleaseAngle", "Angulo de descarga", 0, 180)}{input("servoDwell", "Espera (ms)", 100, 10000)}
             <div className="purge-tray-servo-tests">
-              <button type="button" disabled={busy !== "" || !data?.servoAvailable} onClick={() => void run("servo-test", { angle: form.servoReceiveAngle })}><MdKeyboardArrowUp />{text.testReceive}</button>
-              <button type="button" disabled={busy !== "" || !data?.servoAvailable} onClick={() => void run("servo-test", { angle: form.servoReleaseAngle })}><MdKeyboardArrowDown />{text.testRelease}</button>
+              <RichTooltip placement="top" content={text.testReceive}><button type="button" aria-label={text.testReceive} disabled={busy !== "" || !data?.servoAvailable} onClick={() => void run("servo-test", { angle: form.servoReceiveAngle })}><MdiIcon path={mdiArrowCollapseLeft} size={1} /></button></RichTooltip>
+              <RichTooltip placement="top" content={text.testRelease}><button type="button" aria-label={text.testRelease} disabled={busy !== "" || !data?.servoAvailable} onClick={() => void run("servo-test", { angle: form.servoReleaseAngle })}><MdiIcon path={mdiArrowCollapseRight} size={1} /></button></RichTooltip>
             </div>
             {!data?.servoAvailable && <p className="purge-tray-servo-pending">{text.servoPending}</p>}
           </fieldset>

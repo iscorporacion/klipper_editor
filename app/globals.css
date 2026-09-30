@@ -1663,7 +1663,7 @@ h1 {
 .purge-tray-settings > header button { margin-left: auto; }
 .purge-tray-settings > footer { justify-content: flex-end; border-top: 1px solid var(--border); border-bottom: 0; }
 .purge-tray-settings-body { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; min-height: 0; overflow: auto; padding: 14px; }
-.purge-tray-settings-heading { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(240px, 1fr) minmax(150px, 190px) minmax(190px, 220px); gap: 12px; }
+.purge-tray-settings-heading { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(180px, 1.1fr) minmax(140px, .8fr) minmax(130px, .7fr); gap: 12px; }
 .purge-tray-config-sync { grid-column: 1 / -1; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 9px; border-left: 3px solid #ffb020; background: rgba(255,176,32,.08); color: #ffd27a; font-size: 12px; }
 .purge-tray-config-sync span { flex: 1 1 260px; }
 .purge-tray-config-sync button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 32px; padding: 0 10px; border: 1px solid var(--border); border-radius: var(--control-radius); background: var(--panel-soft); color: var(--text); cursor: pointer; }
@@ -1684,8 +1684,8 @@ h1 {
 .purge-tray-help { display: inline-grid; place-items: center; width: 19px; height: 19px; flex: 0 0 auto; border-radius: 50%; color: var(--muted); cursor: help; }
 .purge-tray-help:hover, .purge-tray-help:focus-visible { background: var(--accent-soft); color: var(--accent); outline: 0; }
 .purge-tray-help svg { width: 15px; height: 15px; }
-.purge-tray-settings-body .purge-tray-servo-settings { grid-column: 1 / -1; grid-template-columns: repeat(3, minmax(0, 1fr)); align-content: start; }
-.purge-tray-servo-tests { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.purge-tray-settings-body .purge-tray-servo-settings { grid-column: 1 / -1; grid-template-columns: repeat(3, minmax(120px, 1fr)) auto; align-content: start; align-items: end; }
+.purge-tray-servo-tests { display: grid; grid-template-columns: repeat(2, 36px); gap: 6px; align-self: end; }
 .purge-tray-servo-tests button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 34px; border: 1px solid var(--border); border-radius: var(--control-radius); background: var(--panel-soft); color: var(--text); cursor: pointer; }
 .purge-tray-servo-tests button:hover:not(:disabled) { border-color: var(--accent); background: var(--accent-soft); }
 .purge-tray-servo-tests button:disabled { cursor: not-allowed; opacity: .4; }
@@ -1698,7 +1698,7 @@ h1 {
 @keyframes tray-blob-grow { from { transform: scale(.35); } to { transform: scale(1.15); } }
 @keyframes tray-blob-fall { 0%, 48% { transform: translateY(0); opacity: 1; } 58% { transform: translateY(3px); opacity: 1; } 100% { transform: translateY(47px); opacity: 0; } }
 @keyframes tray-bed-release { 0%, 12% { transform: translateX(0); } 62%, 78% { transform: translateX(-78px); } 100% { transform: translateX(0); } }
-@media (max-width: 680px) { .purge-tray-settings-body { grid-template-columns: 1fr; } .purge-tray-settings-heading { grid-template-columns: 1fr; } .purge-tray-settings-body fieldset, .purge-tray-settings-body .purge-tray-servo-settings { grid-template-columns: 1fr 1fr; } .purge-tray-servo-settings > label:nth-of-type(3) { grid-column: 1 / -1; } .purge-tray-summary { flex-wrap: wrap; } .purge-tray-summary > span:not(:first-child) { margin-left: 0; } }
+@media (max-width: 680px) { .purge-tray-settings-body { grid-template-columns: 1fr; } .purge-tray-settings-heading { grid-template-columns: 1fr; } .purge-tray-settings-body fieldset, .purge-tray-settings-body .purge-tray-servo-settings { grid-template-columns: 1fr 1fr; } .purge-tray-servo-settings > label:nth-of-type(3), .purge-tray-servo-tests { grid-column: 1 / -1; } .purge-tray-summary { flex-wrap: wrap; } .purge-tray-summary > span:not(:first-child) { margin-left: 0; } }
 .home-widget.dragging { opacity: .42; }
 .home-widget.drop-before::after, .home-widget.drop-after::after { position: absolute; right: -2px; left: -2px; z-index: 30; height: min(42%, 120px); border: 2px dashed var(--accent); border-radius: 4px; background: var(--accent-soft); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 24%, transparent); content: ""; pointer-events: none; }
 .home-widget.drop-before::after { top: -2px; }

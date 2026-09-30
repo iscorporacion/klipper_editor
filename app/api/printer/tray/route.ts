@@ -7,7 +7,7 @@ const commands: Record<string, string> = {
   purge: "PURGE_TRAY_TEST_PURGE",
   clean: "PURGE_TRAY_TEST_CLEAN",
   drop: "PURGE_TRAY_DROP",
-  reset: "PURGE_TRAY_RESET_COUNT"
+  reset: "PURGE_TRAY_EMPTY"
 };
 
 function finite(value: unknown, minimum: number, maximum: number, name: string) {
@@ -66,6 +66,7 @@ export async function POST(request: NextRequest) {
         PURGE_X: finite(body.purgeX, -1000, 1000, "purge X"),
         PURGE_Y: finite(body.purgeY, -1000, 1000, "purge Y"),
         BED_SAFE_Z: finite(body.bedSafeZ, 0, 1000, "safe bed Z"),
+        BED_Z_EMPTY: finite(body.bedZEmpty, 0, 1000, "empty bed Z"),
         BRUSH_X1: finite(body.brushX1, -1000, 1000, "brush start X"),
         BRUSH_X2: finite(body.brushX2, -1000, 1000, "brush end X"),
         BRUSH_Y: finite(body.brushY, -1000, 1000, "brush Y"),

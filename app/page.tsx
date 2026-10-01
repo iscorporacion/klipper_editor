@@ -297,6 +297,15 @@ type ExcludeObjectStatus = {
   currentObject: string;
 };
 
+type ExcludeObjectShape = {
+  name: string;
+  polygon: Array<{ x: number; y: number }>;
+  excluded: boolean;
+  current: boolean;
+  bounds: { minX: number; maxX: number; minY: number; maxY: number };
+  center: { x: number; y: number };
+};
+
 type BedMeshProfile = {
   name: string;
   points: number[][];
@@ -1320,6 +1329,11 @@ const defaultMessages: Messages = {
   "printStatus.exclude": "Excluir",
   "printStatus.excluded": "Excluido",
   "printStatus.resetExcluded": "Restablecer exclusiones",
+  "printStatus.excludePanelOpen": "Abrir exclusión visual",
+  "printStatus.excludePanelClose": "Cerrar exclusión visual",
+  "printStatus.excludeMap": "Mapa de objetos",
+  "printStatus.excludeMapEmpty": "Este archivo no expone áreas para excluir.",
+  "printStatus.excludeHelp": "Haz clic sobre un área de la cama para excluir ese objeto.",
   "printStatus.xyRecorder": "Registro XY",
   "printStatus.xyRecorderStart": "Activar registro XY",
   "printStatus.xyRecorderStop": "Desactivar registro XY",
@@ -2919,6 +2933,7 @@ function Editor() {
   const [cloudflaredInstallResult, setCloudflaredInstallResult] = useState("");
   const [xyRecorderEnabled, setXyRecorderEnabled] = useState(false);
   const [xyRecorderPanelOpen, setXyRecorderPanelOpen] = useState(false);
+  const [excludeObjectPanelOpen, setExcludeObjectPanelOpen] = useState(false);
   const [xySnapshots, setXySnapshots] = useState<XySnapshot[]>([]);
   const [outlineWidth, setOutlineWidth] = useState(320);
   const [includePanelHeight, setIncludePanelHeight] = useState(240);
@@ -3013,6 +3028,70 @@ function Editor() {
   const currentPrintThumbnailUrl = currentPrintThumbnail
     ? apiPath(`/api/printer/gcode-thumbnail?path=${encodeURIComponent(currentPrintThumbnail.relativePath)}`)
     : "";
+  const excludeObjectShapes = useMemo<ExcludeObjectShape[]>(() => {
+    const excluded = new Set(printerStatus?.excludeObject.excludedObjects ?? []);
+    const current = printerStatus?.excludeObject.currentObject ?? "";
+    return (printerStatus?.excludeObject.objects ?? []).flatMap((object) => {
+      const points = Array.isArray(object.polygon)
+        ? object.polygon.flatMap((point) => {
+            if (Array.isArray(point) && point.length >= 2) {
+              const x = Number(point[0]);
+              const y = Number(point[1]);
+              return Number.isFinite(x) && Number.isFinite(y) ? [{ x, y }] : [];
+            }
+            if (point && typeof point === "object") {
+              const candidate = point as { x?: unknown; y?: unknown };
+              const x = Number(candidate.x);
+              const y = Number(candidate.y);
+              return Number.isFinite(x) && Number.isFinite(y) ? [{ x, y }] : [];
+            }
+            return [];
+          })
+        : [];
+      if (points.length < 2) return [];
+      const xs = points.map((point) => point.x);
+      const ys = points.map((point) => point.y);
+      const bounds = {
+        minX: Math.min(...xs),
+        maxX: Math.max(...xs),
+        minY: Math.min(...ys),
+        maxY: Math.max(...ys)
+      };
+      return [{
+        name: object.name,
+        polygon: points,
+        excluded: excluded.has(object.name),
+        current: current === object.name,
+        bounds,
+        center: {
+          x: (bounds.minX + bounds.maxX) / 2,
+          y: (bounds.minY + bounds.maxY) / 2
+        }
+      }];
+    });
+  }, [printerStatus?.excludeObject]);
+  const excludeObjectBounds = useMemo(() => {
+    const xMin = printerStatus?.positionLimits.x.min ?? 0;
+    const xMax = printerStatus?.positionLimits.x.max ?? 300;
+    const yMin = printerStatus?.positionLimits.y.min ?? 0;
+    const yMax = printerStatus?.positionLimits.y.max ?? 300;
+    const objectBounds = excludeObjectShapes.flatMap((shape) => [shape.bounds]);
+    const minX = Math.min(xMin, ...objectBounds.map((bounds) => bounds.minX));
+    const maxX = Math.max(xMax, ...objectBounds.map((bounds) => bounds.maxX));
+    const minY = Math.min(yMin, ...objectBounds.map((bounds) => bounds.minY));
+    const maxY = Math.max(yMax, ...objectBounds.map((bounds) => bounds.maxY));
+    const width = Math.max(1, maxX - minX);
+    const height = Math.max(1, maxY - minY);
+    const padding = Math.max(width, height) * 0.035;
+    return {
+      minX: minX - padding,
+      maxX: maxX + padding,
+      minY: minY - padding,
+      maxY: maxY + padding,
+      width: width + padding * 2,
+      height: height + padding * 2
+    };
+  }, [excludeObjectShapes, printerStatus?.positionLimits]);
   const bedMeshProfiles = bedMesh?.profiles ?? [];
   const previewBedMeshProfile = useMemo(() => {
     if (!bedMesh || bedMeshPreviewName === "__current__") return bedMesh?.current ?? null;
@@ -9850,6 +9929,16 @@ function Editor() {
                       >
                         XY
                       </button>
+                      <button
+                        className={excludeObjectPanelOpen ? "print-status-action active" : "print-status-action"}
+                        type="button"
+                        disabled={printerStatus.excludeObject.objects.length === 0}
+                        title={excludeObjectPanelOpen ? t("printStatus.excludePanelClose") : t("printStatus.excludePanelOpen")}
+                        aria-label={excludeObjectPanelOpen ? t("printStatus.excludePanelClose") : t("printStatus.excludePanelOpen")}
+                        onClick={() => setExcludeObjectPanelOpen((open) => !open)}
+                      >
+                        OBJ
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -9891,40 +9980,118 @@ function Editor() {
                     <pre>{JSON.stringify(printerStatus.printDetails.raw, null, 2)}</pre>
                   </details>
                 </div>
-                <div className="print-status-exclude">
-                  <div className="print-status-exclude-header">
-                    <h3>{t("printStatus.excludeObjects")}</h3>
+              </div>
+              {excludeObjectPanelOpen && (
+                <aside className="exclude-object-drawer" aria-label={t("printStatus.excludeObjects")}>
+                  <div className="exclude-object-drawer-header">
                     <div>
-                      <button className="dialog-button" type="button"
-                        disabled={excludingObject !== null || !printerStatus.excludeObject.currentObject}
-                        onClick={() => void runExcludeObject("current")}>{t("printStatus.excludeCurrent")}</button>
-                      <button className="dialog-button" type="button"
-                        disabled={excludingObject !== null || printerStatus.excludeObject.excludedObjects.length === 0}
-                        onClick={() => void runExcludeObject("reset")}>{t("printStatus.resetExcluded")}</button>
+                      <h3>{t("printStatus.excludeObjects")}</h3>
+                      <span>{t("printStatus.excludeHelp")}</span>
+                    </div>
+                    <button
+                      className="modal-icon-button"
+                      type="button"
+                      title={t("printStatus.excludePanelClose")}
+                      aria-label={t("printStatus.excludePanelClose")}
+                      onClick={() => setExcludeObjectPanelOpen(false)}
+                    >
+                      <IoClose className="action-icon" />
+                    </button>
+                  </div>
+                  <div className="exclude-object-drawer-body">
+                    <div className="exclude-object-map-card">
+                      {excludeObjectShapes.length === 0 ? (
+                        <p className="empty-note">{t("printStatus.excludeMapEmpty")}</p>
+                      ) : (
+                        <svg
+                          className="exclude-object-map"
+                          viewBox={`${excludeObjectBounds.minX} ${excludeObjectBounds.minY} ${excludeObjectBounds.width} ${excludeObjectBounds.height}`}
+                          role="img"
+                          aria-label={t("printStatus.excludeMap")}
+                        >
+                          <defs>
+                            <pattern id="exclude-object-grid" width={excludeObjectBounds.width / 4} height={excludeObjectBounds.height / 4} patternUnits="userSpaceOnUse">
+                              <path d={`M ${excludeObjectBounds.width / 4} 0 L 0 0 0 ${excludeObjectBounds.height / 4}`} />
+                            </pattern>
+                          </defs>
+                          <g transform={`translate(0 ${excludeObjectBounds.minY + excludeObjectBounds.maxY}) scale(1 -1)`}>
+                            <rect
+                              className="exclude-object-bed"
+                              x={excludeObjectBounds.minX}
+                              y={excludeObjectBounds.minY}
+                              width={excludeObjectBounds.width}
+                              height={excludeObjectBounds.height}
+                            />
+                            <rect
+                              className="exclude-object-grid"
+                              x={excludeObjectBounds.minX}
+                              y={excludeObjectBounds.minY}
+                              width={excludeObjectBounds.width}
+                              height={excludeObjectBounds.height}
+                              fill="url(#exclude-object-grid)"
+                            />
+                            {excludeObjectShapes.map((shape) => (
+                              <g
+                                className={`exclude-object-shape-button ${shape.excluded ? "disabled" : ""}`}
+                                key={shape.name}
+                                role="button"
+                                tabIndex={excludingObject !== null || shape.excluded ? -1 : 0}
+                                aria-label={`${t("printStatus.exclude")}: ${shape.name}`}
+                                onClick={() => {
+                                  if (excludingObject === null && !shape.excluded) void runExcludeObject("name", shape.name);
+                                }}
+                                onKeyDown={(event) => {
+                                  if ((event.key === "Enter" || event.key === " ") && excludingObject === null && !shape.excluded) {
+                                    event.preventDefault();
+                                    void runExcludeObject("name", shape.name);
+                                  }
+                                }}
+                              >
+                                <polygon
+                                  className={`exclude-object-shape ${shape.current ? "current" : ""} ${shape.excluded ? "excluded" : ""}`}
+                                  points={shape.polygon.map((point) => `${point.x},${point.y}`).join(" ")}
+                                />
+                              </g>
+                            ))}
+                          </g>
+                        </svg>
+                      )}
+                    </div>
+                    <div className="exclude-object-side">
+                      <div className="exclude-object-side-actions">
+                        <button className="dialog-button" type="button"
+                          disabled={excludingObject !== null || !printerStatus.excludeObject.currentObject}
+                          onClick={() => void runExcludeObject("current")}>{t("printStatus.excludeCurrent")}</button>
+                        <button className="dialog-button" type="button"
+                          disabled={excludingObject !== null || printerStatus.excludeObject.excludedObjects.length === 0}
+                          onClick={() => void runExcludeObject("reset")}>{t("printStatus.resetExcluded")}</button>
+                      </div>
+                      {printerStatus.excludeObject.objects.length === 0 ? (
+                        <p className="empty-note">{t("printStatus.noObjects")}</p>
+                      ) : (
+                        <div className="exclude-object-list">
+                          {printerStatus.excludeObject.objects.map((object) => {
+                            const excluded = printerStatus.excludeObject.excludedObjects.includes(object.name);
+                            const current = printerStatus.excludeObject.currentObject === object.name;
+                            return <div className={`exclude-object-row ${excluded ? "excluded" : ""} ${current ? "current" : ""}`} key={object.name}>
+                              <span className="exclude-object-name" title={object.name}>{object.name}</span>
+                              {current && <span className="exclude-object-badge">{t("printStatus.currentObject")}</span>}
+                              {excluded && <span className="exclude-object-badge excluded">{t("printStatus.excluded")}</span>}
+                              <button className="dialog-button exclude-object-row-action" type="button"
+                                disabled={excludingObject !== null || excluded}
+                                onClick={() => void runExcludeObject("name", object.name)}
+                                title={t("printStatus.exclude")}
+                                aria-label={`${t("printStatus.exclude")}: ${object.name}`}>
+                                x
+                              </button>
+                            </div>;
+                          })}
+                        </div>
+                      )}
                     </div>
                   </div>
-                  {printerStatus.excludeObject.objects.length === 0 ? (
-                    <p className="empty-note">{t("printStatus.noObjects")}</p>
-                  ) : (
-                    <div className="exclude-object-list">
-                      {printerStatus.excludeObject.objects.map((object) => {
-                        const excluded = printerStatus.excludeObject.excludedObjects.includes(object.name);
-                        const current = printerStatus.excludeObject.currentObject === object.name;
-                        return <div className={`exclude-object-row ${excluded ? "excluded" : ""} ${current ? "current" : ""}`} key={object.name}>
-                          <span className="exclude-object-name" title={object.name}>{object.name}</span>
-                          {current && <span className="exclude-object-badge">{t("printStatus.currentObject")}</span>}
-                          {excluded && <span className="exclude-object-badge excluded">{t("printStatus.excluded")}</span>}
-                          <button className="dialog-button" type="button"
-                            disabled={excludingObject !== null || excluded}
-                            onClick={() => void runExcludeObject("name", object.name)}>
-                            {t("printStatus.exclude")}
-                          </button>
-                        </div>;
-                      })}
-                    </div>
-                  )}
-                </div>
-              </div>
+                </aside>
+              )}
               {xyRecorderEnabled && (
                 <aside className={xyRecorderPanelOpen ? "xy-recorder-drawer open" : "xy-recorder-drawer"}>
                   <button

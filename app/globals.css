@@ -5662,6 +5662,132 @@ button.bed-mesh-profile {
   color: #ffb020;
 }
 
+.exclude-object-drawer {
+  position: absolute;
+  inset: 58px 0 0 auto;
+  z-index: 3;
+  display: flex;
+  width: min(920px, calc(100% - 40px));
+  flex-direction: column;
+  border-left: 1px solid var(--border-strong);
+  background: color-mix(in srgb, var(--panel) 96%, black);
+  box-shadow: -18px 0 34px rgba(0, 0, 0, .34);
+}
+
+.exclude-object-drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid var(--border-soft);
+  padding: 14px 16px;
+}
+
+.exclude-object-drawer-header h3 {
+  margin: 0;
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.exclude-object-drawer-header span {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.exclude-object-drawer-body {
+  display: grid;
+  grid-template-columns: minmax(320px, 1fr) minmax(260px, 360px);
+  gap: 16px;
+  min-height: 0;
+  padding: 16px;
+}
+
+.exclude-object-map-card {
+  min-width: 0;
+  min-height: 360px;
+  border: 1px solid var(--border-soft);
+  background: #090d12;
+}
+
+.exclude-object-map {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 360px;
+}
+
+.exclude-object-bed {
+  fill: #141414;
+  stroke: rgba(255, 255, 255, .55);
+  stroke-width: 1.2;
+}
+
+.exclude-object-grid {
+  fill: none;
+  stroke: rgba(255, 255, 255, .12);
+  stroke-width: .8;
+}
+
+.exclude-object-shape-button {
+  cursor: pointer;
+  outline: none;
+}
+
+.exclude-object-shape-button.disabled {
+  cursor: default;
+}
+
+.exclude-object-shape {
+  fill: rgba(196, 196, 196, .78);
+  stroke: rgba(255, 255, 255, .3);
+  stroke-width: 1.4;
+  transition: fill .12s ease, stroke .12s ease, opacity .12s ease;
+}
+
+.exclude-object-shape-button:hover .exclude-object-shape,
+.exclude-object-shape-button:focus-visible .exclude-object-shape {
+  fill: color-mix(in srgb, var(--accent) 52%, #c8c8c8);
+  stroke: var(--accent);
+  stroke-width: 2.6;
+}
+
+.exclude-object-shape.current {
+  fill: color-mix(in srgb, var(--accent) 64%, #c8c8c8);
+  stroke: var(--accent);
+  stroke-width: 2.8;
+}
+
+.exclude-object-shape.excluded {
+  fill: rgba(255, 176, 32, .38);
+  stroke: rgba(255, 176, 32, .72);
+  opacity: .58;
+}
+
+.exclude-object-side {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 10px;
+  min-width: 0;
+  min-height: 0;
+}
+
+.exclude-object-side-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.exclude-object-row-action {
+  width: 34px;
+  min-width: 34px;
+  padding: 0;
+  font-size: 18px;
+  line-height: 1;
+}
+
 .statusbar > span {
   display: block;
   min-width: 0;

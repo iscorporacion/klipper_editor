@@ -10,7 +10,7 @@ export const preferenceKeys = [
   "klipper-editor-macro-favorites", "klipper-editor-section-preview-delay",
   "klipper-editor-sidebar-collapsed", "klipper-editor-use-accent-logo",
   "klipper-editor-heater-cache", "klipper-editor-heater-colors",
-  "klipper-editor-theme", "klipper-editor-home-widgets", "klipper-editor-home-grid-layout",
+  "klipper-editor-theme", "klipper-editor-home-widgets", "klipper-editor-home-grid-layout", "klipper-editor-home-collapsed-widgets",
   "klipper-editor-sensors-show-endstops", "klipper-editor-sensors-hidden",
   "klipper-editor-mmu-last-import"
 ];

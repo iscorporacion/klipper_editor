@@ -1314,6 +1314,12 @@ const defaultMessages: Messages = {
   "printStatus.filePosition": "Posicion de archivo",
   "printStatus.layers": "Capas",
   "printStatus.message": "Mensaje",
+  "printStatus.excludeObjects": "Excluir objetos",
+  "printStatus.noObjects": "Este archivo no expone objetos excluibles.",
+  "printStatus.excludeCurrent": "Excluir actual",
+  "printStatus.exclude": "Excluir",
+  "printStatus.excluded": "Excluido",
+  "printStatus.resetExcluded": "Restablecer exclusiones",
   "printStatus.xyRecorder": "Registro XY",
   "printStatus.xyRecorderStart": "Activar registro XY",
   "printStatus.xyRecorderStop": "Desactivar registro XY",
@@ -2861,6 +2867,7 @@ function Editor() {
   const [deletingGcodePath, setDeletingGcodePath] = useState<string | null>(null);
   const [startingPrint, setStartingPrint] = useState(false);
   const [runningPrintAction, setRunningPrintAction] = useState<PrintControlAction | null>(null);
+  const [excludingObject, setExcludingObject] = useState<string | null>(null);
   const [dialog, setDialog] = useState<AppDialog | null>(null);
   const [dialogInputValue, setDialogInputValue] = useState("");
   const [message, setMessage] = useState(defaultLocaleMessages["status.ready"] ?? "Ready");
@@ -5477,6 +5484,36 @@ function Editor() {
       }
     },
     [confirmDialog, loadPrinterStatus, runningPrintAction, t]
+  );
+
+  const runExcludeObject = useCallback(
+    async (mode: "name" | "current" | "reset", objectName = "") => {
+      const actionKey = mode === "name" ? objectName : mode;
+      if (excludingObject) return;
+      setExcludingObject(actionKey);
+
+      try {
+        const escapedName = objectName.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+        const script = mode === "current"
+          ? "EXCLUDE_OBJECT CURRENT=1"
+          : mode === "reset"
+            ? "EXCLUDE_OBJECT RESET=1"
+            : `EXCLUDE_OBJECT NAME="${escapedName}"`;
+        const response = await fetch(apiPath("/api/printer/gcode"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ script })
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error ?? t("errors.quickCommand"));
+        await loadPrinterStatus();
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : t("errors.quickCommand"));
+      } finally {
+        setExcludingObject(null);
+      }
+    },
+    [excludingObject, loadPrinterStatus, t]
   );
 
   const resolveAndOpenInclude = useCallback(
@@ -9853,6 +9890,39 @@ function Editor() {
                     <summary>{t("printStatus.raw")}</summary>
                     <pre>{JSON.stringify(printerStatus.printDetails.raw, null, 2)}</pre>
                   </details>
+                </div>
+                <div className="print-status-exclude">
+                  <div className="print-status-exclude-header">
+                    <h3>{t("printStatus.excludeObjects")}</h3>
+                    <div>
+                      <button className="dialog-button" type="button"
+                        disabled={excludingObject !== null || !printerStatus.excludeObject.currentObject}
+                        onClick={() => void runExcludeObject("current")}>{t("printStatus.excludeCurrent")}</button>
+                      <button className="dialog-button" type="button"
+                        disabled={excludingObject !== null || printerStatus.excludeObject.excludedObjects.length === 0}
+                        onClick={() => void runExcludeObject("reset")}>{t("printStatus.resetExcluded")}</button>
+                    </div>
+                  </div>
+                  {printerStatus.excludeObject.objects.length === 0 ? (
+                    <p className="empty-note">{t("printStatus.noObjects")}</p>
+                  ) : (
+                    <div className="exclude-object-list">
+                      {printerStatus.excludeObject.objects.map((object) => {
+                        const excluded = printerStatus.excludeObject.excludedObjects.includes(object.name);
+                        const current = printerStatus.excludeObject.currentObject === object.name;
+                        return <div className={`exclude-object-row ${excluded ? "excluded" : ""} ${current ? "current" : ""}`} key={object.name}>
+                          <span className="exclude-object-name" title={object.name}>{object.name}</span>
+                          {current && <span className="exclude-object-badge">{t("printStatus.currentObject")}</span>}
+                          {excluded && <span className="exclude-object-badge excluded">{t("printStatus.excluded")}</span>}
+                          <button className="dialog-button" type="button"
+                            disabled={excludingObject !== null || excluded}
+                            onClick={() => void runExcludeObject("name", object.name)}>
+                            {t("printStatus.exclude")}
+                          </button>
+                        </div>;
+                      })}
+                    </div>
+                  )}
                 </div>
               </div>
               {xyRecorderEnabled && (

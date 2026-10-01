@@ -5583,6 +5583,85 @@ button.bed-mesh-profile {
   padding: 10px;
 }
 
+.print-status-exclude {
+  display: grid;
+  gap: 10px;
+  grid-column: 1 / -1;
+  min-width: 0;
+  border: 1px solid var(--border-soft);
+  background: var(--panel-soft);
+  padding: 12px;
+}
+
+.print-status-exclude-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.print-status-exclude-header h3 {
+  margin: 0;
+  color: #d7e2ee;
+  font-size: 14px;
+  text-transform: uppercase;
+}
+
+.print-status-exclude-header > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.exclude-object-list {
+  display: grid;
+  gap: 6px;
+  max-height: 260px;
+  overflow: auto;
+}
+
+.exclude-object-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 6px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.065);
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.exclude-object-row.current {
+  border-color: color-mix(in srgb, var(--accent) 60%, transparent);
+  background: var(--accent-soft);
+}
+
+.exclude-object-row.excluded {
+  opacity: .58;
+}
+
+.exclude-object-name {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.exclude-object-badge {
+  min-width: max-content;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.exclude-object-badge.excluded {
+  color: #ffb020;
+}
+
 .statusbar > span {
   display: block;
   min-width: 0;

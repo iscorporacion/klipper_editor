@@ -65,7 +65,13 @@ export async function POST(request: NextRequest) {
     else if (action === "apply" || action === "test") {
       const state = String(body.state ?? "").toUpperCase();
       if (!states.includes(state as typeof states[number])) throw new Error("Invalid status bar state");
-      script = `${action === "test" ? "STATUS_BAR_TEST_STATE" : "STATUS_BAR_APPLY_STATE"} STATE=${state}`;
+      if (action === "test" && body.effect) {
+        const effect = String(body.effect ?? "").toUpperCase();
+        if (!effects.has(effect)) throw new Error("Invalid preview effect");
+        script = `STATUS_BAR_PREVIEW_STATE STATE=${state} EFFECT=${effect} COLOR=${rgb(body.color, "preview color")} SECONDARY=${rgb(body.secondary, "preview secondary")} SPEED=${finite(body.speed, 0.05, 10, "preview speed")}`;
+      } else {
+        script = `${action === "test" ? "STATUS_BAR_TEST_STATE" : "STATUS_BAR_APPLY_STATE"} STATE=${state}`;
+      }
     } else if (action === "configure") {
       const brightness = finite(body.brightness, 0.05, 1, "brightness");
       const automatic = body.automatic === false ? 0 : 1;

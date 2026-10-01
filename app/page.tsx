@@ -105,6 +105,7 @@ const useAccentLogoKey = "klipper-editor-use-accent-logo";
 const themePreferenceKey = "klipper-editor-theme";
 const homeWidgetsKey = "klipper-editor-home-widgets";
 const homeGridLayoutKey = "klipper-editor-home-grid-layout";
+const homeCollapsedWidgetsKey = "klipper-editor-home-collapsed-widgets";
 const sensorShowEndstopsKey = "klipper-editor-sensors-show-endstops";
 const sensorHiddenKey = "klipper-editor-sensors-hidden";
 const mmuLastImportKey = "klipper-editor-mmu-last-import";
@@ -553,6 +554,21 @@ function readHomeWidgets() {
 
 function writeHomeWidgets(widgets: HomeWidget[]) {
   preferences.setItem(homeWidgetsKey, JSON.stringify(widgets));
+}
+
+function readCollapsedHomeWidgets() {
+  try {
+    const stored = JSON.parse(preferences.getItem(homeCollapsedWidgetsKey) ?? "[]") as unknown;
+    return new Set(Array.isArray(stored) ? stored.filter((item): item is HomeWidget =>
+      typeof item === "string" && availableHomeWidgets.includes(item as HomeWidget)
+    ) : []);
+  } catch {
+    return new Set<HomeWidget>();
+  }
+}
+
+function writeCollapsedHomeWidgets(widgets: Set<HomeWidget>) {
+  preferences.setItem(homeCollapsedWidgetsKey, JSON.stringify([...widgets]));
 }
 
 function splitOrcaValues(value: string) {
@@ -1176,6 +1192,8 @@ const defaultMessages: Messages = {
   "homeGrid.disableSensorConfirm": "Deshabilitar {name} durante una impresion puede anular la proteccion contra falta de filamento o atascos. Deseas continuar?",
   "homeGrid.openFull": "Abrir ventana completa",
   "homeGrid.send": "Enviar G-code",
+  "homeGrid.collapseWidget": "Minimizar widget",
+  "homeGrid.expandWidget": "Expandir widget",
   "homeGrid.moveUp": "Mover antes",
   "homeGrid.moveDown": "Mover despues",
   "homeGrid.tab": "Widgets",
@@ -2734,6 +2752,7 @@ function Editor() {
   const [homeGridColumns, setHomeGridColumns] = useState<HomeGridColumns>(defaultHomeGridColumns);
   const [homeGridLayout, setHomeGridLayout] = useState<HomeGridLayout>(() => normalizeHomeGridLayout(null, defaultHomeWidgets, defaultHomeGridColumns));
   const [homeViewport, setHomeViewport] = useState<HomeViewport>("desktop");
+  const [collapsedHomeWidgets, setCollapsedHomeWidgets] = useState<Set<HomeWidget>>(() => new Set());
   const [draggedHomeWidget, setDraggedHomeWidget] = useState<HomeWidget | null>(null);
   const [homeDropTarget, setHomeDropTarget] = useState<{ column: number; index: number } | null>(null);
   const [homeDropAnchor, setHomeDropAnchor] = useState<{ column: number; widget: HomeWidget | null; edge: "before" | "after" | "column" } | null>(null);
@@ -4083,6 +4102,16 @@ function Editor() {
       return next;
     });
   }, [homeGridColumns]);
+
+  const toggleHomeWidgetCollapsed = useCallback((widget: HomeWidget) => {
+    setCollapsedHomeWidgets((current) => {
+      const next = new Set(current);
+      if (next.has(widget)) next.delete(widget);
+      else next.add(widget);
+      writeCollapsedHomeWidgets(next);
+      return next;
+    });
+  }, []);
 
   const changeHomeGridColumns = useCallback((viewport: HomeViewport, count: number) => {
     setHomeGridColumns((currentColumns) => {
@@ -5674,6 +5703,7 @@ function Editor() {
     setHomeWidgets(savedHomeWidgets);
     setHomeGridColumns(savedHomeGrid.columns);
     setHomeGridLayout(savedHomeGrid.layout);
+    setCollapsedHomeWidgets(readCollapsedHomeWidgets());
     setShowKlipperTemperatureReports(preferences.getItem(klipperConsoleTemperatureReportsKey) === "true");
     setKlipperConsoleSingleLine(preferences.getItem(klipperConsoleSingleLineKey) === "true");
     setShowEndstops(preferences.getItem(sensorShowEndstopsKey) === "true");
@@ -6815,8 +6845,10 @@ function Editor() {
                   event.preventDefault();
                   if (draggedHomeWidget) moveHomeWidget(draggedHomeWidget, columnIndex, homeDropTarget?.column === columnIndex ? homeDropTarget.index : column.length);
                 }}>
-              {column.map((widget, widgetIndex) => <Fragment key={widget}>
-                <section className={`home-widget home-widget-${widget} ${draggedHomeWidget === widget ? "dragging" : ""} ${homeDropAnchor?.column === columnIndex && homeDropAnchor.widget === widget ? `drop-${homeDropAnchor.edge}` : ""}`} key={widget}
+              {column.map((widget, widgetIndex) => {
+                const widgetCollapsed = collapsedHomeWidgets.has(widget);
+                return <Fragment key={widget}>
+                <section className={`home-widget home-widget-${widget} ${widgetCollapsed ? "collapsed" : ""} ${draggedHomeWidget === widget ? "dragging" : ""} ${homeDropAnchor?.column === columnIndex && homeDropAnchor.widget === widget ? `drop-${homeDropAnchor.edge}` : ""}`} key={widget}
                   onDragOver={(event) => {
                     if (!draggedHomeWidget || draggedHomeWidget === widget) return;
                     event.preventDefault();
@@ -6855,9 +6887,16 @@ function Editor() {
                         onClick={() => widget === "macros" ? openMacrosModal() : widget === "console" ? setKlipperConsoleOpen(true) : widget === "movement" ? setMovementOpen(true) : setSensorRefreshToken((token) => token + 1)}>
                         {widget === "sensors" ? <FcRefresh className="action-icon" /> : <MdOpenInFull className="action-icon" />}
                       </button>}
+                      <button className="modal-icon-button home-widget-collapse-button" type="button"
+                        title={t(widgetCollapsed ? "homeGrid.expandWidget" : "homeGrid.collapseWidget")}
+                        aria-label={t(widgetCollapsed ? "homeGrid.expandWidget" : "homeGrid.collapseWidget")}
+                        aria-expanded={!widgetCollapsed}
+                        onClick={() => toggleHomeWidgetCollapsed(widget)}>
+                        {widgetCollapsed ? <MdKeyboardArrowLeft className="action-icon" /> : <MdKeyboardArrowDown className="action-icon" />}
+                      </button>
                     </div>
                   </header>
-                  <div className="home-widget-body">
+                  {!widgetCollapsed && <div className="home-widget-body">
                     {widget === "macros" ? (
                       <div className="home-macro-list">
                         {favoriteMacros.length === 0 && <p className="empty-note">{t("macros.emptyFavorites")}</p>}
@@ -7102,9 +7141,10 @@ function Editor() {
                         {mmuDragActive && <div className="mmu-drop-overlay"><MdiIcon path={mdiDatabaseImportOutline} size={1.4} /><span>{t("mmu.releaseGcode")}</span></div>}
                       </div>
                     )}
-                  </div>
+                  </div>}
                 </section>
-              </Fragment>)}
+              </Fragment>;
+              })}
               {homeDropAnchor?.column === columnIndex && homeDropAnchor.widget === null &&
                 <div className="home-widget-drop-placeholder" style={{ height: Math.min(Math.max(draggedHomeWidgetHeight, 56), 320) }} aria-hidden="true" />}
               </div>)}

@@ -90,7 +90,8 @@ export default function PurgeTrayWidget({ apiBase = "", locale = "es" }: { apiBa
     profile: "Perfil", tray: "Posiciones de bandeja", toolhead: "Cabezal", brush: "Cepillo", purgeConfig: "Purga y deposito", servo: "Cama movil (servo 9g)", servoPending: "Servo pendiente de configurar",
     error: "No se pudo controlar la bandeja", refresh: "Actualizar", printing: "Controles bloqueados durante impresion", servoMissing: "Servo pendiente", testReceive: "Probar recepcion", testRelease: "Probar descarga",
     install: "Instalar configuracion", update: "Actualizar configuracion", restart: "Reiniciar Klipper", confirmRestart: "¿Reiniciar Klipper para cargar la configuracion de la bandeja?", readOnly: "Moonraker no permite escribir en config.", xyzRequired: "HOME XYZ requerido", configOutdated: "La configuracion instalada no coincide con esta version del widget.", increment: "Incremento de movimiento", testPosition: "Probar posicion", testStart: "Probar inicio", testEnd: "Probar final",
-    emptyTitle: "Vaciar deposito", emptyDescription: "Inicia el vaciado para bajar la cama, bajar la bandeja y abrir la cama movil. Pulsa terminar solo despues de retirar y volver a colocar el deposito.", emptyStart: "Iniciar", emptyFinish: "Terminar", cancel: "Cancelar"
+    emptyTitle: "Vaciar deposito", emptyDescription: "Inicia el vaciado para bajar la cama, bajar la bandeja y abrir la cama movil. Pulsa terminar solo despues de retirar y volver a colocar el deposito.", emptyStart: "Iniciar", emptyFinish: "Terminar", cancel: "Cancelar",
+    hhTitle: "Ajuste manual de Happy Hare", hhDescription: "Purga X cambio. Para que la posicion segura posterior al corte quede sobre la cama de purga, cambia esta linea en mmu_macro_vars.cfg, dentro de _MMU_CUT_TIP_VARS, guarda el archivo y reinicia firmware.", hhCurrent: "Purga X guardada"
   } : {
     unavailable: "The purge tray configuration is not installed.", idle: "Ready", home: "Home", safe: "Safe",
     purge: "Test purge", clean: "Test cleaning", drop: "Drop", reset: "Empty bucket", settings: "Configure",
@@ -98,7 +99,8 @@ export default function PurgeTrayWidget({ apiBase = "", locale = "es" }: { apiBa
     profile: "Profile", tray: "Tray positions", toolhead: "Toolhead", brush: "Brush", purgeConfig: "Purge and bucket", servo: "Moving bed (9g servo)", servoPending: "Servo configuration pending",
     error: "Unable to control purge tray", refresh: "Refresh", printing: "Controls locked while printing", servoMissing: "Servo pending", testReceive: "Test receive", testRelease: "Test release",
     install: "Install configuration", update: "Update configuration", restart: "Restart Klipper", confirmRestart: "Restart Klipper to load the purge tray configuration?", readOnly: "Moonraker does not allow writes to config.", xyzRequired: "XYZ HOME required", configOutdated: "The installed configuration does not match this widget version.", increment: "Movement increment", testPosition: "Test position", testStart: "Test start", testEnd: "Test end",
-    emptyTitle: "Empty bucket", emptyDescription: "Start emptying to lower the bed, lower the tray and open the moving bed. Press finish only after removing and reinstalling the bucket.", emptyStart: "Start", emptyFinish: "Finish", cancel: "Cancel"
+    emptyTitle: "Empty bucket", emptyDescription: "Start emptying to lower the bed, lower the tray and open the moving bed. Press finish only after removing and reinstalling the bucket.", emptyStart: "Start", emptyFinish: "Finish", cancel: "Cancel",
+    hhTitle: "Manual Happy Hare adjustment", hhDescription: "Purge X changed. To keep the safe post-cut position over the purge bed, change this line in mmu_macro_vars.cfg inside _MMU_CUT_TIP_VARS, save the file and restart firmware.", hhCurrent: "Saved Purge X"
   }, [es]);
   const help: Record<keyof TrayForm | "profile", string> = useMemo(() => es ? {
     profile: "Nombre del conjunto de ajustes para distinguir cabezales o impresoras.",
@@ -157,6 +159,7 @@ export default function PurgeTrayWidget({ apiBase = "", locale = "es" }: { apiBa
   const [movementIncrement, setMovementIncrement] = useState(0.1);
   const [emptyDialogOpen, setEmptyDialogOpen] = useState(false);
   const [emptyStarted, setEmptyStarted] = useState(false);
+  const [hhNotice, setHhNotice] = useState<{ purgeX: number; safeMarginX: number; line: string } | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -237,6 +240,18 @@ export default function PurgeTrayWidget({ apiBase = "", locale = "es" }: { apiBa
     if (await run("empty-finish")) {
       setEmptyStarted(false);
       setEmptyDialogOpen(false);
+    }
+  };
+
+  const saveConfiguration = async () => {
+    const previousPurgeX = setting(data?.settings ?? null, "purge_x", form.purgeX);
+    const changedPurgeX = Number(Math.abs(previousPurgeX - form.purgeX).toFixed(3)) > 0;
+    const ok = await run("configure", form);
+    if (!ok) return;
+    setSettingsOpen(false);
+    if (changedPurgeX) {
+      const safeMarginX = Number((form.purgeX - (-15 + 5)).toFixed(3));
+      setHhNotice({ purgeX: form.purgeX, safeMarginX, line: `variable_safe_margin_xy                     : ${safeMarginX}, 30` });
     }
   };
 
@@ -381,7 +396,18 @@ export default function PurgeTrayWidget({ apiBase = "", locale = "es" }: { apiBa
           </fieldset>
         </div>
         <footer><button type="button" className="dialog-button" onClick={() => setSettingsOpen(false)}>{text.close}</button><button type="button" className="dialog-button primary" disabled={busy !== ""}
-          onClick={() => void run("configure", form).then((ok) => { if (ok) setSettingsOpen(false); })}>{text.save}</button></footer>
+          onClick={() => void saveConfiguration()}>{text.save}</button></footer>
+      </section>
+    </div>, document.body)}
+    {hhNotice && typeof document !== "undefined" && createPortal(<div className="modal-backdrop" onMouseDown={() => setHhNotice(null)}>
+      <section className="options-modal purge-tray-hh-dialog" role="dialog" aria-modal="true" aria-labelledby="purge-tray-hh-title" onMouseDown={(event) => event.stopPropagation()}>
+        <header><h2 id="purge-tray-hh-title">{text.hhTitle}</h2><button className="modal-icon-button" type="button" onClick={() => setHhNotice(null)} aria-label={text.close}><MdClose /></button></header>
+        <div className="purge-tray-empty-body">
+          <p>{text.hhDescription}</p>
+          <p><strong>{text.hhCurrent}:</strong> {hhNotice.purgeX}</p>
+          <pre className="purge-tray-config-snippet">{hhNotice.line}</pre>
+        </div>
+        <footer><button type="button" className="dialog-button primary" onClick={() => setHhNotice(null)}>{text.close}</button></footer>
       </section>
     </div>, document.body)}
     {emptyDialogOpen && typeof document !== "undefined" && createPortal(<div className="modal-backdrop" onMouseDown={() => !emptyStarted && setEmptyDialogOpen(false)}>

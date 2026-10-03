@@ -28,6 +28,7 @@ export type MoonrakerStatus = {
   speed: number;
   activeExtruder: string;
   excludeObject: ExcludeObjectStatus;
+  saveConfig: SaveConfigStatus;
   positionLimits: {
     x: AxisLimit;
     y: AxisLimit;
@@ -62,6 +63,11 @@ export type ExcludeObjectStatus = {
   }>;
   excludedObjects: string[];
   currentObject: string;
+};
+
+export type SaveConfigStatus = {
+  pending: boolean;
+  items: Record<string, unknown>;
 };
 
 export type AxisLimit = {
@@ -294,14 +300,15 @@ export async function deleteGcodeFile(filename: string) {
 
 export async function getMoonrakerStatus(): Promise<MoonrakerStatus> {
   const payload = await moonrakerFetch(
-    "/printer/objects/query?webhooks=state,state_message&print_stats=state,filename,message,print_duration,total_duration,filament_used,info&virtual_sdcard=progress,file_position,file_size&display_status=message,progress&configfile=settings&toolhead=homed_axes,position,extruder&gcode_move=gcode_position,homing_origin,speed&exclude_object=objects,excluded_objects,current_object"
+    "/printer/objects/query?webhooks=state,state_message&print_stats=state,filename,message,print_duration,total_duration,filament_used,info&virtual_sdcard=progress,file_position,file_size&display_status=message,progress&configfile=settings,save_config_pending,save_config_pending_items&toolhead=homed_axes,position,extruder&gcode_move=gcode_position,homing_origin,speed&exclude_object=objects,excluded_objects,current_object"
   );
   const status = payload?.result?.status ?? payload?.status ?? {};
   const webhooks = status.webhooks ?? {};
   const printStats = status.print_stats ?? {};
   const virtualSdcard = status.virtual_sdcard ?? {};
   const displayStatus = status.display_status ?? {};
-  const configSettings = status.configfile?.settings ?? {};
+  const configfile = status.configfile ?? {};
+  const configSettings = configfile.settings ?? {};
   const toolhead = status.toolhead ?? {};
   const gcodeMove = status.gcode_move ?? {};
   const excludeObject = status.exclude_object ?? {};
@@ -381,6 +388,12 @@ export async function getMoonrakerStatus(): Promise<MoonrakerStatus> {
         ? (excludeObject.excluded_objects as unknown[]).map((object) => String(object))
         : [],
       currentObject: String(excludeObject.current_object ?? "")
+    },
+    saveConfig: {
+      pending: configfile.save_config_pending === true,
+      items: configfile.save_config_pending_items && typeof configfile.save_config_pending_items === "object"
+        ? configfile.save_config_pending_items as Record<string, unknown>
+        : {}
     },
     positionLimits,
     extruders: listExtruders(configSettings),

@@ -260,6 +260,7 @@ type PrinterStatus = {
   speed: number;
   activeExtruder: string;
   excludeObject: ExcludeObjectStatus;
+  saveConfig: SaveConfigStatus;
   positionLimits: {
     x: AxisLimit;
     y: AxisLimit;
@@ -304,6 +305,11 @@ type ExcludeObjectShape = {
   current: boolean;
   bounds: { minX: number; maxX: number; minY: number; maxY: number };
   center: { x: number; y: number };
+};
+
+type SaveConfigStatus = {
+  pending: boolean;
+  items: Record<string, unknown>;
 };
 
 type BedMeshProfile = {
@@ -728,6 +734,9 @@ function normalizePrinterStatus(value: unknown, fallbackMessage: string): Printe
   const excludeObject = status.excludeObject && typeof status.excludeObject === "object"
     ? (status.excludeObject as Partial<ExcludeObjectStatus>)
     : {};
+  const saveConfig = status.saveConfig && typeof status.saveConfig === "object"
+    ? (status.saveConfig as Partial<SaveConfigStatus>)
+    : {};
 
   return {
     webhooksState: String(status.webhooksState ?? "unknown"),
@@ -775,6 +784,12 @@ function normalizePrinterStatus(value: unknown, fallbackMessage: string): Printe
         ? excludeObject.excludedObjects.map((object) => String(object))
         : [],
       currentObject: String(excludeObject.currentObject ?? "")
+    },
+    saveConfig: {
+      pending: saveConfig.pending === true,
+      items: saveConfig.items && typeof saveConfig.items === "object" && !Array.isArray(saveConfig.items)
+        ? saveConfig.items as Record<string, unknown>
+        : {}
     },
     positionLimits: {
       x: axisLimitValue(positionLimits.x),
@@ -989,6 +1004,8 @@ const defaultMessages: Messages = {
   "actions.restartFirmware": "Restar",
   "actions.restartingFirmware": "Reiniciando",
   "actions.restartFirmwareLong": "Reiniciar firmware",
+  "actions.saveConfig": "SAVE_CONFIG",
+  "actions.savingConfig": "Guardando config",
   "actions.applyToGroup": "Aplicar a todos",
   "status.ready": "Listo",
   "status.opening": "Abriendo {path}",
@@ -1036,6 +1053,9 @@ const defaultMessages: Messages = {
   "status.reloadedOpenFilesPartial": "Archivos abiertos recargados; {count} con cambios locales no se tocaron",
   "status.firmwareRestarting": "Reiniciando firmware",
   "status.firmwareRestarted": "Reinicio de firmware solicitado",
+  "status.saveConfigPending": "SAVE_CONFIG pendiente",
+  "status.saveConfigSaving": "Guardando configuracion de Klipper",
+  "status.saveConfigRequested": "SAVE_CONFIG solicitado",
   "status.printerInitializing": "Inicializando",
   "status.serverRestarting": "K-Editor se esta reiniciando. Reconectando...",
   "status.printerReconnecting": "Klipper se esta reiniciando. Reconectando...",
@@ -1090,6 +1110,7 @@ const defaultMessages: Messages = {
   "errors.saveGeneric": "Error al guardar",
   "errors.restartFirmware": "No se pudo reiniciar el firmware",
   "errors.restartPrinting": "No se puede reiniciar firmware mientras hay una impresion en curso",
+  "errors.saveConfig": "No se pudo ejecutar SAVE_CONFIG",
   "errors.terminalDisabled": "La terminal esta deshabilitada. Habilitala en Opciones > Terminal o con KLIPPER_EDITOR_ENABLE_TERMINAL=true en el servicio.",
   "errors.terminalConnection": "No se pudo conectar la terminal",
   "errors.terminalCommand": "No se pudo enviar el comando",
@@ -1102,6 +1123,7 @@ const defaultMessages: Messages = {
   "confirm.deleteFile": "Borrar {path}? Esta accion no se puede deshacer.",
   "confirm.deleteSelectedFiles": "Borrar {count} archivos seleccionados? Esta accion no se puede deshacer.",
   "confirm.restartFirmware": "Reiniciar firmware ahora?",
+  "confirm.saveConfig": "Klipper tiene cambios pendientes para guardar. SAVE_CONFIG escribira la configuracion y reiniciara el firmware. Continuar?",
   "confirm.executeMacro": "Ejecutar macro {name} en la impresora?",
   "confirm.printFile": "Imprimir {name} ahora?",
   "confirm.enableTerminal": "La terminal permite ejecutar comandos con los permisos del usuario de K-Editor. En HTTP, el texto y las contrasenas viajan sin cifrar. Habilitala solo en una red local de confianza, sin publicar este acceso en Internet. Quieres habilitarla?",
@@ -1328,7 +1350,10 @@ const defaultMessages: Messages = {
   "printStatus.excludeCurrent": "Excluir actual",
   "printStatus.exclude": "Excluir",
   "printStatus.excluded": "Excluido",
-  "printStatus.resetExcluded": "Restablecer exclusiones",
+  "printStatus.notExcluded": "Activo",
+  "printStatus.resetExcluded": "Restablecer todos",
+  "printStatus.confirmExcludeTitle": "Excluir objeto",
+  "printStatus.confirmExcludeMessage": "Deseas excluir {name} de esta impresion?",
   "printStatus.excludePanelOpen": "Abrir exclusión visual",
   "printStatus.excludePanelClose": "Cerrar exclusión visual",
   "printStatus.excludeMap": "Mapa de objetos",
@@ -2890,6 +2915,7 @@ function Editor() {
   const [printerInitializing, setPrinterInitializing] = useState(false);
   const [restartingFirmware, setRestartingFirmware] = useState(false);
   const [restartingKlipper, setRestartingKlipper] = useState(false);
+  const [savingConfig, setSavingConfig] = useState(false);
   const [dismissedPrinterIssue, setDismissedPrinterIssue] = useState("");
   const [emergencyStopping, setEmergencyStopping] = useState(false);
   const [runningQuickCommand, setRunningQuickCommand] = useState<QuickCommand | null>(null);
@@ -4479,6 +4505,32 @@ function Editor() {
     }
   }, [confirmDialog, loadPrinterStatus, loadTree, printerStatus, reloadOpenTextFiles, restartingFirmware, t]);
 
+  const saveKlipperConfig = useCallback(async () => {
+    if (savingConfig || !printerStatus?.saveConfig.pending) return;
+    if (!(await confirmDialog(t("actions.saveConfig"), t("confirm.saveConfig")))) return;
+
+    setSavingConfig(true);
+    setPrinterInitializing(true);
+    setMessage(t("status.saveConfigSaving"));
+
+    try {
+      const response = await fetch(apiPath("/api/printer/gcode"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ script: "SAVE_CONFIG" })
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? t("errors.saveConfig"));
+      setMessage(t("status.saveConfigRequested"));
+      await Promise.all([loadPrinterStatus(), loadTree(), reloadOpenTextFiles()]);
+    } catch (error) {
+      setPrinterInitializing(false);
+      setMessage(error instanceof Error ? error.message : t("errors.saveConfig"));
+    } finally {
+      setSavingConfig(false);
+    }
+  }, [confirmDialog, loadPrinterStatus, loadTree, printerStatus?.saveConfig.pending, reloadOpenTextFiles, savingConfig, t]);
+
   const restartKlipper = useCallback(async () => {
     if (restartingKlipper || !printerStatus || printerStatus.printing) return;
     setRestartingKlipper(true);
@@ -5569,6 +5621,15 @@ function Editor() {
     async (mode: "name" | "current" | "reset", objectName = "") => {
       const actionKey = mode === "name" ? objectName : mode;
       if (excludingObject) return;
+      if (mode !== "reset") {
+        const label = mode === "current"
+          ? (printerStatus?.excludeObject.currentObject || t("printStatus.currentObject"))
+          : objectName;
+        if (!(await confirmDialog(
+          t("printStatus.confirmExcludeTitle"),
+          t("printStatus.confirmExcludeMessage", { name: label })
+        ))) return;
+      }
       setExcludingObject(actionKey);
 
       try {
@@ -5592,7 +5653,7 @@ function Editor() {
         setExcludingObject(null);
       }
     },
-    [excludingObject, loadPrinterStatus, t]
+    [confirmDialog, excludingObject, loadPrinterStatus, printerStatus?.excludeObject.currentObject, t]
   );
 
   const resolveAndOpenInclude = useCallback(
@@ -10076,14 +10137,7 @@ function Editor() {
                             return <div className={`exclude-object-row ${excluded ? "excluded" : ""} ${current ? "current" : ""}`} key={object.name}>
                               <span className="exclude-object-name" title={object.name}>{object.name}</span>
                               {current && <span className="exclude-object-badge">{t("printStatus.currentObject")}</span>}
-                              {excluded && <span className="exclude-object-badge excluded">{t("printStatus.excluded")}</span>}
-                              <button className="dialog-button exclude-object-row-action" type="button"
-                                disabled={excludingObject !== null || excluded}
-                                onClick={() => void runExcludeObject("name", object.name)}
-                                title={t("printStatus.exclude")}
-                                aria-label={`${t("printStatus.exclude")}: ${object.name}`}>
-                                x
-                              </button>
+                              <span className={`exclude-object-badge ${excluded ? "excluded" : ""}`}>{excluded ? t("printStatus.excluded") : t("printStatus.notExcluded")}</span>
                             </div>;
                           })}
                         </div>
@@ -10167,6 +10221,17 @@ function Editor() {
 
         <footer className="statusbar">
           <span className="statusbar-message" title={statusBarMessage}>{statusBarMessage}</span>
+          {printerStatus?.saveConfig.pending && (
+            <button
+              className="statusbar-save-config"
+              type="button"
+              disabled={savingConfig}
+              title={`${t("status.saveConfigPending")}${Object.keys(printerStatus.saveConfig.items).length ? `: ${Object.keys(printerStatus.saveConfig.items).join(", ")}` : ""}`}
+              onClick={() => void saveKlipperConfig()}
+            >
+              {savingConfig ? t("actions.savingConfig") : t("actions.saveConfig")}
+            </button>
+          )}
           {printerStatus && (
             <span className="statusbar-printer" title={printerStatus.webhooksMessage || printerStatus.error}>
               {t("status.printerState", { state: printerStatus.printState })}

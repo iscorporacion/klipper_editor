@@ -5623,7 +5623,7 @@ button.bed-mesh-profile {
 
 .exclude-object-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 8px;
   min-height: 36px;
@@ -5659,7 +5659,7 @@ button.bed-mesh-profile {
 }
 
 .exclude-object-badge.excluded {
-  color: #ffb020;
+  color: #ff4d57;
 }
 
 .exclude-object-drawer {
@@ -5761,9 +5761,9 @@ button.bed-mesh-profile {
 }
 
 .exclude-object-shape.excluded {
-  fill: rgba(255, 176, 32, .38);
-  stroke: rgba(255, 176, 32, .72);
-  opacity: .58;
+  fill: rgba(255, 45, 60, .62);
+  stroke: rgba(255, 95, 105, .95);
+  opacity: .82;
 }
 
 .exclude-object-side {
@@ -5780,14 +5780,6 @@ button.bed-mesh-profile {
   gap: 8px;
 }
 
-.exclude-object-row-action {
-  width: 34px;
-  min-width: 34px;
-  padding: 0;
-  font-size: 18px;
-  line-height: 1;
-}
-
 .statusbar > span {
   display: block;
   min-width: 0;
@@ -5799,6 +5791,31 @@ button.bed-mesh-profile {
 
 .statusbar-message {
   flex: 1 1 0;
+}
+
+.statusbar-save-config {
+  flex: 0 0 auto;
+  min-height: 20px;
+  padding: 1px 9px;
+  border: 1px solid rgba(255, 255, 255, .42);
+  border-radius: var(--control-radius);
+  background: #ffd21f;
+  color: #101820;
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.statusbar-save-config:hover:not(:disabled),
+.statusbar-save-config:focus-visible {
+  border-color: #fff;
+  background: #fff06a;
+}
+
+.statusbar-save-config:disabled {
+  cursor: wait;
+  opacity: .65;
 }
 
 .statusbar-printer,

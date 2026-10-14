@@ -4,6 +4,16 @@
     "name": "Español"
   },
   "messages": {
+    "editorSearch.find": "Buscar",
+    "editorSearch.replace": "Reemplazar",
+    "editorSearch.next": "Siguiente",
+    "editorSearch.previous": "Anterior",
+    "editorSearch.all": "Todas",
+    "editorSearch.matchCase": "Mayúsculas",
+    "editorSearch.regexp": "Regex",
+    "editorSearch.wholeWord": "Palabra completa",
+    "editorSearch.replaceAll": "Reemplazar todas",
+    "editorSearch.close": "Cerrar búsqueda",
     "homeGrid.widgetMacros": "Macros favoritas",
     "homeGrid.widgetConsole": "Consola Klipper",
     "homeGrid.widgetMovement": "Movimiento XY/Z",

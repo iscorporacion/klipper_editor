@@ -4,6 +4,16 @@
     "name": "English"
   },
   "messages": {
+    "editorSearch.find": "Find",
+    "editorSearch.replace": "Replace",
+    "editorSearch.next": "Next",
+    "editorSearch.previous": "Previous",
+    "editorSearch.all": "All",
+    "editorSearch.matchCase": "Match case",
+    "editorSearch.regexp": "Regex",
+    "editorSearch.wholeWord": "Whole word",
+    "editorSearch.replaceAll": "Replace all",
+    "editorSearch.close": "Close search",
     "homeGrid.widgetMacros": "Favorite macros",
     "homeGrid.widgetConsole": "Klipper console",
     "homeGrid.widgetMovement": "XY/Z movement",

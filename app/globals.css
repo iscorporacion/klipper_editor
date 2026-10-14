@@ -2118,6 +2118,7 @@ h1 {
 }
 
 .code-host {
+  isolation: isolate;
   position: relative;
   min-width: 0;
   min-height: 0;
@@ -2441,6 +2442,23 @@ body.is-resizing-row {
   color: var(--muted);
   font-size: 11px;
 }
+
+.code-host .cm-panels { background: var(--panel); color: var(--text); border-color: var(--border); }
+.code-host .cm-search { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px; font: 12px var(--font-ui, Arial, sans-serif); }
+.code-host .cm-search br { display: none; }
+.code-host .cm-search input, .code-host .cm-search button, .code-host .cm-search label { margin: 0; }
+.code-host .cm-search input[type=text], .code-host .cm-search input:not([type]) { flex: 1 1 160px; width: 160px; min-width: 140px; height: 32px; padding: 0 9px; border: 1px solid var(--border); border-radius: var(--control-radius); background: var(--panel-strong); color: var(--text); font: inherit; box-sizing: border-box; }
+.code-host .cm-search input[name=search] { order: 0; }
+.code-host .cm-search input[name=replace] { order: 4; }
+.code-host .cm-search button { min-height: 32px; padding: 0 9px; border: 1px solid var(--border); border-radius: var(--control-radius); background: var(--panel-strong); color: var(--text); font: inherit; cursor: pointer; white-space: nowrap; }
+.code-host .cm-search button:hover, .code-host .cm-search button:focus-visible { border-color: var(--accent); color: var(--accent); }
+.code-host .cm-search input:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
+.code-host .cm-search button[name=next], .code-host .cm-search button[name=prev], .code-host .cm-search button[name=select] { order: 1; }
+.code-host .cm-search label { display: inline-flex; align-items: center; gap: 4px; order: 3; white-space: nowrap; }
+.code-host .cm-search input[type=checkbox] { margin: 0; accent-color: var(--accent); }
+.code-host .cm-search button[name=replace], .code-host .cm-search button[name=replaceAll] { order: 5; }
+.code-host .cm-editor .cm-panel.cm-search label { font: inherit; }
+.code-host .cm-editor .cm-panel.cm-search button[name=close] { position: static; order: 6; flex: 0 0 32px; width: 32px; padding: 0; margin: 0; border: 1px solid var(--border); font-size: 20px; }
 
 .section-preview {
   position: fixed;

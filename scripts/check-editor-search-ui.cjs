@@ -1,14 +1,17 @@
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 (async () => {
   const browser = await chromium.launch({ channel: 'msedge', headless: true });
   try {
-    const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+    const context = await browser.newContext({ viewport: { width: 1920, height: 1000 } });
     await context.routeWebSocket('**/websocket', () => {});
     await context.route('**/api/**', async (route) => {
       const pathname = new URL(route.request().url()).pathname;
       let data = {};
       if (pathname === '/api/preferences') data = { id: 'search-test', values: { 'ratos-viewer-locale': 'es' } };
+      else if (pathname === '/api/locales') data = new URL(route.request().url()).searchParams.has('locale') ? { code: 'es', name: 'Español', messages: JSON.parse(fs.readFileSync(path.join(__dirname, '../locales/es.json'), 'utf8')).messages } : { locales: [{ code: 'es', name: 'Español' }] };
       else if (pathname === '/api/tree') data = { root: 'test', children: [{ name: 'printer.cfg', path: 'printer.cfg', type: 'file', icon: 'settings' }] };
       else if (pathname === '/api/file') data = { path: 'printer.cfg', content: '[printer]\nkinematics: corexy\n# needle alpha\n# needle beta\n' };
       else if (pathname === '/api/macros') data = { macros: [] };
@@ -18,15 +21,39 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     });
     const page = await context.newPage();
     const errors = [];
-    page.on('pageerror', (error) => errors.push(error.message));
+    page.on('console', (message) => { if (message.type() === 'error') console.error(message.text()); });
+    page.on('requestfailed', (request) => console.error('Request failed:', request.url(), request.failure()));
+    page.on('pageerror', (error) => { errors.push(error.message); console.error(error.message); });
     await page.goto(process.env.TEST_URL || 'http://localhost:3024', { timeout: 120000 });
-    await page.locator('.tree-open-button[title="printer.cfg"]').click();
+    await page.locator('.tree-open-button[title="printer.cfg"]').click().catch(async (error) => {
+      console.error(await page.locator('body').innerText());
+      await page.screenshot({ path: `${process.env.TEMP}/keditor-search-start-error.png` });
+      throw error;
+    });
     const editor = page.locator('.code-host .cm-content');
     await editor.waitFor();
     await editor.click();
     await page.keyboard.press('Control+f');
     const search = page.locator('.code-host .cm-search input[name="search"]');
     await search.waitFor();
+    assert.equal(await search.getAttribute('placeholder'), 'Buscar');
+    const bar = page.locator('.code-host .cm-search');
+    assert.equal(await bar.locator('button[name=next]').innerText(), 'Siguiente');
+    const fields = await bar.locator('input[name=search], input[name=replace]').evaluateAll((nodes) => nodes.map((node) => ({ y: node.getBoundingClientRect().y, width: node.getBoundingClientRect().width, height: node.getBoundingClientRect().height })));
+    assert.ok(fields.every((field) => field.width >= 160 && field.height >= 32));
+    assert.equal(fields[0].y, fields[1].y, 'Desktop search and replace stay in one row');
+    await page.locator('.section-link').first().hover();
+    const preview = page.locator('.section-preview');
+    await preview.waitFor();
+    assert.ok(await page.evaluate(() => {
+      const preview = document.querySelector('.section-preview');
+      const search = document.querySelector('.code-host .cm-search').getBoundingClientRect();
+      preview.style.left = `${search.right - 500}px`;
+      preview.style.top = `${search.top - 100}px`;
+      return document.elementFromPoint(search.right - 400, search.top + 10)?.closest('.section-preview') !== null;
+    }), 'Section preview paints above the search bar at overlapping coordinates');
+    await page.screenshot({ path: `${process.env.TEMP}/keditor-search-desktop.png` });
+    await page.mouse.move(10, 10);
     await search.pressSequentially('needle');
     await page.setViewportSize({ width: 760, height: 900 });
     await page.waitForTimeout(6500);
@@ -46,6 +73,17 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     await page.keyboard.press('Enter');
     await page.locator('.code-host .cm-searchMatch-selected').waitFor();
     assert.equal(await page.locator('.code-host .cm-searchMatch-selected').count(), 1);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.waitForTimeout(300);
+    assert.equal(await bar.locator('button[name=close]').evaluate((node) => getComputedStyle(node).position), 'static');
+    assert.ok(await bar.evaluate((node) => {
+      const bounds = node.getBoundingClientRect();
+      return [...node.querySelectorAll('input,button,label')].filter((item) => item.getClientRects().length).every((item) => {
+        const rect = item.getBoundingClientRect();
+        return rect.left >= bounds.left - 1 && rect.right <= bounds.right + 1;
+      });
+    }), 'Mobile controls stay inside the search panel');
+    await page.screenshot({ path: `${process.env.TEMP}/keditor-search-mobile.png` });
     assert.deepEqual(errors, []);
     console.log('OK: Ctrl+F survives polling and viewport rerenders, finds matches and reopens after Escape');
   } finally { await browser.close(); }

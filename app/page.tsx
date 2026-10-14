@@ -36,7 +36,7 @@ import {
   mdiDatabaseImportOutline, mdiEject, mdiEngineOff, mdiFan, mdiHome, mdiLedStripVariant, mdiLockOpenVariant,
   mdiSwapHorizontal, mdiTrayArrowDown, mdiTrayArrowUp
 } from "@mdi/js";
-import type { Range } from "@codemirror/state";
+import { EditorState, type Range } from "@codemirror/state";
 import { Decoration, DecorationSet, EditorView, ViewPlugin, ViewUpdate, WidgetType } from "@codemirror/view";
 import { HighlightStyle, StreamLanguage, syntaxHighlighting } from "@codemirror/language";
 import { yaml } from "@codemirror/lang-yaml";
@@ -966,6 +966,16 @@ const defaultMessages: Messages = {
   "actions.printedFiles": "Archivos impresos",
   "actions.globalSearch": "Buscar en configuracion",
   "actions.search": "Buscar",
+  "editorSearch.find": "Buscar",
+  "editorSearch.replace": "Reemplazar",
+  "editorSearch.next": "Siguiente",
+  "editorSearch.previous": "Anterior",
+  "editorSearch.all": "Todas",
+  "editorSearch.matchCase": "Mayúsculas",
+  "editorSearch.regexp": "Regex",
+  "editorSearch.wholeWord": "Palabra completa",
+  "editorSearch.replaceAll": "Reemplazar todas",
+  "editorSearch.close": "Cerrar búsqueda",
   "actions.searching": "Buscando",
   "actions.printFile": "Imprimir",
   "actions.printingFile": "Enviando impresion",
@@ -6423,13 +6433,17 @@ function Editor() {
   }, [activeFilePath]);
   const editorExtensions = useMemo(() => {
     if (!activeFilePath) return [];
-    const extensions = [fileLanguage(activeFilePath), ...editorLinkExtension(activeFilePath, openEditorInclude)];
+    const extensions = [fileLanguage(activeFilePath), ...editorLinkExtension(activeFilePath, openEditorInclude), EditorState.phrases.of({
+      Find: t("editorSearch.find"), Replace: t("editorSearch.replace"), next: t("editorSearch.next"), previous: t("editorSearch.previous"),
+      all: t("editorSearch.all"), "match case": t("editorSearch.matchCase"), regexp: t("editorSearch.regexp"), "by word": t("editorSearch.wholeWord"),
+      replace: t("editorSearch.replace"), "replace all": t("editorSearch.replaceAll"), close: t("editorSearch.close")
+    })];
     if (isCfgPath(activeFilePath)) {
       extensions.push(syntaxHighlighting(klipperHighlightStyle));
     }
 
     return extensions;
-  }, [activeFilePath, openEditorInclude]);
+  }, [activeFilePath, openEditorInclude, t]);
 
   const quickCommandDisabled =
     runningQuickCommand !== null || !printerStatus || Boolean(printerStatus.error) || printerStatus.printing;

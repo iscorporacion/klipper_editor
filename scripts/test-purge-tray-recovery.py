@@ -72,6 +72,24 @@ def expect_error(machine, name, **params):
     raise AssertionError(f"{name} should have failed")
 
 
+for speed in (0, 128, 255, 300):
+    fan_test = Machine()
+    fan_test.state["blob_count"] = 0
+    fan_test.vars["purge_velocity_fan"] = speed
+    fan_test.vars["purge_descent_delay"] = 1300
+    fan_test.printer["fan"]["speed"] = 0.4
+    rendered = templates["PURGE_TRAY_BLOBIFIER"].render(
+        printer=fan_test.printer, params={}, action_raise_error=lambda message: None)
+    lines = [line.strip() for line in rendered.splitlines() if line.strip()]
+    descent = next(i for i, line in enumerate(lines) if line.startswith("MANUAL_STEPPER ") and "SYNC=0" in line)
+    assert lines.index("G4 P1300") < descent
+    if speed:
+        assert lines.index(f"M106 S{min(speed, 255)}") == descent - 1
+    else:
+        assert not any(line.startswith("M106 ") for line in lines[:descent])
+    restore = lines.index("M106 S102")
+    assert restore > lines.index("_PURGE_TRAY_CLEAN SKIP_SAFE=1 BRUSH_FIRST=1")
+
 machine = Machine()
 expect_error(machine, "PURGE_TRAY_BLOBIFIER")
 assert machine.state["state"] == "full" and machine.state["recovery_pending"] == 1

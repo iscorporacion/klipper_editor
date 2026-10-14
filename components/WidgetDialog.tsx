@@ -3,8 +3,8 @@ import { useEffect, useId, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { MdClose } from "react-icons/md";
 
-export default function WidgetDialog({ title, onClose, children, footer, className = "" }: {
-  title: string; onClose: () => void; children: ReactNode; footer?: ReactNode; className?: string;
+export default function WidgetDialog({ title, onClose, children, footer, className = "", closeOnBackdrop = true }: {
+  title: string; onClose: () => void; children: ReactNode; footer?: ReactNode; className?: string; closeOnBackdrop?: boolean;
 }) {
   const id = useId();
   const ref = useRef<HTMLElement>(null);
@@ -29,7 +29,7 @@ export default function WidgetDialog({ title, onClose, children, footer, classNa
     return () => { document.removeEventListener("keydown", key, true); previous?.focus(); };
   }, []);
   if (typeof document === "undefined") return null;
-  return createPortal(<div className="modal-backdrop macro-dialog-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+  return createPortal(<div className="modal-backdrop macro-dialog-backdrop" onMouseDown={(event) => { if (closeOnBackdrop && event.target === event.currentTarget) onClose(); }}>
     <section ref={ref} tabIndex={-1} className={`options-modal macro-dialog ${className}`} role="dialog" aria-modal="true" aria-labelledby={id}>
       <header><h2 id={id}>{title}</h2><button type="button" className="modal-icon-button" onClick={onClose} aria-label="Close"><MdClose /></button></header>
       <div className="macro-dialog-body">{children}</div>

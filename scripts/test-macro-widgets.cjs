@@ -82,7 +82,7 @@ test('API validates against current Klipper macros before every execution', asyn
     if (name === '@/lib/macro-widgets') return widgets;
     if (name === 'next/server') return { NextResponse: { json: (value, options) => new Response(JSON.stringify(value), options) } };
     if (name === '@/lib/moonraker') return {
-      getRegisteredMacros: async () => registered,
+      getMacroButtonCommands: async () => registered,
       runGcodeScript: async (script) => { sent.push(script); return 'ok'; },
       assertTrayRecoveryComplete: async () => { if (pendingRecovery) throw new Error('Purge pending'); }
     };
@@ -99,4 +99,10 @@ test('API validates against current Klipper macros before every execution', asyn
   pendingRecovery = true;
   assert.equal((await post({ command: 'RESUME' })).status, 502);
   assert.equal(sent.length, 1);
+  registered = ['PROBE_EDDY_CURRENT_CALIBRATE'];
+  const eddy = 'PROBE_EDDY_CURRENT_CALIBRATE CHIP=btt_eddy';
+  assert.equal((await post({ command: eddy, validateOnly: true })).status, 200);
+  assert.equal(sent.length, 1);
+  assert.equal((await post({ command: eddy })).status, 200);
+  assert.equal(sent.at(-1), eddy);
 });

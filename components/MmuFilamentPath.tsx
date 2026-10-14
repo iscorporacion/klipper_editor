@@ -52,7 +52,7 @@ export default function MmuFilamentPath({ mmu, settings, color, locale }: {
             <rect x="26" y="97" width="14" height="24" rx="1" className="mmu-path-buffer" />
             <line x1="26" x2="40" y1="121" y2="121" className="mmu-path-outline" />
           </g>
-          <text x="48" y="119" className="mmu-path-label">{bufferLabel}</text>
+          {(!data.bufferActive || data.feedback !== "unknown") && <text x="48" y="119" className="mmu-path-label">{bufferLabel}</text>}
           {data.bias !== null && <text x="18" y="119" textAnchor="end" className="mmu-path-bias">{Math.max(-1, Math.min(1, data.bias)).toFixed(2)}</text>}
         </g>}
       </svg>

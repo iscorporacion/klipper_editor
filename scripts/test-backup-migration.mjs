@@ -45,6 +45,42 @@ async function setup(t) {
   return { root, rules, migration, dependencies, write };
 }
 
+test('deletion removes only selected validated backups and preserves active files', async (t) => {
+  const { migration, root, write } = await setup(t);
+  await write('keep.bak', 'keep');
+  const plan = await migration.previewBackupMigration();
+  const items = plan.candidates.filter((item) => item.path !== 'keep.bak');
+  const result = await migration.deleteBackups(items, plan.revision);
+  assert.equal(result.errors.length, 0);
+  assert.equal(result.deleted.length, 2);
+  for (const item of items) await assert.rejects(fs.stat(path.join(root, item.path)), { code: 'ENOENT' });
+  assert.equal(await fs.readFile(path.join(root, 'keep.bak'), 'utf8'), 'keep');
+  assert.equal(await fs.readFile(path.join(root, 'mmu/base/mmu.cfg'), 'utf8'), '# active\n');
+  await assert.rejects(migration.deleteBackups([{ path: '../outside.bak', fingerprint: 'bad' }], plan.revision), /protegido/);
+  const fresh = await migration.previewBackupMigration();
+  await write('keep.bak', 'changed');
+  await assert.rejects(migration.deleteBackups(fresh.candidates, fresh.revision), /protegido/);
+  assert.equal(await fs.readFile(path.join(root, 'keep.bak'), 'utf8'), 'changed');
+});
+
+test('delete API requires explicit confirmation and blocks print/paused/disconnected states', async (t) => {
+  const { dependencies } = await setup(t);
+  let status = { printing: true, webhooksState: 'ready' };
+  let deletes = 0;
+  dependencies['@/lib/moonraker'] = { getMoonrakerStatus: async () => status };
+  dependencies['@/lib/backup-migration'] = { deleteBackups: async () => { deletes++; return { deleted: [], errors: [] }; } };
+  const route = await load('app/api/backups/route.ts', dependencies);
+  const post = (confirm) => route.POST(new Request('http://localhost/', { method: 'POST', body: JSON.stringify({ action: 'delete', confirm }) }));
+  assert.equal((await post(false)).status, 400);
+  assert.equal((await post(true)).status, 409);
+  status = { printing: false, webhooksState: 'shutdown' };
+  assert.equal((await post(true)).status, 409);
+  assert.equal(deletes, 0);
+  status = { printing: false, webhooksState: 'ready' };
+  assert.equal((await post(true)).status, 200);
+  assert.equal(deletes, 1);
+});
+
 test('glob rules support files, folders, nested paths, disabling and HH archives', () => {
   assert.equal(helpers.isBackupPath('mmu.old-20261014-114726', 'directory'), true);
   assert.equal(helpers.isBackupPath('mmu.old-20261014-114726/base/mmu.cfg'), true);

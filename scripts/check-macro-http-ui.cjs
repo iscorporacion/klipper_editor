@@ -19,7 +19,10 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
       else if (pathname === '/api/macros') data = { macros: [] };
       else if (pathname === '/api/printer/status') data = { webhooksState: 'ready', printState: 'standby', printing: false };
       else if (pathname === '/api/printer/manual-probe') data = { active: false, ready: true, printing: false, homed: false, options: [] };
-      else if (pathname === '/api/printer/macro-buttons') data = request.method() === 'GET' ? { macros: ['TEST_MACRO'] } : { valid: true };
+      else if (pathname === '/api/printer/macro-buttons') {
+        if (request.method() === 'GET') data = { macros: ['PROBE_EDDY_CURRENT_CALIBRATE'] };
+        else { assert.equal(request.postDataJSON().validateOnly, true, 'Saving must never execute calibration'); data = { valid: true }; }
+      }
       else if (pathname === '/api/icons') data = { icon: { name: 'MdPlayArrow', attr: { viewBox: '0 0 24 24' }, children: [{ tag: 'path', attr: { d: 'M8 5v14l11-7z' }, children: [] }] } };
       await route.fulfill({ json: data });
     });
@@ -37,7 +40,11 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     await widget.getByRole('button', { name: 'Agregar boton', exact: true }).last().click();
     const editor = page.getByRole('dialog', { name: 'Configurar boton', exact: true });
     await editor.getByLabel('Nombre', { exact: true }).fill('HTTP test');
-    await editor.getByLabel('Macro y parametros', { exact: true }).fill('TEST_MACRO');
+    await editor.getByLabel('Macro y parametros', { exact: true }).fill('PROBE_EDDY_CURRENT_CALIBRATE CHIP=btt_eddy');
+    await page.locator('.macro-dialog-backdrop').last().click({ position: { x: 2, y: 2 } });
+    assert.equal(await editor.isVisible(), true);
+    assert.equal(await editor.getByLabel('Nombre', { exact: true }).inputValue(), 'HTTP test');
+    assert.equal(await editor.getByLabel('Macro y parametros', { exact: true }).inputValue(), 'PROBE_EDDY_CURRENT_CALIBRATE CHIP=btt_eddy');
     await editor.getByRole('button', { name: 'Guardar', exact: true }).click();
     await editor.waitFor({ state: 'hidden' });
     await page.waitForFunction(() => document.querySelector('.macro-command-button'));
@@ -46,7 +53,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     assert.equal(saved.length, 1);
     assert.match(saved[0].id, /^custom-macros:[0-9a-f-]{36}$/);
     assert.match(saved[0].buttons[0].id, /^[0-9a-f-]{36}$/);
-    assert.equal(saved[0].buttons[0].command, 'TEST_MACRO');
+    assert.equal(saved[0].buttons[0].command, 'PROBE_EDDY_CURRENT_CALIBRATE CHIP=btt_eddy');
     await page.reload();
     await page.getByRole('button', { name: 'HTTP test', exact: true }).waitFor();
     assert.deepEqual(errors, []);

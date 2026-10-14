@@ -2008,7 +2008,8 @@ h1 {
 .mmu-path-tool { font-size: 12px; font-weight: 700; fill: currentColor; }
 .mmu-path-label { font-size: 10px; fill: currentColor; }
 .mmu-path-small { font-size: 8px; fill: var(--muted); }
-.mmu-path-bias { font-size: 7px; fill: #36c0ca; }
+.mmu-path-bias { font-size: 10px; fill: #36c0ca; }
+.backup-selection-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
 .mmu-path-outline { stroke: #36c0ca; stroke-width: 1.2; }
 .mmu-path-outline.bypass { opacity: .35; }
 .mmu-path-filament { transition: height 180ms ease; }

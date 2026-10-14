@@ -24,6 +24,7 @@ const locale = JSON.parse(fs.readFileSync(path.join(__dirname, '../locales/es.js
           { path: 'mmu.old-20261014-114726', destination: '.keditor-backups/organized/test/mmu.old-20261014-114726.bak', type: 'directory', files: 20, fingerprint: 'snapshot', blockedReason: '' },
           { path: 'printer.cfg', destination: '.keditor-backups/organized/test/printer.cfg.bak', type: 'file', files: 1, fingerprint: 'protected', blockedReason: 'Referenciado por la configuracion activa' }
         ] };
+        else if (body.action === 'delete') { assert.equal(body.confirm, true); assert.equal(body.items.length, 1); assert.equal(body.items[0].path, 'mmu.old-20261014-114726'); data = { deleted: [body.items[0].path], errors: [] }; }
         else if (body.action === 'move') { assert.equal(body.items.length, 1); assert.equal(body.items[0].path, 'mmu.old-20261014-114726'); moves++; data = { moved: [{ path: body.items[0].path }], errors: [] }; }
         else data = { rules, revision, location: 'test-config/.keditor-backups/', rulesFile: '.keditor-backup-rules.json' };
       }
@@ -73,7 +74,14 @@ const locale = JSON.parse(fs.readFileSync(path.join(__dirname, '../locales/es.js
     const folder = manager.getByRole('checkbox', { name: 'Trasladar mmu.old-20261014-114726', exact: true });
     await folder.waitFor();
     assert.equal(await manager.getByRole('checkbox', { name: 'Trasladar printer.cfg', exact: true }).isEnabled(), false);
+    await manager.getByRole('button', { name: 'Seleccionar todas', exact: true }).click();
+    assert.equal(await folder.isChecked(), true);
+    await manager.getByRole('button', { name: 'Deseleccionar todas', exact: true }).click();
+    assert.equal(await folder.isChecked(), false);
     await folder.check();
+    await manager.getByRole('button', { name: 'Eliminar seleccionadas (1)', exact: true }).click();
+    await manager.getByRole('alertdialog', { name: 'Confirmar eliminacion', exact: true }).waitFor();
+    await manager.getByRole('button', { name: 'Cancelar', exact: true }).click();
     await page.screenshot({ path: `${process.env.TEMP}/keditor-backup-migration-desktop.png` });
     await page.setViewportSize({ width: 390, height: 844 });
     await page.screenshot({ path: `${process.env.TEMP}/keditor-backup-migration-mobile.png` });
@@ -84,6 +92,11 @@ const locale = JSON.parse(fs.readFileSync(path.join(__dirname, '../locales/es.js
     await manager.getByRole('button', { name: 'Confirmar traslado', exact: true }).click();
     await manager.getByText('1 copia trasladada', { exact: true }).waitFor();
     assert.equal(moves, 1);
+    await manager.getByRole('button', { name: 'Vista previa', exact: true }).click();
+    await manager.getByRole('button', { name: 'Seleccionar todas', exact: true }).click();
+    await manager.getByRole('button', { name: 'Eliminar seleccionadas (1)', exact: true }).click();
+    await manager.getByRole('button', { name: 'Eliminar definitivamente', exact: true }).click();
+    await manager.getByText('1 copia eliminada', { exact: true }).waitFor();
     console.log('OK: backup icons in tree and tabs, hide-backups behavior, and location notice in settings; all API calls mocked');
   } finally { await browser.close(); }
 })().catch((error) => { console.error(error); process.exitCode = 1; });

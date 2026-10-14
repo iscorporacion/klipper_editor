@@ -60,7 +60,7 @@ export default function CustomMacroWidget({ config, onChange, editing, onFinishE
     inFlight.current = true; setBusy("validate"); setError(""); setValidation("");
     try {
       await requestCommand(draft.command, true);
-      setValidation(es ? "Macro registrada en Klipper" : "Macro registered in Klipper");
+      setValidation(es ? "Comando disponible en Klipper" : "Command available in Klipper");
       if (save) {
         const button = { ...draft, name: draft.name.trim(), command: draft.command.trim(), showTitle: draft.size !== "1x1" && draft.showTitle };
         onChange({ ...config, buttons: config.buttons.some((item) => item.id === button.id) ? config.buttons.map((item) => item.id === button.id ? button : item) : [...config.buttons, button] });
@@ -114,7 +114,7 @@ export default function CustomMacroWidget({ config, onChange, editing, onFinishE
       <span>{button.name}</span><button type="button" className="modal-icon-button" aria-label={`${es ? "Mover antes" : "Move before"}: ${button.name}`} disabled={index === 0} onClick={() => move(button.id, index - 1)}><MdArrowBack /></button>
       <button type="button" className="modal-icon-button" aria-label={`${es ? "Mover despues" : "Move after"}: ${button.name}`} disabled={index === config.buttons.length - 1} onClick={() => move(button.id, index + 1)}><MdArrowForward /></button>
     </div>)}</div>}
-    {draft && <WidgetDialog title={es ? "Configurar boton" : "Configure button"} onClose={closeDraft} className="macro-button-editor" footer={<>
+    {draft && <WidgetDialog title={es ? "Configurar boton" : "Configure button"} onClose={closeDraft} closeOnBackdrop={false} className="macro-button-editor" footer={<>
       {config.buttons.some((item) => item.id === draft.id) && <RichTooltip content={es ? "Eliminar boton" : "Delete button"}><button type="button" className="modal-icon-button danger" aria-label={es ? "Eliminar boton" : "Delete button"} disabled={busy !== ""} onClick={removeButton}><MdDeleteOutline /></button></RichTooltip>}
       <button type="button" className="dialog-button" disabled={busy !== ""} onClick={closeDraft}>{es ? "Cancelar" : "Cancel"}</button>
       <button type="button" className="dialog-button primary" disabled={busy !== ""} onClick={() => void validate(true)}>{es ? "Guardar" : "Save"}</button>

@@ -664,6 +664,15 @@ export async function getRegisteredMacros(): Promise<string[]> {
     .map((name) => name.slice("gcode_macro ".length).toUpperCase()).sort() : [];
 }
 
+export async function getMacroButtonCommands(): Promise<string[]> {
+  const macros = await getRegisteredMacros();
+  const payload = await moonrakerFetch("/printer/gcode/help");
+  const help = payload?.result ?? payload;
+  if (!help || typeof help !== "object" || Array.isArray(help)) throw new Error("Unable to query Klipper commands");
+  const eddy = "PROBE_EDDY_CURRENT_CALIBRATE";
+  return [...new Set([...macros, ...(Object.hasOwn(help, eddy) ? [eddy] : [])])].sort();
+}
+
 export async function resumePrint() {
   await assertTrayRecoveryComplete();
   const payload = await moonrakerFetch("/printer/print/resume", { method: "POST" });

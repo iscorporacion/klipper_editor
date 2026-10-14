@@ -117,6 +117,14 @@ async function assertNoLinks(relative: string) {
 }
 
 export function migrateBackups(input: unknown, revision: unknown) {
+  return processBackups(input, revision, false);
+}
+
+export function deleteBackups(input: unknown, revision: unknown) {
+  return processBackups(input, revision, true);
+}
+
+function processBackups(input: unknown, revision: unknown, deleting: boolean) {
   return serializeBackups(async () => {
     if (!Array.isArray(input) || !input.length || input.length > 500) throw new BackupError("Selecciona entre 1 y 500 copias");
     const plan = await previewBackupMigration();
@@ -130,6 +138,7 @@ export function migrateBackups(input: unknown, revision: unknown) {
       selected.push(item);
     }
     const moved: { path: string; destination: string }[] = [];
+    const deleted: string[] = [];
     const errors: { path: string; error: string }[] = [];
     for (const item of selected) {
       try {
@@ -139,6 +148,14 @@ export function migrateBackups(input: unknown, revision: unknown) {
         const destination = resolveWorkspacePath(item.destination);
         if (source === WORKSPACE_ROOT || !item.destination.startsWith(`${BACKUP_DIRECTORY}/organized/`)) throw new BackupError("Destino invalido");
         await assertNoLinks(item.path);
+        if (deleting) {
+          const relative = path.relative(WORKSPACE_ROOT, source);
+          if (!relative || relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) throw new BackupError("Ruta de borrado invalida");
+          if (item.type === "directory") await fs.rm(source, { recursive: true, force: false });
+          else await fs.unlink(source);
+          deleted.push(item.path);
+          continue;
+        }
         let directory = "";
         for (const [index, part] of item.destination.split("/").slice(0, -1).entries()) {
           directory = [directory, part].filter(Boolean).join("/");
@@ -159,6 +176,6 @@ export function migrateBackups(input: unknown, revision: unknown) {
         errors.push({ path: item.path, error: error instanceof Error ? error.message : "No se pudo trasladar" });
       }
     }
-    return { moved, errors };
+    return { moved, deleted, errors };
   });
 }

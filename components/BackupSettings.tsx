@@ -20,6 +20,7 @@ export default function BackupSettings({ endpoint, onChanged, protectedPaths = [
   const [selected, setSelected] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const dirty = Boolean(document && JSON.stringify(document.rules) !== JSON.stringify(rules));
@@ -55,15 +56,16 @@ export default function BackupSettings({ endpoint, onChanged, protectedPaths = [
     finally { setBusy(false); }
   };
   const blocked = (item: BackupCandidate) => item.blockedReason || (protectedPaths.some((file) => file === item.path || file.startsWith(`${item.path}/`)) ? "Abierto en el editor; cierra su pestaña antes de trasladarlo" : "");
-  const move = async () => {
+  const move = async (remove = false) => {
     if (!preview) return;
     setBusy(true); setError(""); setMessage("");
     try {
       const items = preview.candidates.filter((item) => selected.includes(item.path));
       if (items.some(blocked)) throw new Error("Cierra las pestañas de las copias seleccionadas antes de trasladarlas");
-      const data = await request("POST", { action: "move", revision: preview.revision, items: items.map(({ path, fingerprint }) => ({ path, fingerprint })) });
+      const data = await request("POST", { action: remove ? "delete" : "move", confirm: remove, revision: preview.revision, items: items.map(({ path, fingerprint }) => ({ path, fingerprint })) });
       setSelected([]); setPreview(null); setConfirming(false);
-      setMessage(data.moved.length === 1 ? "1 copia trasladada" : `${data.moved.length} copias trasladadas`);
+      const count = remove ? data.deleted.length : data.moved.length;
+      setMessage(`${count} ${count === 1 ? "copia" : "copias"} ${remove ? (count === 1 ? "eliminada" : "eliminadas") : (count === 1 ? "trasladada" : "trasladadas")}`);
       if (data.errors.length) setError(data.errors.map((item: { path: string; error: string }) => `${item.path}: ${item.error}`).join("\n"));
       onChanged();
     } catch (error) { setConfirming(false); setPreview(null); setSelected([]); setError(error instanceof Error ? error.message : String(error)); }
@@ -99,12 +101,22 @@ export default function BackupSettings({ endpoint, onChanged, protectedPaths = [
           {preview && <>
             {preview.warnings.length > 0 && <details><summary>Avisos ({preview.warnings.length})</summary>{preview.warnings.map((warning) => <p className="setting-help" key={warning}>{warning}</p>)}</details>}
             {preview.candidates.length === 0 ? <p className="empty-note">No hay copias pendientes de traslado.</p> : <>
+              <div className="backup-selection-actions">
+                <button type="button" className="dialog-button" disabled={busy || confirming || !preview.candidates.some((item) => !blocked(item))} onClick={() => {
+                  const available = preview.candidates.filter((item) => !blocked(item)).map((item) => item.path);
+                  setSelected(available.every((file) => selected.includes(file)) ? [] : available);
+                }}>{preview.candidates.filter((item) => !blocked(item)).every((item) => selected.includes(item.path)) ? "Deseleccionar todas" : "Seleccionar todas"}</button>
+                <button type="button" className="dialog-button" disabled={busy || confirming || !selected.length || selected.length > 500} onClick={() => { setDeleting(true); setConfirming(true); }}><MdDeleteOutline /> Eliminar seleccionadas ({selected.length})</button>
+              </div>
               <div className="backup-candidates">{preview.candidates.map((item) => <label key={item.path} className="backup-candidate-row">
                 <input type="checkbox" disabled={busy || Boolean(blocked(item)) || confirming} checked={selected.includes(item.path)} onChange={(event) => setSelected((current) => event.target.checked ? [...current, item.path] : current.filter((file) => file !== item.path))} aria-label={`Trasladar ${item.path}`} />
                 <span><strong>{item.path}</strong><small>{item.type === "directory" ? `Carpeta · ${item.files} archivos` : "Archivo"}</small><code>→ {item.destination}</code>{blocked(item) && <small className="backup-manager-error">{blocked(item)}</small>}</span>
               </label>)}</div>
-              {confirming ? <div className="backup-move-confirm" role="alertdialog" aria-label="Confirmar traslado"><p>Se trasladarán {selected.length} copias completas a .keditor-backups/. No se cambiará su contenido ni se sobrescribirán destinos existentes.</p><button type="button" className="dialog-button" disabled={busy} onClick={() => setConfirming(false)}>Cancelar</button><button type="button" className="dialog-button primary" disabled={busy} onClick={() => void move()}>{busy ? "Trasladando..." : "Confirmar traslado"}</button></div>
-                : <button type="button" className="dialog-button" disabled={busy || !selected.length} onClick={() => setConfirming(true)}><MdDriveFileMove /> Trasladar seleccionadas ({selected.length})</button>}
+              {confirming ? <div className="backup-move-confirm" role="alertdialog" aria-label={deleting ? "Confirmar eliminacion" : "Confirmar traslado"}>
+                <p>{deleting ? `Se eliminarán definitivamente ${selected.length} copias de su ubicación actual, incluyendo el contenido de las carpetas seleccionadas. Esta acción no se puede deshacer.` : `Se trasladarán ${selected.length} copias completas a .keditor-backups/. No se cambiará su contenido ni se sobrescribirán destinos existentes.`}</p>
+                {deleting && <ul>{selected.map((file) => <li key={file}>{file}</li>)}</ul>}
+                <button type="button" className="dialog-button" disabled={busy} onClick={() => setConfirming(false)}>Cancelar</button><button type="button" className="dialog-button primary" disabled={busy} onClick={() => void move(deleting)}>{busy ? "Procesando..." : deleting ? "Eliminar definitivamente" : "Confirmar traslado"}</button></div>
+                : <button type="button" className="dialog-button" disabled={busy || !selected.length || selected.length > 500} onClick={() => { setDeleting(false); setConfirming(true); }}><MdDriveFileMove /> Trasladar seleccionadas ({selected.length})</button>}
             </>}
           </>}
         </section>}

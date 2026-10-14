@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getMmuStatus, runGcodeScript } from "@/lib/moonraker";
+import { isMmuRecoveryPaused } from "@/lib/mmu-state";
 
 type GateMapEntry = { gate?: unknown; name?: unknown; material?: unknown; vendor?: unknown; color?: unknown; temperature?: unknown };
 
@@ -27,7 +28,8 @@ export async function POST(request: NextRequest) {
     const action = typeof body.action === "string" ? body.action : "";
     const status = await getMmuStatus();
     if (!status.available) return NextResponse.json({ error: "Happy Hare MMU is not available" }, { status: 404 });
-    if (status.printing) return NextResponse.json({ error: "MMU manual controls are disabled while printing" }, { status: 409 });
+    const recoveryAction = ["home", "recover", "load", "unload", "unlock", "check-all"].includes(action);
+    if (status.printing && !(recoveryAction && isMmuRecoveryPaused(status.printState, status.mmu))) return NextResponse.json({ error: "MMU manual controls are disabled while printing" }, { status: 409 });
     const gateCount = Math.max(0, Number(status.mmu?.num_gates) || 0);
     const checkedGate = (value: unknown) => {
       const gate = integer(value);

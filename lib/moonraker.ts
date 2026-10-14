@@ -111,6 +111,7 @@ export type SensorState = {
 };
 
 export type MmuStatus = {
+  printState?: string;
   settings?: Record<string, unknown>;
   available: boolean;
   printing: boolean;
@@ -1121,6 +1122,7 @@ export async function getMmuStatus(): Promise<MmuStatus> {
   return {
     available: true,
     printing: isMmuPrintActive(printState, mmu),
+    printState,
     mmu,
     displayName: mmuDisplayName(configSettings, mmu),
     settings: configSettings.mmu && typeof configSettings.mmu === "object" ? configSettings.mmu as Record<string, unknown> : {},

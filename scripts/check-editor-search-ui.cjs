@@ -1,0 +1,52 @@
+const assert = require('node:assert/strict');
+const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
+(async () => {
+  const browser = await chromium.launch({ channel: 'msedge', headless: true });
+  try {
+    const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+    await context.routeWebSocket('**/websocket', () => {});
+    await context.route('**/api/**', async (route) => {
+      const pathname = new URL(route.request().url()).pathname;
+      let data = {};
+      if (pathname === '/api/preferences') data = { id: 'search-test', values: { 'ratos-viewer-locale': 'es' } };
+      else if (pathname === '/api/tree') data = { root: 'test', children: [{ name: 'printer.cfg', path: 'printer.cfg', type: 'file', icon: 'settings' }] };
+      else if (pathname === '/api/file') data = { path: 'printer.cfg', content: '[printer]\nkinematics: corexy\n# needle alpha\n# needle beta\n' };
+      else if (pathname === '/api/macros') data = { macros: [] };
+      else if (pathname === '/api/printer/status') data = { webhooksState: 'ready', printing: false, printState: 'standby' };
+      else if (pathname === '/api/printer/manual-probe') data = { active: false, ready: true, printing: false, homed: false, options: [] };
+      await route.fulfill({ json: data });
+    });
+    const page = await context.newPage();
+    const errors = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+    await page.goto(process.env.TEST_URL || 'http://localhost:3024', { timeout: 120000 });
+    await page.locator('.tree-open-button[title="printer.cfg"]').click();
+    const editor = page.locator('.code-host .cm-content');
+    await editor.waitFor();
+    await editor.click();
+    await page.keyboard.press('Control+f');
+    const search = page.locator('.code-host .cm-search input[name="search"]');
+    await search.waitFor();
+    await search.pressSequentially('needle');
+    await page.setViewportSize({ width: 760, height: 900 });
+    await page.waitForTimeout(6500);
+    assert.equal(await search.isVisible(), true, 'Search must survive viewport and printer polling rerenders');
+    assert.equal(await search.inputValue(), 'needle');
+    await search.focus();
+    await page.keyboard.press('Enter');
+    await page.locator('.code-host .cm-searchMatch-selected').waitFor();
+    assert.equal(await page.locator('.code-host .cm-searchMatch-selected').count(), 1);
+    await page.keyboard.press('Escape');
+    await search.waitFor({ state: 'hidden' });
+    await editor.click();
+    await page.keyboard.press('Control+f');
+    await search.waitFor();
+    await search.fill('');
+    await search.pressSequentially('corexy');
+    await page.keyboard.press('Enter');
+    await page.locator('.code-host .cm-searchMatch-selected').waitFor();
+    assert.equal(await page.locator('.code-host .cm-searchMatch-selected').count(), 1);
+    assert.deepEqual(errors, []);
+    console.log('OK: Ctrl+F survives polling and viewport rerenders, finds matches and reopens after Escape');
+  } finally { await browser.close(); }
+})().catch((error) => { console.error(error); process.exitCode = 1; });

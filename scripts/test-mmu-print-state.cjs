@@ -35,6 +35,7 @@ test('MMU API permits bypass after manual T0 even while idle_timeout reports Pri
   assert.equal((await moonraker.getMmuStatus()).printing, false);
   const commands = [];
   const route = load('app/api/printer/mmu/route.ts', {
+    '@/lib/mmu-state': policy,
     '@/lib/moonraker': { getMmuStatus: moonraker.getMmuStatus, runGcodeScript: async (script) => { commands.push(script); return 'ok'; } },
     'next/server': { NextResponse: { json: (value, options) => new Response(JSON.stringify(value), options) } }
   });
@@ -49,4 +50,21 @@ test('MMU API permits bypass after manual T0 even while idle_timeout reports Pri
   raw.mmu.is_in_print = true;
   assert.equal((await bypass()).status, 409);
   assert.equal(commands.length, 1);
+});
+
+test('paused recovery allows only the six requested MMU actions, never motors or tool changes', async () => {
+  let status = { available: true, printing: true, printState: 'paused', mmu: { num_gates: 5, print_state: 'paused' } };
+  const sent = [];
+  const route = load('app/api/printer/mmu/route.ts', {
+    '@/lib/mmu-state': policy,
+    '@/lib/moonraker': { getMmuStatus: async () => status, runGcodeScript: async (script) => { sent.push(script); return 'ok'; } },
+    'next/server': { NextResponse: { json: (value, options) => new Response(JSON.stringify(value), options) } }
+  });
+  const post = (action) => route.POST(new Request('http://localhost/', { method: 'POST', body: JSON.stringify({ action, tool: 0, gate: 0 }) }));
+  for (const action of ['home', 'recover', 'load', 'unload', 'unlock', 'check-all']) assert.equal((await post(action)).status, 200, action);
+  assert.equal(sent[0], 'MMU_HOME');
+  for (const action of ['motors-off', 'tool', 'bypass', 'preload', 'reset-ttg-map']) assert.equal((await post(action)).status, 409, action);
+  status.printState = 'printing';
+  for (const action of ['home', 'recover', 'load', 'unload', 'unlock', 'check-all']) assert.equal((await post(action)).status, 409, action);
+  assert.equal(sent.length, 6);
 });

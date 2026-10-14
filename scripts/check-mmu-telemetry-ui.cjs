@@ -100,6 +100,21 @@ const locale = JSON.parse(fs.readFileSync(path.join(__dirname, '../locales/es.js
     assert.ok(panelBounds.x >= body.x && panelBounds.x + panelBounds.width <= body.x + body.width + 1);
     for (const button of await panel.locator(':scope > button').all()) assert.equal(await button.isDisabled(), true);
     assert.equal(actions.length, 1);
+    await panel.getByRole('button', { name: 'Cerrar', exact: true }).click();
+    Object.assign(state.mmu, { print_state: 'paused', is_paused: true, is_locked: true, filament_pos: 10 });
+    state.printing = true;
+    socket.send(JSON.stringify({ method: 'notify_status_update', params: [{ mmu: state.mmu }, 3] }));
+    await page.waitForFunction(() => {
+      const button = document.querySelector('.mmu-command-bar button[aria-label="Recuperar"]');
+      return button && !button.disabled;
+    });
+    for (const label of ['Home', 'Recuperar', 'Descargar', 'Desbloquear', 'Comprobar todas']) assert.equal(await widget.getByRole('button', { name: label, exact: true }).isEnabled(), true, label);
+    assert.equal(await widget.getByRole('button', { name: 'Cargar', exact: true }).isDisabled(), true, 'Loaded filament keeps load disabled');
+    assert.equal(await widget.getByRole('button', { name: 'Apagar motores MMU', exact: true }).isDisabled(), true);
+    state.mmu.filament_pos = 0;
+    socket.send(JSON.stringify({ method: 'notify_status_update', params: [{ mmu: { filament_pos: 0 } }, 4] }));
+    await page.waitForFunction(() => !document.querySelector('.mmu-command-bar button[aria-label="Cargar"]').disabled);
+    assert.equal(await widget.getByRole('button', { name: 'Descargar', exact: true }).isDisabled(), true);
     assert.deepEqual(errors, []);
     console.log('OK: compact live MMU path, real websocket updates, drawer repeat/switch/outside/Escape, correct mocked gate command and print guards on desktop/mobile');
   } finally { await browser.close(); }

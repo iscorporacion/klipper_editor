@@ -19,7 +19,7 @@ import { mmuTelemetryFields, mergeMmuTelemetry } from "@/lib/mmu-telemetry";
 import { BACKUP_DIRECTORY, isBackupFilePath } from "@/scripts/backup-paths.mjs";
 import { isCustomMacroWidget, macroWidgetsKey, normalizeMacroWidgets, type MacroWidgetConfig } from "@/lib/macro-widgets";
 import { isRestartBlockedByPrint } from "@/lib/printer-restart";
-import { isMmuPrintActive } from "@/lib/mmu-state";
+import { isMmuPrintActive, isMmuRecoveryPaused } from "@/lib/mmu-state";
 import type { BedMeshViewerData } from "@/components/BedMeshViewer";
 import type {
   ChangeEvent,
@@ -102,6 +102,7 @@ import { klipperConfigParser } from "@/lib/codemirror/klipper-config";
 import { bundledLocaleOptions, bundledLocales } from "@/lib/locales";
 
 const CodeMirror = dynamic(() => import("@uiw/react-codemirror"), { ssr: false });
+const editorBasicSetup = { foldGutter: true, highlightActiveLine: true, highlightSelectionMatches: true };
 const PtyTerminal = dynamic(() => import("@/components/PtyTerminal"), { ssr: false });
 const BedMeshViewer = dynamic(() => import("@/components/BedMeshViewer"), { ssr: false });
 const appBasePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
@@ -3061,6 +3062,8 @@ function Editor() {
   const mmuFilamentPosition = Number(mmu?.filament_pos ?? -1);
   const mmuMenuGateStatus = mmuMenuGate === null ? -1 : Number(valueArray(mmu?.gate_status)[mmuMenuGate] ?? -1);
   const mmuManualDisabled = Boolean(printerStatus?.printing || mmuState?.printing || mmuAction || !mmuState?.available || mmu?.enabled === false);
+  const mmuRecoveryDisabled = Boolean(mmuAction || !mmuState?.available || mmu?.enabled === false ||
+    ((printerStatus?.printing || mmuState?.printing) && !isMmuRecoveryPaused(printerStatus?.printState, mmu ?? null)));
   const mmuEncoder = objectValue(mmu?.encoder);
   const mmuFlowguard = objectValue(mmu?.flowguard);
   const mmuSyncFeedbackFlowRate = Number(mmu?.sync_feedback_flow_rate) || 100;
@@ -6404,15 +6407,29 @@ function Editor() {
 
   const activeFilePath = activeFile?.path;
 
+  const resolveIncludeRef = useRef(resolveAndOpenInclude);
+  resolveIncludeRef.current = resolveAndOpenInclude;
+  const openEditorInclude = useCallback((includePath: string, fromPath: string) => resolveIncludeRef.current(includePath, fromPath), []);
+  const createEditor = useCallback((view: EditorView) => {
+    if (!activeFilePath) return;
+    editorViewRef.current = view;
+    restoreEditorView(activeFilePath, view);
+  }, [activeFilePath, restoreEditorView]);
+  const updateEditor = useCallback((update: ViewUpdate) => {
+    if (activeFilePath) captureEditorView(activeFilePath, update.view);
+  }, [activeFilePath, captureEditorView]);
+  const changeEditor = useCallback((value: string) => {
+    setOpenFiles((files) => files.map((file) => file.path === activeFilePath ? { ...file, content: value } : file));
+  }, [activeFilePath]);
   const editorExtensions = useMemo(() => {
     if (!activeFilePath) return [];
-    const extensions = [fileLanguage(activeFilePath), ...editorLinkExtension(activeFilePath, resolveAndOpenInclude)];
+    const extensions = [fileLanguage(activeFilePath), ...editorLinkExtension(activeFilePath, openEditorInclude)];
     if (isCfgPath(activeFilePath)) {
       extensions.push(syntaxHighlighting(klipperHighlightStyle));
     }
 
     return extensions;
-  }, [activeFilePath, resolveAndOpenInclude]);
+  }, [activeFilePath, openEditorInclude]);
 
   const quickCommandDisabled =
     runningQuickCommand !== null || !printerStatus || Boolean(printerStatus.error) || printerStatus.printing;
@@ -7373,12 +7390,12 @@ function Editor() {
                             {([
                               ["home", mdiHome, "mmu.home", false], ["recover", mdiAutoFix, "mmu.recover", false],
                               ["load", mdiTrayArrowDown, "mmu.load", mmuFilamentPosition !== 0], ["unload", mdiTrayArrowUp, "mmu.unload", mmuFilamentPosition === 0]
-                            ] as const).map(([action, icon, label, disabled]) => <RichTooltip key={action} content={t(label)}><button type="button" disabled={mmuManualDisabled || disabled}
+                            ] as const).map(([action, icon, label, disabled]) => <RichTooltip key={action} content={t(label)}><button type="button" disabled={mmuRecoveryDisabled || disabled}
                               aria-label={t(label)} onClick={() => void runMmuAction(action)}><MdiIcon path={icon} size={0.82} /><span>{t(label)}</span></button></RichTooltip>)}
-                            {Boolean(mmu.is_paused && mmu.is_locked) && <RichTooltip content={t("mmu.unlock")}><button type="button" disabled={mmuManualDisabled} onClick={() => void runMmuAction("unlock")}>
+                            {Boolean(mmu.is_paused && mmu.is_locked) && <RichTooltip content={t("mmu.unlock")}><button type="button" aria-label={t("mmu.unlock")} disabled={mmuRecoveryDisabled} onClick={() => void runMmuAction("unlock")}>
                               <MdiIcon path={mdiLockOpenVariant} size={0.82} /><span>{t("mmu.unlock")}</span></button></RichTooltip>}
                             <RichTooltip content={<span className="rich-tooltip-stack"><strong>{t("mmu.checkAll")}</strong><span>{t("mmu.checkAllHelp")}</span></span>}>
-                              <button type="button" disabled={mmuManualDisabled} aria-label={t("mmu.checkAll")} onClick={() => void runMmuAction("check-all")}>
+                              <button type="button" disabled={mmuRecoveryDisabled} aria-label={t("mmu.checkAll")} onClick={() => void runMmuAction("check-all")}>
                                 <MdiIcon path={mdiCheckAll} size={0.82} /><span>{t("mmu.checkAll")}</span>
                               </button>
                             </RichTooltip>
@@ -7478,23 +7495,10 @@ function Editor() {
                   maxHeight="100%"
                   theme={vscodeDark}
                   extensions={editorExtensions}
-                  basicSetup={{
-                    foldGutter: true,
-                    highlightActiveLine: true,
-                    highlightSelectionMatches: true
-                  }}
-                  onCreateEditor={(view) => {
-                    editorViewRef.current = view;
-                    restoreEditorView(activeFile.path, view);
-                  }}
-                  onUpdate={(update) => {
-                    captureEditorView(activeFile.path, update.view);
-                  }}
-                  onChange={(value) => {
-                    setOpenFiles((files) =>
-                      files.map((file) => (file.path === activeFile.path ? { ...file, content: value } : file))
-                    );
-                  }}
+                  basicSetup={editorBasicSetup}
+                  onCreateEditor={createEditor}
+                  onUpdate={updateEditor}
+                  onChange={changeEditor}
                 />
               </div>
               <button

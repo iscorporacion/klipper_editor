@@ -1,3 +1,8 @@
+export function isMmuRecoveryPaused(printState: unknown, mmu: Record<string, unknown> | null) {
+  const job = String(printState ?? "").trim().toLowerCase();
+  return job === "paused" || (job !== "printing" && String(mmu?.print_state ?? "").trim().toLowerCase() === "paused");
+}
+
 export function isMmuPrintActive(printState: unknown, mmu: Record<string, unknown> | null) {
   const job = String(printState ?? "").trim().toLowerCase();
   const mmuJob = String(mmu?.print_state ?? "").trim().toLowerCase();

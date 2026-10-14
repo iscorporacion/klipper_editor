@@ -8,6 +8,12 @@ import PidChart, { type PidSample } from "@/components/PidChart";
 import PurgeTrayWidget from "@/components/PurgeTrayWidget";
 import StatusBarWidget from "@/components/StatusBarWidget";
 import RichTooltip from "@/components/RichTooltip";
+import CustomMacroWidget from "@/components/CustomMacroWidget";
+import LiveLedColor from "@/components/LiveLedColor";
+import ManualProbeDialog from "@/components/ManualProbeDialog";
+import { isCustomMacroWidget, macroWidgetsKey, normalizeMacroWidgets, type MacroWidgetConfig } from "@/lib/macro-widgets";
+import { isRestartBlockedByPrint } from "@/lib/printer-restart";
+import { isMmuPrintActive } from "@/lib/mmu-state";
 import type { BedMeshViewerData } from "@/components/BedMeshViewer";
 import type {
   ChangeEvent,
@@ -48,6 +54,9 @@ import {
 } from "react-icons/fc";
 import {
   MdDelete,
+  MdAdd,
+  MdDeleteOutline,
+  MdSettings,
   MdDeviceHub,
   MdDownload,
   MdDragIndicator,
@@ -112,7 +121,10 @@ const mmuLastImportKey = "klipper-editor-mmu-last-import";
 const homeTabPath = "__keditor_home__";
 const terminalTabPath = "__keditor_terminal__";
 const availableHomeWidgets = ["macros", "console", "movement", "sensors", "mmu", "tray", "statusbar"] as const;
-type HomeWidget = typeof availableHomeWidgets[number];
+type HomeWidget = typeof availableHomeWidgets[number] | MacroWidgetConfig["id"];
+function isHomeWidget(value: unknown): value is HomeWidget {
+  return typeof value === "string" && ((availableHomeWidgets as readonly string[]).includes(value) || isCustomMacroWidget(value));
+}
 type HomeViewport = "desktop" | "tablet" | "mobile";
 type HomeGridLayout = Record<HomeViewport, HomeWidget[][]>;
 type HomeGridColumns = Record<HomeViewport, number>;
@@ -349,7 +361,7 @@ type XySnapshot = {
   excludeObject: ExcludeObjectStatus;
 };
 
-type QuickCommand = "home-all" | "home-x" | "home-y" | "home-z" | "z-tilt";
+type QuickCommand = "home-all" | "home-x" | "home-y" | "home-z" | "z-tilt" | "motors-off";
 type JogAxis = "x" | "y" | "z";
 type MachinePowerAction = "shutdown" | "reboot";
 type UnsavedCloseChoice = "save" | "discard" | "cancel";
@@ -559,7 +571,7 @@ function readHomeWidgets() {
     const stored = JSON.parse(preferences.getItem(homeWidgetsKey) ?? "null") as unknown;
     if (!Array.isArray(stored)) return defaultHomeWidgets;
     const widgets = stored.filter((item): item is HomeWidget =>
-      typeof item === "string" && availableHomeWidgets.includes(item as HomeWidget)
+      isHomeWidget(item)
     );
     return widgets.length > 0 ? Array.from(new Set(widgets)) : [];
   } catch {
@@ -575,7 +587,7 @@ function readCollapsedHomeWidgets() {
   try {
     const stored = JSON.parse(preferences.getItem(homeCollapsedWidgetsKey) ?? "[]") as unknown;
     return new Set(Array.isArray(stored) ? stored.filter((item): item is HomeWidget =>
-      typeof item === "string" && availableHomeWidgets.includes(item as HomeWidget)
+      isHomeWidget(item)
     ) : []);
   } catch {
     return new Set<HomeWidget>();
@@ -969,6 +981,7 @@ const defaultMessages: Messages = {
   "actions.setHeaters": "Aplicar temperaturas",
   "actions.settingHeaters": "Aplicando",
   "actions.emergencyStop": "Parada de emergencia",
+  "actions.motorsOff": "Apagar motores de la impresora",
   "actions.emergencyStopping": "Deteniendo",
   "actions.homeAll": "Home All",
   "actions.homeX": "Home X",
@@ -2793,6 +2806,8 @@ function Editor() {
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [optionsTab, setOptionsTab] = useState<"general" | "home" | "theme" | "mcp" | "terminal">("general");
   const [homeWidgets, setHomeWidgets] = useState<HomeWidget[]>(defaultHomeWidgets);
+  const [customMacroWidgets, setCustomMacroWidgets] = useState<MacroWidgetConfig[]>([]);
+  const [customMacroEditing, setCustomMacroEditing] = useState<string | null>(null);
   const [showKlipperTemperatureReports, setShowKlipperTemperatureReports] = useState(false);
   const [homeGridColumns, setHomeGridColumns] = useState<HomeGridColumns>(defaultHomeGridColumns);
   const [homeGridLayout, setHomeGridLayout] = useState<HomeGridLayout>(() => normalizeHomeGridLayout(null, defaultHomeWidgets, defaultHomeGridColumns));
@@ -2859,6 +2874,7 @@ function Editor() {
   const [pidSamples, setPidSamples] = useState<PidSample[]>([]);
   const [settingHeaters, setSettingHeaters] = useState(false);
   const [auxiliariesOpen, setAuxiliariesOpen] = useState(false);
+  const [manualProbeOpenRequest, setManualProbeOpenRequest] = useState(0);
   const [auxiliaryControls, setAuxiliaryControls] = useState<AuxiliaryControl[]>([]);
   const [auxiliariesLoading, setAuxiliariesLoading] = useState(false);
   const [settingAuxiliary, setSettingAuxiliary] = useState<string | null>(null);
@@ -2921,6 +2937,8 @@ function Editor() {
   const [runningQuickCommand, setRunningQuickCommand] = useState<QuickCommand | null>(null);
   const [machinePowerMenuOpen, setMachinePowerMenuOpen] = useState(false);
   const [runningMachinePowerAction, setRunningMachinePowerAction] = useState<MachinePowerAction | null>(null);
+  const [klipperScreenAvailable, setKlipperScreenAvailable] = useState(false);
+  const [restartingService, setRestartingService] = useState<string | null>(null);
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [terminalTabOpen, setTerminalTabOpen] = useState(false);
   const [terminalEnabled, setTerminalEnabled] = useState(false);
@@ -3046,7 +3064,7 @@ function Editor() {
   const mmuSelectedTool = Number(mmu?.tool ?? -1);
   const mmuFilamentPosition = Number(mmu?.filament_pos ?? -1);
   const mmuMenuGateStatus = mmuMenuGate === null ? -1 : Number(valueArray(mmu?.gate_status)[mmuMenuGate] ?? -1);
-  const mmuManualDisabled = Boolean(mmuState?.printing || mmuAction || !mmuState?.available || mmu?.enabled === false);
+  const mmuManualDisabled = Boolean(printerStatus?.printing || mmuState?.printing || mmuAction || !mmuState?.available || mmu?.enabled === false);
   const mmuEncoder = objectValue(mmu?.encoder);
   const mmuFlowguard = objectValue(mmu?.flowguard);
   const mmuSyncFeedbackFlowRate = Number(mmu?.sync_feedback_flow_rate) || 100;
@@ -4189,6 +4207,7 @@ function Editor() {
 
   const homeWidgetLabel = useCallback(
     (widget: HomeWidget) => {
+      if (isCustomMacroWidget(widget)) return customMacroWidgets.find((item) => item.id === widget)?.title || "Macros";
       if (widget === "macros") return t("homeGrid.widgetMacros");
       if (widget === "console") return t("homeGrid.widgetConsole");
       if (widget === "sensors") return t("homeGrid.widgetSensors");
@@ -4197,7 +4216,7 @@ function Editor() {
       if (widget === "statusbar") return t("homeGrid.widgetStatusbar");
       return t("homeGrid.widgetMovement");
     },
-    [mmuState?.displayName, t]
+    [mmuState?.displayName, t, customMacroWidgets]
   );
 
   const toggleHomeWidget = useCallback((widget: HomeWidget) => {
@@ -4214,6 +4233,28 @@ function Editor() {
       return next;
     });
   }, [homeGridColumns]);
+
+  const saveCustomMacroWidget = (config: MacroWidgetConfig) => {
+    setCustomMacroWidgets((current) => {
+      const next = current.some((item) => item.id === config.id) ? current.map((item) => item.id === config.id ? config : item) : [...current, config];
+      preferences.setItem(macroWidgetsKey, JSON.stringify(next));
+      return next;
+    });
+  };
+  const addCustomMacroWidget = () => {
+    const config: MacroWidgetConfig = { id: `custom-macros:${crypto.randomUUID()}`, title: `Macros ${customMacroWidgets.length + 1}`, buttons: [] };
+    saveCustomMacroWidget(config);
+    toggleHomeWidget(config.id);
+    setCustomMacroEditing(config.id);
+  };
+  const deleteCustomMacroWidget = async (id: MacroWidgetConfig["id"]) => {
+    const widget = customMacroWidgets.find((item) => item.id === id);
+    if (!widget || !(await confirmDialog(localeCode.startsWith("es") ? "Eliminar widget" : "Delete widget", widget.title))) return;
+    const next = customMacroWidgets.filter((item) => item.id !== id);
+    setCustomMacroWidgets(next); preferences.setItem(macroWidgetsKey, JSON.stringify(next));
+    if (homeWidgets.includes(id)) toggleHomeWidget(id);
+    if (customMacroEditing === id) setCustomMacroEditing(null);
+  };
 
   const toggleHomeWidgetCollapsed = useCallback((widget: HomeWidget) => {
     setCollapsedHomeWidgets((current) => {
@@ -4474,13 +4515,13 @@ function Editor() {
   reloadOpenTextFilesRef.current = reloadOpenTextFiles;
 
   const restartFirmware = useCallback(async (confirmFirst = true) => {
-    if (restartingFirmware) return;
+    if (restartingFirmware || restartingKlipper) return;
     if (!printerStatus) {
       setMessage(t("errors.printerStatus"));
       return;
     }
 
-    if (printerStatus.printing) {
+    if (isRestartBlockedByPrint(printerStatus)) {
       setMessage(t("errors.restartPrinting"));
       return;
     }
@@ -4503,7 +4544,7 @@ function Editor() {
     } finally {
       setRestartingFirmware(false);
     }
-  }, [confirmDialog, loadPrinterStatus, loadTree, printerStatus, reloadOpenTextFiles, restartingFirmware, t]);
+  }, [confirmDialog, loadPrinterStatus, loadTree, printerStatus, reloadOpenTextFiles, restartingFirmware, restartingKlipper, t]);
 
   const saveKlipperConfig = useCallback(async () => {
     if (savingConfig || !printerStatus?.saveConfig.pending) return;
@@ -4532,7 +4573,7 @@ function Editor() {
   }, [confirmDialog, loadPrinterStatus, loadTree, printerStatus?.saveConfig.pending, reloadOpenTextFiles, savingConfig, t]);
 
   const restartKlipper = useCallback(async () => {
-    if (restartingKlipper || !printerStatus || printerStatus.printing) return;
+    if (restartingKlipper || restartingFirmware || !printerStatus || isRestartBlockedByPrint(printerStatus)) return;
     setRestartingKlipper(true);
     setPrinterInitializing(true);
     setDismissedPrinterIssue("");
@@ -4548,7 +4589,7 @@ function Editor() {
     } finally {
       setRestartingKlipper(false);
     }
-  }, [loadPrinterStatus, loadTree, printerStatus, reloadOpenTextFiles, restartingKlipper]);
+  }, [loadPrinterStatus, loadTree, printerStatus, reloadOpenTextFiles, restartingKlipper, restartingFirmware]);
 
   const runQuickCommand = useCallback(
     async (command: QuickCommand, label: string) => {
@@ -4558,7 +4599,7 @@ function Editor() {
         return;
       }
 
-      if (printerStatus.printing && normalizedPrintStatus(printerStatus.printState) !== "paused") {
+      if (printerStatus.printing && (command === "motors-off" || normalizedPrintStatus(printerStatus.printState) !== "paused")) {
         setMessage(t("errors.restartPrinting"));
         return;
       }
@@ -4719,7 +4760,7 @@ function Editor() {
 
   const coolHeater = useCallback(
     async (heater: HeaterStatus) => {
-      if (settingHeaters) return;
+      if (settingHeaters || !printerStatus || printerStatus.error || printerStatus.printing) return;
 
       setSettingHeaters(true);
       setMessage(t("status.coolingHeater", { heater: heater.label }));
@@ -4728,7 +4769,7 @@ function Editor() {
         const response = await fetch(apiPath("/api/printer/heaters"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ targets: { [heater.name]: 0 }, heaters: heatersRef.current.map((item) => item.name) })
+          body: JSON.stringify({ source: "toolbar-cool", targets: { [heater.name]: 0 }, heaters: heatersRef.current.map((item) => item.name) })
         });
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error ?? t("errors.coolHeater"));
@@ -4743,8 +4784,28 @@ function Editor() {
         setSettingHeaters(false);
       }
     },
-    [cacheAndSetHeaters, setHeaterTargetInputs, settingHeaters, t]
+    [cacheAndSetHeaters, setHeaterTargetInputs, settingHeaters, printerStatus, t]
   );
+
+  const restartService = useCallback(async (service: "moonraker" | "klipperscreen") => {
+    if (restartingService) return;
+    const name = service === "moonraker" ? "Moonraker" : "KlipperScreen";
+    if (!(await confirmDialog(`Reiniciar ${name}`, `¿Deseas reiniciar ${name}?${service === "moonraker" ? " La conexion se interrumpira temporalmente." : ""}`))) return;
+    setMachinePowerMenuOpen(false);
+    setRestartingService(service);
+    try {
+      const response = await fetch(apiPath("/api/printer/services"), {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ service })
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? `No se pudo reiniciar ${name}`);
+      setMessage(`Reinicio de ${name} solicitado`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : `No se pudo reiniciar ${name}`);
+    } finally {
+      setRestartingService(null);
+    }
+  }, [confirmDialog, restartingService]);
 
   const triggerEmergencyStop = useCallback(async () => {
     if (emergencyStopping) return;
@@ -5875,7 +5936,10 @@ function Editor() {
     }
 
     setSidebarCollapsed(preferences.getItem(sidebarCollapsedKey) === "true");
-    const savedHomeWidgets = readHomeWidgets();
+    let savedCustomWidgets: MacroWidgetConfig[] = [];
+    try { savedCustomWidgets = normalizeMacroWidgets(JSON.parse(preferences.getItem(macroWidgetsKey) ?? "[]")); } catch { /* Keep other preferences if custom widget data is invalid. */ }
+    setCustomMacroWidgets(savedCustomWidgets);
+    const savedHomeWidgets = readHomeWidgets().filter((widget) => !isCustomMacroWidget(widget) || savedCustomWidgets.some((item) => item.id === widget));
     const savedHomeGrid = readHomeGridPreferences(savedHomeWidgets);
     setHomeWidgets(savedHomeWidgets);
     setHomeGridColumns(savedHomeGrid.columns);
@@ -6012,10 +6076,9 @@ function Editor() {
       if (!update) return;
       setMmuState((current) => {
         const merged = { ...(current?.mmu ?? {}), ...update };
-        const printState = String(merged.print_state ?? "").toLowerCase();
         return {
           available: true,
-          printing: Boolean(merged.is_in_print) || ["printing", "started"].includes(printState),
+          printing: isMmuPrintActive(undefined, merged),
           displayName: current?.displayName ?? "MMU",
           mmu: merged,
           websocketUrl: current?.websocketUrl
@@ -6244,6 +6307,13 @@ function Editor() {
   useEffect(() => {
     if (!machinePowerMenuOpen) return;
 
+    let cancelled = false;
+    setKlipperScreenAvailable(false);
+    void fetch(apiPath("/api/printer/services"), { cache: "no-store" })
+      .then((response) => response.ok ? response.json() : { klipperscreen: false })
+      .then((payload) => { if (!cancelled) setKlipperScreenAvailable(payload.klipperscreen === true); })
+      .catch(() => { if (!cancelled) setKlipperScreenAvailable(false); });
+
     const closeOnPointerDown = (event: PointerEvent) => {
       if (!machinePowerMenuRef.current?.contains(event.target as Node)) {
         setMachinePowerMenuOpen(false);
@@ -6258,6 +6328,7 @@ function Editor() {
     window.addEventListener("pointerdown", closeOnPointerDown);
     window.addEventListener("keydown", closeOnEscape);
     return () => {
+      cancelled = true;
       window.removeEventListener("pointerdown", closeOnPointerDown);
       window.removeEventListener("keydown", closeOnEscape);
     };
@@ -6362,13 +6433,13 @@ function Editor() {
     !selectedExtruder;
   const machinePowerDisabled =
     runningMachinePowerAction !== null || !printerStatus || Boolean(printerStatus.error) || printerStatus.printing;
-  const powerMenuDisabled = restartingFirmware || runningMachinePowerAction !== null || !printerStatus;
+  const powerMenuDisabled = restartingFirmware || restartingService !== null || runningMachinePowerAction !== null;
   const hasPrinterIssue = printerInitializing || isPrinterInitializingStatus(printerStatus) || Boolean(printerStatus?.error) || Boolean(reportedPrinterError);
   const printerInitializingState = reportedPrinterError || printerStatus?.error ? "error" : printerStatus?.webhooksState?.trim() || "unknown";
   const printerInitializingMessage = reportedPrinterError || printerStatus?.webhooksMessage?.trim() || printerStatus?.error || "";
   const printerIssueKey = `${printerInitializingState}\n${printerInitializingMessage}`;
   const showPrinterInitializing = hasPrinterIssue && dismissedPrinterIssue !== printerIssueKey;
-  const canRestartFromInitializing = Boolean(printerStatus) && !printerStatus?.printing && !restartingFirmware && !restartingKlipper;
+  const canRestartFromInitializing = Boolean(printerStatus) && !isRestartBlockedByPrint(printerStatus!) && !restartingFirmware && !restartingKlipper;
   const printerIssueState = printerInitializingState.toLowerCase();
   const printerIssueSeverity = ["error", "halted"].includes(printerIssueState) ? "error"
     : printerIssueState === "shutdown" ? "shutdown" : "info";
@@ -6380,6 +6451,7 @@ function Editor() {
 
   return (
     <main className={sidebarCollapsed ? "workspace-shell sidebar-collapsed" : "workspace-shell"} style={themeStyle}>
+      <ManualProbeDialog endpoint={apiPath("/api/printer/manual-probe")} openRequest={manualProbeOpenRequest} onMessage={setMessage} confirm={confirmDialog} />
       {showPrinterInitializing && (
         <div className="printer-initializing-overlay" role="dialog" aria-modal="true" aria-labelledby="printer-issue-title">
           <div className={`printer-initializing-card severity-${printerIssueSeverity}`}>
@@ -6661,6 +6733,8 @@ function Editor() {
                   <span className="toolbar-label">Z Tilt</span>
                 </button>
               )}
+              <RichTooltip content={t("actions.motorsOff")} placement="bottom"><button className="home-button" type="button" aria-label={t("actions.motorsOff")}
+                disabled={quickCommandDisabled || movingAction !== null} onClick={() => void runQuickCommand("motors-off", t("actions.motorsOff"))}><MdiIcon path={mdiEngineOff} size={0.8} /></button></RichTooltip>
               <button
                 className="home-button move-open-button"
                 type="button"
@@ -6711,7 +6785,7 @@ function Editor() {
                     type="button"
                     title={t("actions.coolHeater", { heater: heater.label })}
                     aria-label={t("actions.coolHeater", { heater: heater.label })}
-                    disabled={settingHeaters}
+                    disabled={settingHeaters || !printerStatus || Boolean(printerStatus.error) || printerStatus.printing}
                     onClick={() => void coolHeater(heater)}
                   >
                     <HeaterTypeIcon
@@ -6723,6 +6797,7 @@ function Editor() {
                       {heater.label} {formatCompactTemperature(heater.temperature)}
                       {heater.target > 0 ? ` / ${heaterCompactTargetLabel(heater)}` : ""}
                     </span>
+                    <span className="heater-cool-overlay" aria-hidden="true"><MdAcUnit /> Enfriar</span>
                   </button>
                 ))}
               </div>
@@ -6821,8 +6896,8 @@ function Editor() {
               <button
                 className="machine-power-primary"
                 type="button"
-                disabled={restartingFirmware || !printerStatus || printerStatus.printing}
-                title={printerStatus?.printing ? t("errors.restartPrinting") : t("actions.restartFirmware")}
+                disabled={restartingFirmware || restartingKlipper || !printerStatus || isRestartBlockedByPrint(printerStatus)}
+                title={printerStatus && isRestartBlockedByPrint(printerStatus) ? t("errors.restartPrinting") : t("actions.restartFirmware")}
                 onClick={() => void restartFirmware()}
               >
                 <IoPower className="power-icon" />
@@ -6850,6 +6925,14 @@ function Editor() {
               </button>
               {machinePowerMenuOpen && (
                 <div className="machine-power-popover" role="menu">
+                  <button className="machine-power-option" type="button" role="menuitem" disabled={restartingService !== null} onClick={() => void restartService("moonraker")}>
+                    <FcRefresh className="machine-power-option-icon" /> Reiniciar Moonraker
+                  </button>
+                  {klipperScreenAvailable && (
+                    <button className="machine-power-option" type="button" role="menuitem" disabled={restartingService !== null} onClick={() => void restartService("klipperscreen")}>
+                      <FcRefresh className="machine-power-option-icon" /> Reiniciar KlipperScreen
+                    </button>
+                  )}
                   <button
                     className="machine-power-option danger"
                     type="button"
@@ -7002,6 +7085,7 @@ function Editor() {
               </>}
             </div>
           ) : !activeFile ? (hasHomeWidgets ? (
+            <div className="home-widgets-scroll">
             <div className="home-grid" style={{ "--home-grid-columns": activeHomeColumns.length } as CSSProperties}
               onDragLeave={(event) => {
                 if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
@@ -7053,9 +7137,14 @@ function Editor() {
                       <h2>{homeWidgetLabel(widget)}</h2>
                     </div>
                     <div className="home-widget-header-actions">
+                      {widget === "movement" && <RichTooltip content={t("actions.motorsOff")} placement="bottom"><button type="button" className="modal-icon-button" aria-label={t("actions.motorsOff")}
+                        disabled={quickCommandDisabled || movingAction !== null} onClick={() => void runQuickCommand("motors-off", t("actions.motorsOff"))}><MdiIcon path={mdiEngineOff} size={0.8} /></button></RichTooltip>}
+                      {widget === "mmu" && Boolean(mmu?.has_bypass) && <RichTooltip content={t("mmu.bypass")} placement="bottom"><button type="button" className={`mmu-bypass ${mmuSelectedGate === -2 ? "active" : ""}`}
+                        disabled={mmuManualDisabled || mmuSelectedGate === -2} onClick={() => void runMmuAction("bypass")}>{t("mmu.bypass")}</button></RichTooltip>}
+                      {isCustomMacroWidget(widget) && <RichTooltip content={localeCode.startsWith("es") ? "Configurar widget" : "Configure widget"}><button type="button" className="modal-icon-button" aria-label={localeCode.startsWith("es") ? "Configurar widget" : "Configure widget"} onClick={() => { if (widgetCollapsed) toggleHomeWidgetCollapsed(widget); setCustomMacroEditing(!widgetCollapsed && customMacroEditing === widget ? null : widget); }}><MdSettings className="action-icon" /></button></RichTooltip>}
                       {widget === "mmu" && <RichTooltip content={t("mmu.mapTools")} placement="bottom"><button className="modal-icon-button" type="button" aria-label={t("mmu.mapTools")}
                         disabled={!mmuState?.available || mmuGateCount < 1} onClick={() => setMmuMapOpen(true)}><MdDeviceHub /></button></RichTooltip>}
-                      {widget === "tray" || widget === "statusbar" ? null : widget === "mmu" ? <RichTooltip content={t("actions.refresh")} placement="bottom">
+                      {widget === "tray" || widget === "statusbar" || isCustomMacroWidget(widget) ? null : widget === "mmu" ? <RichTooltip content={t("actions.refresh")} placement="bottom">
                         <button className="modal-icon-button" type="button" aria-label={t("actions.refresh")} disabled={mmuLoading}
                           onClick={() => setMmuRefreshToken((token) => token + 1)}><FcRefresh className="action-icon" /></button>
                       </RichTooltip> : <button className="modal-icon-button" type="button" title={widget === "sensors" ? t("actions.refresh") : t("homeGrid.openFull")}
@@ -7073,8 +7162,10 @@ function Editor() {
                       </button>
                     </div>
                   </header>
-                  {!widgetCollapsed && <div className="home-widget-body">
-                    {widget === "macros" ? (
+                  {(!widgetCollapsed || widget === "tray") && <div className="home-widget-body" hidden={widgetCollapsed}>
+                    {isCustomMacroWidget(widget) ? (
+                      <CustomMacroWidget config={customMacroWidgets.find((item) => item.id === widget)!} onChange={saveCustomMacroWidget} editing={customMacroEditing === widget} onFinishEdit={() => setCustomMacroEditing(null)} apiBase={appBasePath} locale={localeCode} />
+                    ) : widget === "macros" ? (
                       <div className="home-macro-list">
                         {favoriteMacros.length === 0 && <p className="empty-note">{t("macros.emptyFavorites")}</p>}
                         {favoriteMacros.map((macro) => (
@@ -7259,8 +7350,6 @@ function Editor() {
                                 <div className="mmu-gate-caption"><strong>{gateStatus === 0 ? "..." : material || t("mmu.unknown")}</strong><span>{temperature > 0 ? `${temperature} C` : "--"}</span></div>
                               </div>;
                             })}
-                            {Boolean(mmu.has_bypass) && <RichTooltip content={t("mmu.bypass")}><button type="button" className={`mmu-bypass ${mmuSelectedGate === -2 ? "active" : ""}`}
-                              disabled={mmuManualDisabled || mmuSelectedGate === -2} onClick={() => void runMmuAction("bypass")}>{t("mmu.bypass")}</button></RichTooltip>}
                           </div>
                           <div className="mmu-gate-menu">
                             <strong>{mmuMenuGate === null ? "G--" : `G${mmuMenuGate}`}</strong>
@@ -7325,6 +7414,7 @@ function Editor() {
               {homeDropAnchor?.column === columnIndex && homeDropAnchor.widget === null &&
                 <div className="home-widget-drop-placeholder" style={{ height: Math.min(Math.max(draggedHomeWidgetHeight, 56), 320) }} aria-hidden="true" />}
               </div>)}
+            </div>
             </div>
           ) : (
             <div className="welcome">
@@ -7876,6 +7966,10 @@ function Editor() {
             >
               <div className="modal-header">
                 <h2 id="movement-title">{t("movement.title")}</h2>
+                <div className="modal-header-actions">
+                <button type="button" className="dialog-button" title="Calibrar Z" disabled={!printerStatus || Boolean(printerStatus.error) || printerStatus.printing} onClick={() => setManualProbeOpenRequest((request) => request + 1)}>Calibrar Z</button>
+                <RichTooltip content={t("actions.motorsOff")}><button type="button" className="modal-icon-button" aria-label={t("actions.motorsOff")}
+                  disabled={quickCommandDisabled || movingAction !== null} onClick={() => void runQuickCommand("motors-off", t("actions.motorsOff"))}><MdiIcon path={mdiEngineOff} size={0.8} /></button></RichTooltip>
                 <button
                   className="modal-close"
                   type="button"
@@ -7885,6 +7979,7 @@ function Editor() {
                 >
                   x
                 </button>
+                </div>
               </div>
               <div className="movement-modal-body">
                 <div className="movement-state">
@@ -8452,7 +8547,6 @@ function Editor() {
                         </div>
                         <div className="auxiliary-list">
                           {ledControls.map((control) => {
-                            const busy = settingAuxiliary === control.name;
                             const color = control.color ?? "#000000";
 
                             return (
@@ -8463,14 +8557,8 @@ function Editor() {
                                     <span>{control.label}</span>
                                   </span>
                                   <label className="auxiliary-color-control" title={color}>
-                                    <input
-                                      type="color"
-                                      value={color}
-                                      disabled={busy || !control.controllable}
-                                      aria-label={control.label}
-                                      onChange={(event) => updateAuxiliaryControlLocal(control.name, { color: event.target.value, value: 1 })}
-                                      onBlur={(event) => void setAuxiliaryControl(control, { color: event.target.value, value: 1 })}
-                                    />
+                                    <LiveLedColor name={control.name} label={control.label} color={color} disabled={!control.controllable}
+                                      endpoint={apiPath("/api/printer/auxiliary")} onApplied={() => void loadAuxiliaryControls(false)} onError={setMessage} />
                                   </label>
                                 </div>
                               </div>
@@ -9674,15 +9762,17 @@ function Editor() {
                       </div>
                       <p className="setting-help">{t("homeGrid.layoutHelp")}</p>
                       <div className="home-widget-order">
-                        {[...homeWidgets, ...availableHomeWidgets.filter((widget) => !homeWidgetSet.has(widget))].map((widget) => {
+                        {[...homeWidgets, ...[...availableHomeWidgets, ...customMacroWidgets.map((item) => item.id)].filter((widget) => !homeWidgetSet.has(widget))].map((widget) => {
                           const index = homeWidgets.indexOf(widget);
                           return <div key={widget}>
                           <label className="setting-checkbox">
                             <input type="checkbox" checked={index >= 0} onChange={() => toggleHomeWidget(widget)} />
                             <span>{homeWidgetLabel(widget)}</span>
                           </label>
+                          {isCustomMacroWidget(widget) && <button type="button" className="modal-icon-button" aria-label={localeCode.startsWith("es") ? "Eliminar widget" : "Delete widget"} onClick={() => void deleteCustomMacroWidget(widget)}><MdDeleteOutline /></button>}
                         </div>; })}
                       </div>
+                      <button type="button" className="dialog-button" disabled={customMacroWidgets.length >= 30} onClick={addCustomMacroWidget}><MdAdd />{localeCode.startsWith("es") ? "Agregar widget de macros" : "Add macro widget"}</button>
                     </> : optionsTab === "terminal" ? <>
                       <label className="setting-checkbox">
                         <input type="checkbox" checked={terminalEnvEnabled || terminalConfiguredEnabled} disabled={terminalEnvEnabled || terminalModeSaving}

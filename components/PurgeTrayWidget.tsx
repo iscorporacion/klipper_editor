@@ -14,6 +14,7 @@ type TrayPayload = {
   filamentColor: string;
   allAxesHomed: boolean;
   printing: boolean;
+  paused: boolean;
   state: Record<string, unknown> | null;
   settings: Record<string, unknown> | null;
   temperature: number;
@@ -159,6 +160,7 @@ export default function PurgeTrayWidget({ apiBase = "", locale = "es" }: { apiBa
   const [movementIncrement, setMovementIncrement] = useState(0.1);
   const [emptyDialogOpen, setEmptyDialogOpen] = useState(false);
   const [emptyStarted, setEmptyStarted] = useState(false);
+  const [temporaryCapacity, setTemporaryCapacity] = useState(0);
   const [hhNotice, setHhNotice] = useState<{ purgeX: number; safeMarginX: number; line: string } | null>(null);
 
   const load = useCallback(async () => {
@@ -167,7 +169,6 @@ export default function PurgeTrayWidget({ apiBase = "", locale = "es" }: { apiBa
       const payload = await response.json() as TrayPayload;
       if (!response.ok) throw new Error(payload.error || text.error);
       setData(payload);
-      setMessage("");
       const vars = payload.settings;
       if (payload.available && vars && !settingsOpen) setForm({
         profile: String(vars.profile_name ?? defaults.profile),
@@ -204,6 +205,13 @@ export default function PurgeTrayWidget({ apiBase = "", locale = "es" }: { apiBa
   }, [apiBase]);
   useEffect(() => { void loadSyncStatus(); }, [loadSyncStatus]);
   const operation = String(data?.state?.state ?? "idle").toLowerCase();
+  const recoveryPending = number(data?.state?.recovery_pending) === 1;
+  const recoveryReady = number(data?.state?.recovery_ready) === 1 && Boolean(data?.paused);
+  const emptyActive = number(data?.state?.empty_active) === 1;
+  useEffect(() => {
+    setEmptyStarted(emptyActive);
+    if (((recoveryPending || recoveryReady) && data?.paused) || emptyActive) setEmptyDialogOpen(true);
+  }, [recoveryPending, recoveryReady, emptyActive, data?.paused]);
   useEffect(() => {
     if (!data?.available) return;
     const active = operation !== "idle" && operation !== "error" && operation !== "full";
@@ -239,7 +247,8 @@ export default function PurgeTrayWidget({ apiBase = "", locale = "es" }: { apiBa
   const finishEmptying = async () => {
     if (await run("empty-finish")) {
       setEmptyStarted(false);
-      setEmptyDialogOpen(false);
+      if (recoveryPending) await run("recover");
+      else setEmptyDialogOpen(false);
     }
   };
 
@@ -278,13 +287,13 @@ export default function PurgeTrayWidget({ apiBase = "", locale = "es" }: { apiBa
   const position = Math.min(50, Math.max(0, number(state.position, form.safePosition)));
   const target = Math.min(50, Math.max(0, number(state.target_position, position)));
   const blobs = Math.max(0, number(state.blob_count));
-  const capacity = Math.max(1, number(state.max_blobs, form.maxBlobs));
+  const capacity = Math.max(1, number(state.max_blobs, form.maxBlobs), number(state.temporary_capacity));
   const homed = Boolean(state.homed);
   const full = blobs >= capacity;
   const fillPercent = Math.min(100, Math.max(0, blobs / capacity * 100));
   const moving = ["homing", "moving_safe", "positioning", "dropping"].includes(operation);
   const trayY = 57 + (moving ? target : position) * 1.5;
-  const disabled = busy !== "" || Boolean(data?.printing);
+  const disabled = busy !== "" || Boolean(data?.printing) || Boolean(data?.paused) || emptyActive;
   const fieldTitle = (label: string, description: string) => <span className="purge-tray-field-title"><span>{label}</span><RichTooltip placement="top" content={<span className="rich-tooltip-stack"><strong>{label}</strong><span>{description}</span></span>}><span className="purge-tray-help" role="button" tabIndex={0} aria-label={`${label}: ${description}`}><MdHelpOutline /></span></RichTooltip></span>;
   const input = (key: keyof TrayForm, label: string, min = -1000, max = 1000) => <label>{fieldTitle(label, help[key])}<input type="number" inputMode="decimal" min={min} max={max} step="any" value={form[key] as number}
     onChange={(event) => setForm((current) => ({ ...current, [key]: Number(event.target.value) }))} /></label>;
@@ -366,7 +375,7 @@ export default function PurgeTrayWidget({ apiBase = "", locale = "es" }: { apiBa
         <button type="button" disabled={disabled || !homed || full || !data.servoAvailable} onClick={() => void run("purge")}><MdKeyboardArrowUp />{text.purge}</button>
         <button type="button" disabled={disabled || !homed} onClick={() => void run("clean")}><FaBroom />{text.clean}</button>
         <button type="button" disabled={disabled || !homed || !data.servoAvailable} onClick={() => void run("drop")}><MdKeyboardArrowDown />{text.drop}</button>
-        <button type="button" disabled={disabled || !homed} onClick={() => { setEmptyStarted(false); setEmptyDialogOpen(true); }} title={text.reset}>{text.reset}</button>
+        <button type="button" disabled={busy !== "" || (Boolean(data?.printing) && !data?.paused) || !homed} onClick={() => setEmptyDialogOpen(true)} title={text.reset}>{text.reset}</button>
         <button className="icon-only" type="button" title={text.settings} aria-label={text.settings} onClick={() => setSettingsOpen(true)}><MdSettings /></button>
       </div>
     </>}
@@ -410,17 +419,24 @@ export default function PurgeTrayWidget({ apiBase = "", locale = "es" }: { apiBa
         <footer><button type="button" className="dialog-button primary" onClick={() => setHhNotice(null)}>{text.close}</button></footer>
       </section>
     </div>, document.body)}
-    {emptyDialogOpen && typeof document !== "undefined" && createPortal(<div className="modal-backdrop" onMouseDown={() => !emptyStarted && setEmptyDialogOpen(false)}>
+    {emptyDialogOpen && typeof document !== "undefined" && createPortal(<div className="modal-backdrop" onMouseDown={() => !emptyStarted && !busy && setEmptyDialogOpen(false)}>
       <section className="options-modal purge-tray-empty-dialog" role="dialog" aria-modal="true" aria-labelledby="purge-tray-empty-title" onMouseDown={(event) => event.stopPropagation()}>
-        <header><h2 id="purge-tray-empty-title">{text.emptyTitle}</h2>{!emptyStarted && <button className="modal-icon-button" type="button" onClick={() => setEmptyDialogOpen(false)} aria-label={text.close}><MdClose /></button>}</header>
+        <header><h2 id="purge-tray-empty-title">{recoveryPending ? (es ? "Deposito de purga lleno" : "Purge bucket full") : recoveryReady ? (es ? "Purga recuperada" : "Purge recovered") : text.emptyTitle}</h2>{!emptyStarted && <button className="modal-icon-button" type="button" disabled={busy !== ""} onClick={() => setEmptyDialogOpen(false)} aria-label={text.close}><MdClose /></button>}</header>
         <div className="purge-tray-empty-body">
-          <p>{text.emptyDescription}</p>
+          <p>{recoveryReady ? (es ? "Purga y limpieza completadas. La impresion sigue pausada; puedes reanudarla." : "Purge and cleaning completed. The print remains paused; you can resume it.") : text.emptyDescription}</p>
+          {recoveryPending && !emptyStarted && <>
+            <p>{es ? "La purga quedo pendiente. Vacia el deposito o amplia la capacidad solo para esta impresion. Se repetiran la purga y la limpieza antes de permitir reanudar." : "A purge is pending. Empty the bucket or increase capacity for this print only. Purging and cleaning will run again before resuming."}</p>
+            <label>{es ? "Capacidad temporal (bolas)" : "Temporary capacity (blobs)"}<input type="number" min={blobs + 1} max={10000} step={1} value={temporaryCapacity || Math.min(10000, Math.max(capacity + 10, blobs + 1))} disabled={busy !== ""} onChange={(event) => setTemporaryCapacity(Number(event.target.value))} /></label>
+          </>}
           {message && <p className="purge-tray-message">{message}</p>}
         </div>
         <footer>
           {!emptyStarted && <button type="button" className="dialog-button" disabled={busy !== ""} onClick={() => setEmptyDialogOpen(false)}>{text.cancel}</button>}
-          {!emptyStarted && <button type="button" className="dialog-button primary" disabled={busy !== ""} onClick={() => void startEmptying()}>{text.emptyStart}</button>}
+          {recoveryPending && !emptyStarted && <button type="button" className="dialog-button" disabled={busy !== ""} onClick={() => void run("recover", { capacity: temporaryCapacity || Math.min(10000, Math.max(capacity + 10, blobs + 1)) })}>{es ? "Ampliar y repetir purga" : "Increase and repeat purge"}</button>}
+          {recoveryPending && !emptyStarted && !full && <button type="button" className="dialog-button" disabled={busy !== ""} onClick={() => void run("recover")}>{es ? "Repetir purga" : "Repeat purge"}</button>}
+          {!emptyStarted && !recoveryReady && <button type="button" className="dialog-button primary" disabled={busy !== "" || !homed || !data?.servoAvailable || !data?.allAxesHomed || (Boolean(data?.printing) && !data?.paused)} onClick={() => void startEmptying()}>{recoveryPending ? text.reset : text.emptyStart}</button>}
           {emptyStarted && <button type="button" className="dialog-button primary" disabled={busy !== ""} onClick={() => void finishEmptying()}>{text.emptyFinish}</button>}
+          {recoveryReady && !emptyStarted && <button type="button" className="dialog-button primary" disabled={busy !== ""} onClick={() => void run("recovery-resume").then((ok) => { if (ok) setEmptyDialogOpen(false); })}>{es ? "Reanudar impresion" : "Resume print"}</button>}
         </footer>
       </section>
     </div>, document.body)}

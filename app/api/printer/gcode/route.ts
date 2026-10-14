@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { runGcodeScript } from "@/lib/moonraker";
+import { assertTrayRecoveryComplete, runGcodeScript } from "@/lib/moonraker";
 
 export async function POST(request: NextRequest) {
   try {
@@ -10,6 +10,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "G-code script is required" }, { status: 400 });
     }
 
+    if (/^\s*(?:RESUME|BASE_RESUME|__RESUME)\b/im.test(script)) await assertTrayRecoveryComplete();
     const result = await runGcodeScript(script);
     return NextResponse.json({ result });
   } catch (error) {

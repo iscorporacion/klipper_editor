@@ -9,7 +9,9 @@ const commands: Record<string, string> = {
   drop: "PURGE_TRAY_DROP",
   reset: "PURGE_TRAY_RESET_COUNT",
   "empty-start": "PURGE_TRAY_EMPTY_START",
-  "empty-finish": "PURGE_TRAY_EMPTY_FINISH"
+  "empty-finish": "PURGE_TRAY_EMPTY_FINISH",
+  recover: "PURGE_TRAY_RECOVER",
+  "recovery-resume": "PURGE_TRAY_RECOVERY_RESUME"
 };
 
 function finite(value: unknown, minimum: number, maximum: number, name: string) {
@@ -32,15 +34,28 @@ export async function POST(request: NextRequest) {
     const action = typeof body.action === "string" ? body.action : "";
     const status = await getTrayStatus();
     if (!status.available) return NextResponse.json({ error: "Purge tray macros are not installed" }, { status: 404 });
-    if (status.printing) {
+    const recoveryAction = ["empty-start", "empty-finish", "recover", "recovery-resume"].includes(action);
+    if ((status.printing && !status.paused) || (status.paused && !recoveryAction)) {
       return NextResponse.json({ error: "Manual tray controls are disabled while printing" }, { status: 409 });
+    }
+    if (["recover", "recovery-resume"].includes(action) && !status.paused) {
+      return NextResponse.json({ error: "Pause the print before recovering the purge" }, { status: 409 });
+    }
+    if (Number(status.state?.empty_active) === 1 && !["empty-finish"].includes(action)) {
+      return NextResponse.json({ error: "Finish emptying the bucket before another action" }, { status: 409 });
     }
     if (action === "home" && !status.allAxesHomed) {
       return NextResponse.json({ error: "XYZ HOME is required before homing the purge tray" }, { status: 409 });
     }
 
     let script = commands[action];
-    if (action === "move") {
+    if (action === "recover" && body.capacity !== undefined) {
+      const capacity = finite(body.capacity, 1, 10000, "temporary capacity");
+      if (!Number.isInteger(capacity) || capacity <= Number(status.state?.blob_count ?? 0)) {
+        return NextResponse.json({ error: "Temporary capacity must be an integer greater than the current count" }, { status: 400 });
+      }
+      script = `PURGE_TRAY_RECOVER CAPACITY=${capacity}`;
+    } else if (action === "move") {
       script = `PURGE_TRAY_MOVE POS=${finite(body.position, 0, 50, "tray position")}`;
     } else if (action === "calibrate-position") {
       if (!status.allAxesHomed) {

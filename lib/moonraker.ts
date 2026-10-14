@@ -1,5 +1,6 @@
 import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
+import { isMmuPrintActive } from "@/lib/mmu-state";
 
 function normalizeMoonrakerUrl(input: string) {
   const markdownLink = input.match(/\]\((https?:\/\/[^)]+)\)/i);
@@ -122,6 +123,7 @@ export type TrayStatus = {
   filamentColor: string;
   allAxesHomed: boolean;
   printing: boolean;
+  paused: boolean;
   state: Record<string, unknown> | null;
   settings: Record<string, unknown> | null;
   temperature: number;
@@ -432,6 +434,25 @@ export async function rebootMachine() {
   return payload?.result ?? payload;
 }
 
+export async function getKlipperScreenService(): Promise<string | null> {
+  const payload = await moonrakerFetch("/machine/system_info");
+  const services: unknown = payload?.result?.system_info?.available_services;
+  return Array.isArray(services)
+    ? services.find((name): name is string => typeof name === "string" && name.toLowerCase() === "klipperscreen") ?? null
+    : null;
+}
+
+export async function restartPrinterService(service: "moonraker" | "klipperscreen") {
+  if (service === "moonraker") {
+    return moonrakerFetch("/server/restart", { method: "POST" });
+  }
+  const name = await getKlipperScreenService();
+  if (!name) throw new Error("KlipperScreen no esta disponible para reiniciar");
+  return moonrakerFetch("/machine/services/restart", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ service: name })
+  });
+}
+
 function updateAppFromEntry(name: string, value: unknown): UpdateManagerApp {
   const entry = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
   const version = String(entry.version ?? entry.local_version ?? entry.current_version ?? "");
@@ -634,9 +655,24 @@ export async function pausePrint() {
   return payload?.result ?? payload;
 }
 
+export async function getRegisteredMacros(): Promise<string[]> {
+  const payload = await moonrakerFetch("/printer/objects/list");
+  const objects = payload?.result?.objects ?? payload?.objects ?? [];
+  return Array.isArray(objects) ? objects.filter((name): name is string => typeof name === "string" && name.startsWith("gcode_macro "))
+    .map((name) => name.slice("gcode_macro ".length).toUpperCase()).sort() : [];
+}
+
 export async function resumePrint() {
+  await assertTrayRecoveryComplete();
   const payload = await moonrakerFetch("/printer/print/resume", { method: "POST" });
   return payload?.result ?? payload;
+}
+
+export async function assertTrayRecoveryComplete() {
+  const tray = await getTrayStatus();
+  if (Number(tray.state?.recovery_pending) === 1 || Number(tray.state?.empty_active) === 1) {
+    throw new Error("Termina el vaciado y repite la purga desde la bandeja antes de reanudar la impresion");
+  }
 }
 
 export async function cancelPrint() {
@@ -1068,7 +1104,6 @@ export async function getMmuStatus(): Promise<MmuStatus> {
     "gate_speed_override", "action", "has_bypass", "spoolman_support", "encoder", "flowguard",
     "sync_feedback_flow_rate", "sync_feedback_enabled", "sync_feedback_state"
   ].join(","));
-  if (objects.includes("idle_timeout")) params.append("idle_timeout", "state");
   if (objects.includes("print_stats")) params.append("print_stats", "state");
   if (objects.includes("configfile")) params.append("configfile", "settings");
   const payload = await moonrakerFetch(`/printer/objects/query?${params.toString()}`);
@@ -1078,10 +1113,9 @@ export async function getMmuStatus(): Promise<MmuStatus> {
     ? status.configfile.settings as Record<string, unknown>
     : {};
   const printState = String(status.print_stats?.state ?? "").toLowerCase();
-  const idleState = String(status.idle_timeout?.state ?? "").toLowerCase();
   return {
     available: true,
-    printing: printState === "printing" || idleState === "printing",
+    printing: isMmuPrintActive(printState, mmu),
     mmu,
     displayName: mmuDisplayName(configSettings, mmu),
     websocketUrl
@@ -1095,13 +1129,14 @@ export async function getTrayStatus(): Promise<TrayStatus> {
   const stateObject = "gcode_macro _PURGE_TRAY_STATE";
   const settingsObject = "gcode_macro _PURGE_TRAY_VARS";
   if (!objects.includes(stateObject) || !objects.includes(settingsObject)) {
-    return { available: false, servoAvailable: false, filamentColor: "#7457e8", allAxesHomed: false, printing: false, state: null, settings: null, temperature: 0, target: 0 };
+    return { available: false, servoAvailable: false, filamentColor: "#7457e8", allAxesHomed: false, printing: false, paused: false, state: null, settings: null, temperature: 0, target: 0 };
   }
 
   const params = new URLSearchParams();
   params.append(stateObject, "");
   params.append(settingsObject, "");
   if (objects.includes("print_stats")) params.append("print_stats", "state");
+  if (objects.includes("pause_resume")) params.append("pause_resume", "is_paused");
   if (objects.includes("extruder")) params.append("extruder", "temperature,target");
   if (objects.includes("toolhead")) params.append("toolhead", "homed_axes");
   if (objects.includes("mmu")) params.append("mmu", "gate,gate_color");
@@ -1119,6 +1154,7 @@ export async function getTrayStatus(): Promise<TrayStatus> {
       && String(status.toolhead?.homed_axes ?? "").toLowerCase().includes("y")
       && String(status.toolhead?.homed_axes ?? "").toLowerCase().includes("z"),
     printing: String(status.print_stats?.state ?? "").toLowerCase() === "printing",
+    paused: status.pause_resume?.is_paused === true,
     state: status[stateObject] && typeof status[stateObject] === "object" ? status[stateObject] : {},
     settings: status[settingsObject] && typeof status[settingsObject] === "object" ? status[settingsObject] : {},
     temperature: Number(status.extruder?.temperature) || 0,
@@ -1212,9 +1248,46 @@ export async function setAuxiliaryControl(name: string, value?: number, color?: 
   const red = parseInt(safeColor.slice(1, 3), 16) / 255;
   const green = parseInt(safeColor.slice(3, 5), 16) / 255;
   const blue = parseInt(safeColor.slice(5, 7), 16) / 255;
+  const objectsPayload = await moonrakerFetch("/printer/objects/list");
+  const objects: string[] = objectsPayload?.result?.objects ?? [];
+  const ledName = configNameFromObject(safeName);
+  // The managed status bar also needs its automatic controller put in manual mode.
+  if (ledName === "status_bar" && objects.some((object) => object.toUpperCase() === "GCODE_MACRO STATUS_BAR_COLOR")) {
+    return runGcodeScript(`STATUS_BAR_COLOR COLOR=${Math.round(red * 255)},${Math.round(green * 255)},${Math.round(blue * 255)}`);
+  }
+  const hasEffects = objects.some((object) => object.startsWith("led_effect "));
+  const stopEffects = hasEffects ? `STOP_LED_EFFECTS LEDS="${safeName.replace(" ", ":")}"\n` : "";
   return runGcodeScript(
-    `SET_LED LED="${configNameFromObject(safeName)}" RED=${formatGcodeNumber(red)} GREEN=${formatGcodeNumber(green)} BLUE=${formatGcodeNumber(blue)}`
+    `${stopEffects}SET_LED LED="${ledName}" RED=${formatGcodeNumber(red)} GREEN=${formatGcodeNumber(green)} BLUE=${formatGcodeNumber(blue)} SYNC=0`
   );
+}
+
+export async function getManualProbeState() {
+  const payload = await moonrakerFetch("/printer/objects/query?manual_probe&configfile=settings&toolhead=homed_axes&webhooks=state&print_stats=state");
+  const status = payload?.result?.status ?? {};
+  const probe = status.manual_probe ?? {};
+  const settings = status.configfile?.settings ?? {};
+  const options: { id: string; label: string; command: string }[] = [];
+  for (const section of Object.keys(settings)) {
+    if (section.startsWith("probe_eddy_current ")) {
+      const chip = section.slice("probe_eddy_current ".length);
+      if (/^[a-zA-Z0-9_]+$/.test(chip)) options.push({ id: section, label: `Eddy: ${chip}`, command: `PROBE_EDDY_CURRENT_CALIBRATE CHIP=${chip}` });
+    }
+  }
+  if (settings.probe || settings.bltouch) options.push({ id: "probe", label: "Sonda Z", command: "PROBE_CALIBRATE" });
+  if (settings.stepper_z?.endstop_pin && !String(settings.stepper_z.endstop_pin).includes("z_virtual_endstop")) {
+    options.push({ id: "endstop", label: "Final de carrera Z", command: "Z_ENDSTOP_CALIBRATE" });
+  }
+  options.push({ id: "manual", label: "Sondeada manual", command: "MANUAL_PROBE" });
+  const number = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value : null;
+  return {
+    active: probe.is_active === true,
+    position: number(probe.z_position), lower: number(probe.z_position_lower), upper: number(probe.z_position_upper),
+    ready: status.webhooks?.state === "ready",
+    printing: ["printing", "paused"].includes(status.print_stats?.state),
+    homed: ["x", "y", "z"].every((axis) => String(status.toolhead?.homed_axes ?? "").includes(axis)),
+    options
+  };
 }
 
 export async function extrudeFilament(extruder: string, distance: number, speed: number) {

@@ -12,7 +12,7 @@ export const preferenceKeys = [
   "klipper-editor-heater-cache", "klipper-editor-heater-colors",
   "klipper-editor-theme", "klipper-editor-home-widgets", "klipper-editor-home-grid-layout", "klipper-editor-home-collapsed-widgets",
   "klipper-editor-sensors-show-endstops", "klipper-editor-sensors-hidden",
-  "klipper-editor-mmu-last-import"
+  "klipper-editor-mmu-last-import", "klipper-editor-custom-macro-widgets"
 ];
 type Document = { id: string; values: Record<string, string> };
 const filename = path.join(WORKSPACE_ROOT, ".klipper-editor-preferences.json");

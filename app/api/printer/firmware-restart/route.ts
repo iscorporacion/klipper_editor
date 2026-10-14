@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { firmwareRestart, getMoonrakerStatus } from "@/lib/moonraker";
+import { isRestartBlockedByPrint } from "@/lib/printer-restart";
 
 export async function POST() {
   try {
     const status = await getMoonrakerStatus();
-    if (status.printing) {
+    if (isRestartBlockedByPrint(status)) {
       return NextResponse.json(
         {
           error: "A print is currently active",

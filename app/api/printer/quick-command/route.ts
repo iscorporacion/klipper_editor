@@ -6,7 +6,8 @@ const commands = {
   "home-x": "G28 X",
   "home-y": "G28 Y",
   "home-z": "G28 Z",
-  "z-tilt": "Z_TILT_ADJUST"
+  "z-tilt": "Z_TILT_ADJUST",
+  "motors-off": "M84"
 } as const;
 
 type CommandName = keyof typeof commands;
@@ -25,7 +26,7 @@ export async function POST(request: NextRequest) {
     }
 
     const status = await getMoonrakerStatus();
-    if (status.printing && status.printState.trim().toLowerCase() !== "paused") {
+    if (status.printing && (command === "motors-off" || status.printState.trim().toLowerCase() !== "paused")) {
       return NextResponse.json({ error: "A print is currently active", status }, { status: 409 });
     }
 

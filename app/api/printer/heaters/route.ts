@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getHeaters, setHeaterTarget } from "@/lib/moonraker";
+import { getHeaters, getMoonrakerStatus, setHeaterTarget } from "@/lib/moonraker";
 
 export async function GET(request: NextRequest) {
   try {
@@ -16,7 +16,10 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const body = (await request.json()) as { targets?: Record<string, number>; heaters?: string[] };
+    const body = (await request.json()) as { targets?: Record<string, number>; heaters?: string[]; source?: string };
+    if (body.source === "toolbar-cool" && (await getMoonrakerStatus()).printing) {
+      return NextResponse.json({ error: "No se puede enfriar desde la barra durante una impresion" }, { status: 409 });
+    }
     const targets = body.targets ?? {};
     const entries = Object.entries(targets);
 

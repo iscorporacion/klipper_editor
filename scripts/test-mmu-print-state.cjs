@@ -28,7 +28,7 @@ test('MMU API permits bypass after manual T0 even while idle_timeout reports Pri
   const raw = { print_stats: { state: 'standby' }, idle_timeout: { state: 'Printing' }, mmu: {
     enabled: true, num_gates: 5, has_bypass: true, gate: 0, tool: 0, print_state: 'ready', is_in_print: false
   } };
-  const moonraker = load('lib/moonraker.ts', { '@/lib/mmu-state': policy }, {
+  const moonraker = load('lib/moonraker.ts', { '@/lib/mmu-state': policy, '@/lib/mmu-telemetry': load('lib/mmu-telemetry.ts') }, {
     process: { env: {} }, fetch: async (url) => Response.json(new URL(url).pathname.endsWith('/objects/list')
       ? { result: { objects: ['mmu', 'print_stats', 'idle_timeout'] } } : { result: { status: raw } })
   });

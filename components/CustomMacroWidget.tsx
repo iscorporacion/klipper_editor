@@ -6,6 +6,7 @@ import RichTooltip from "@/components/RichTooltip";
 import WidgetDialog from "@/components/WidgetDialog";
 import IconPicker from "@/components/IconPicker";
 import LibraryIcon from "@/components/LibraryIcon";
+import { createClientId } from "@/lib/client-id";
 
 export default function CustomMacroWidget({ config, onChange, editing, onFinishEdit, apiBase = "", locale = "es" }: {
   config: MacroWidgetConfig; onChange: (config: MacroWidgetConfig) => void;
@@ -36,7 +37,7 @@ export default function CustomMacroWidget({ config, onChange, editing, onFinishE
   }, [apiBase, editing, refresh]);
   const updateDraft = (patch: Partial<MacroButton>) => { setDraft((current) => current ? { ...current, ...patch } : null); setValidation(""); setError(""); };
   const editButton = (button?: MacroButton) => {
-    setDraft(button ? { ...button } : { id: crypto.randomUUID(), name: "", description: "", command: "", size: "1x1", color: "#4da3ff", alignment: "center", showTitle: true, icon: { collection: "md", name: "MdPlayArrow" } });
+    setDraft(button ? { ...button } : { id: createClientId(), name: "", description: "", command: "", size: "1x1", color: "#4da3ff", alignment: "center", showTitle: true, icon: { collection: "md", name: "MdPlayArrow" } });
     setError(""); setValidation("");
   };
   const requestCommand = async (command: string, validateOnly = false) => {

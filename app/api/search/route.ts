@@ -2,6 +2,8 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { NextRequest, NextResponse } from "next/server";
 import { isBlockedPath, resolveWorkspacePath, sortByDirectoryThenName, toRelativePath } from "@/lib/workspace";
+import { isBackupPath } from "@/scripts/backup-paths.mjs";
+import { readBackupRules, type BackupRule } from "@/lib/backup-rules";
 
 type SearchResult = {
   path: string;
@@ -27,24 +29,12 @@ const searchableExtensions = new Set([
   ".yml"
 ]);
 
-function isBackupName(name: string) {
-  const lower = name.toLowerCase();
-  return (
-    lower.endsWith(".bak") ||
-    lower.includes(".bak.") ||
-    /\b\d{8}[_-]\d{6}\b/.test(lower) ||
-    /\b\d{8}t\d{6}z\b/.test(lower) ||
-    /^config-\d{8}-\d{6}\.zip$/.test(lower)
-  );
-}
-
 function isSearchableFile(relativePath: string) {
   const name = path.posix.basename(relativePath);
-  if (isBackupName(name)) return false;
   return searchableExtensions.has(path.posix.extname(name).toLowerCase());
 }
 
-async function collectFiles(relativePath = "", depth = 0): Promise<string[]> {
+async function collectFiles(relativePath = "", depth = 0, rules: BackupRule[] = []): Promise<string[]> {
   if (depth > maxDepth) return [];
 
   const absolutePath = resolveWorkspacePath(relativePath);
@@ -53,10 +43,10 @@ async function collectFiles(relativePath = "", depth = 0): Promise<string[]> {
 
   for (const dirent of dirents) {
     const childRelativePath = toRelativePath(path.posix.join(relativePath, dirent.name));
-    if (isBlockedPath(childRelativePath)) continue;
+    if (isBlockedPath(childRelativePath) || isBackupPath(childRelativePath, dirent.isDirectory() ? "directory" : "file", rules)) continue;
 
     if (dirent.isDirectory()) {
-      files.push(...await collectFiles(childRelativePath, depth + 1));
+      files.push(...await collectFiles(childRelativePath, depth + 1, rules));
     } else if (dirent.isFile() && isSearchableFile(childRelativePath)) {
       files.push(childRelativePath);
     }
@@ -95,7 +85,8 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const files = await collectFiles();
+    const { rules } = await readBackupRules();
+    const files = await collectFiles("", 0, rules);
     const sortedFiles = sortByDirectoryThenName(files.map((file) => ({ name: path.posix.basename(file), path: file, type: "file" as const })));
     const results: SearchResult[] = [];
 

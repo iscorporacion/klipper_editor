@@ -2,37 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { NextRequest, NextResponse } from "next/server";
 import { isBlockedPath, resolveWorkspacePath, toRelativePath } from "@/lib/workspace";
-
-function timestampForBackup(date = new Date()) {
-  const pad = (value: number) => String(value).padStart(2, "0");
-  return [
-    date.getFullYear(),
-    pad(date.getMonth() + 1),
-    pad(date.getDate()),
-    "_",
-    pad(date.getHours()),
-    pad(date.getMinutes()),
-    pad(date.getSeconds())
-  ].join("");
-}
-
-async function backupPathForFile(absolutePath: string) {
-  const parsed = path.parse(absolutePath);
-  const timestamp = timestampForBackup();
-  let candidate = path.join(parsed.dir, `${parsed.name}-${timestamp}${parsed.ext}`);
-  let suffix = 1;
-
-  while (true) {
-    try {
-      await fs.stat(candidate);
-      candidate = path.join(parsed.dir, `${parsed.name}-${timestamp}-${suffix}${parsed.ext}`);
-      suffix += 1;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return candidate;
-      throw error;
-    }
-  }
-}
+import { createConfigBackup } from "@/scripts/config-backups.mjs";
 
 export async function GET(request: NextRequest) {
   const relativePath = toRelativePath(request.nextUrl.searchParams.get("path") ?? "");
@@ -80,8 +50,7 @@ export async function PUT(request: NextRequest) {
 
     let backupPath: string | undefined;
     if (body.createBackup) {
-      backupPath = await backupPathForFile(absolutePath);
-      await fs.copyFile(absolutePath, backupPath);
+      backupPath = await createConfigBackup(resolveWorkspacePath(), absolutePath);
     }
 
     await fs.writeFile(absolutePath, body.content, "utf8");
@@ -89,7 +58,7 @@ export async function PUT(request: NextRequest) {
 
     return NextResponse.json({
       path: relativePath,
-      backupPath: backupPath ? toRelativePath(path.relative(resolveWorkspacePath(), backupPath)) : undefined,
+      backupPath,
       modifiedAt: updatedStat.mtime.toISOString()
     });
   } catch (error) {

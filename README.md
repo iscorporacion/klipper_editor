@@ -28,7 +28,7 @@ Features:
 - optional MCP server for agents that need controlled access to printer config files
 - file upload, blank file creation, file download, and delete confirmation
 - image preview for supported image files
-- backup copies on save, configurable from options
+- backup copies on save in `.keditor-backups/` (outside Klipper include folders), configurable from options; recognized backups have a distinct icon
 - Moonraker firmware restart button blocked during active prints
 - help page at `/editor/help`
 - optional Mainsail sidebar link through `.theme/navi.json`

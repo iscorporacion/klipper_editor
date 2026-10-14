@@ -1,5 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
+import { backupRelativePath } from "@/scripts/backup-paths.mjs";
 import {
   getMoonrakerFileRoots,
   readMoonrakerConfigFile,
@@ -43,15 +45,6 @@ async function optionalRemoteFile(filePath: string) {
   } catch {
     return null;
   }
-}
-
-function timestamp() {
-  return new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
-}
-
-function backupName(filePath: string) {
-  const extension = path.posix.extname(filePath);
-  return `${filePath.slice(0, -extension.length)}-${timestamp()}${extension}`;
 }
 
 function insertManagedInclude(config: string, include: string) {
@@ -100,13 +93,13 @@ export async function installWidgetConfig(widget: string) {
   const source = await fs.readFile(path.join(process.cwd(), item.source), "utf8");
   const existing = await optionalRemoteFile(item.remote);
   const printerConfig = await readMoonrakerConfigFile("printer.cfg");
-  const backupId = timestamp();
   const backups: string[] = [];
 
-  await uploadMoonrakerConfigFile(`printer-${backupId}.cfg`, printerConfig);
-  backups.push(`printer-${backupId}.cfg`);
+  const printerBackup = backupRelativePath("printer.cfg", randomUUID());
+  await uploadMoonrakerConfigFile(printerBackup, printerConfig);
+  backups.push(printerBackup);
   if (existing !== null) {
-    const backup = backupName(item.remote);
+    const backup = backupRelativePath(item.remote, randomUUID());
     await uploadMoonrakerConfigFile(backup, existing);
     backups.push(backup);
   }

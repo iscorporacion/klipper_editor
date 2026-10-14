@@ -5,6 +5,7 @@ import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import readline from "node:readline";
+import { createConfigBackup } from "./config-backups.mjs";
 
 const appDirName = "ratos-file-viewer";
 const root = path.resolve(process.env.KLIPPER_EDITOR_MCP_ROOT || process.env.RATOS_VIEWER_ROOT || defaultRoot());
@@ -76,10 +77,7 @@ function requirePermission(enabled, name) {
 }
 
 async function backupFile(absolutePath) {
-  const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\..+/, "").replace("T", "-");
-  const backupPath = `${absolutePath}.mcp-backup-${stamp}`;
-  await fs.copyFile(absolutePath, backupPath);
-  return path.relative(root, backupPath).replace(/\\/g, "/");
+  return createConfigBackup(root, absolutePath);
 }
 
 async function moonrakerFetch(endpoint, init) {

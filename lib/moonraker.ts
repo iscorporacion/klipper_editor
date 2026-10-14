@@ -1,6 +1,7 @@
 import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
 import { isMmuPrintActive } from "@/lib/mmu-state";
+import { mmuTelemetryFields } from "@/lib/mmu-telemetry";
 
 function normalizeMoonrakerUrl(input: string) {
   const markdownLink = input.match(/\]\((https?:\/\/[^)]+)\)/i);
@@ -110,6 +111,7 @@ export type SensorState = {
 };
 
 export type MmuStatus = {
+  settings?: Record<string, unknown>;
   available: boolean;
   printing: boolean;
   mmu: Record<string, unknown> | null;
@@ -1097,13 +1099,7 @@ export async function getMmuStatus(): Promise<MmuStatus> {
   if (!objects.includes("mmu")) return { available: false, printing: false, mmu: null, displayName: "MMU", websocketUrl };
 
   const params = new URLSearchParams();
-  params.append("mmu", [
-    "enabled", "num_gates", "is_homed", "is_locked", "is_paused", "is_in_print", "print_state",
-    "unit", "tool", "gate", "active_filament", "operation", "filament_pos", "ttg_map", "gate_status",
-    "gate_filament_name", "gate_material", "gate_vendor", "gate_color", "gate_temperature", "gate_spool_id",
-    "gate_speed_override", "action", "has_bypass", "spoolman_support", "encoder", "flowguard",
-    "sync_feedback_flow_rate", "sync_feedback_enabled", "sync_feedback_state"
-  ].join(","));
+  params.append("mmu", mmuTelemetryFields.join(","));
   if (objects.includes("print_stats")) params.append("print_stats", "state");
   if (objects.includes("configfile")) params.append("configfile", "settings");
   const payload = await moonrakerFetch(`/printer/objects/query?${params.toString()}`);
@@ -1118,6 +1114,7 @@ export async function getMmuStatus(): Promise<MmuStatus> {
     printing: isMmuPrintActive(printState, mmu),
     mmu,
     displayName: mmuDisplayName(configSettings, mmu),
+    settings: configSettings.mmu && typeof configSettings.mmu === "object" ? configSettings.mmu as Record<string, unknown> : {},
     websocketUrl
   };
 }

@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 import PreferencesGate from "@/components/PreferencesGate";
+import { createClientId } from "@/lib/client-id";
 import { preferences } from "@/lib/preferences-client";
 import Image from "next/image";
 import PidChart, { type PidSample } from "@/components/PidChart";
@@ -11,6 +12,11 @@ import RichTooltip from "@/components/RichTooltip";
 import CustomMacroWidget from "@/components/CustomMacroWidget";
 import LiveLedColor from "@/components/LiveLedColor";
 import ManualProbeDialog from "@/components/ManualProbeDialog";
+import BackupSettings from "@/components/BackupSettings";
+import MmuFilamentPath from "@/components/MmuFilamentPath";
+import MmuGateActions from "@/components/MmuGateActions";
+import { mmuTelemetryFields, mergeMmuTelemetry } from "@/lib/mmu-telemetry";
+import { BACKUP_DIRECTORY, isBackupFilePath } from "@/scripts/backup-paths.mjs";
 import { isCustomMacroWidget, macroWidgetsKey, normalizeMacroWidgets, type MacroWidgetConfig } from "@/lib/macro-widgets";
 import { isRestartBlockedByPrint } from "@/lib/printer-restart";
 import { isMmuPrintActive } from "@/lib/mmu-state";
@@ -54,6 +60,7 @@ import {
 } from "react-icons/fc";
 import {
   MdDelete,
+  MdRestorePage,
   MdAdd,
   MdDeleteOutline,
   MdSettings,
@@ -190,14 +197,10 @@ function moonrakerWebSocketUrl(serverUrl?: string) {
   return `${protocol}//${window.location.hostname}${developmentPort}/websocket`;
 }
 
-const mmuSubscriptionFields = [
-  "enabled", "num_gates", "is_homed", "is_locked", "is_paused", "is_in_print", "print_state", "unit", "tool", "gate",
-  "active_filament", "operation", "filament_pos", "ttg_map", "gate_status", "gate_filament_name", "gate_material", "gate_vendor",
-  "gate_color", "gate_temperature", "gate_spool_id", "gate_speed_override", "action", "has_bypass", "spoolman_support",
-  "encoder", "flowguard", "sync_feedback_flow_rate", "sync_feedback_enabled", "sync_feedback_state", "sensors"
-];
+const mmuSubscriptionFields = mmuTelemetryFields;
 
 type TreeNode = {
+  backup?: boolean;
   name: string;
   path: string;
   type: "file" | "directory";
@@ -860,6 +863,7 @@ type SensorState = {
 };
 
 type MmuState = {
+  settings?: Record<string, unknown>;
   available: boolean;
   printing: boolean;
   mmu: Record<string, unknown> | null;
@@ -1184,7 +1188,7 @@ const defaultMessages: Messages = {
   "options.language": "Idioma",
   "options.languageHelp": "Los idiomas disponibles salen de los archivos JSON en la carpeta `locales`.",
   "options.createBackupOnSave": "Crear copia de seguridad al guardar",
-  "options.createBackupOnSaveHelp": "Antes de sobrescribir un archivo, crea una copia con fecha junto al original.",
+  "options.createBackupOnSaveHelp": "Las nuevas copias se guardan en .keditor-backups/ dentro de la carpeta de configuración activa, conservando las subcarpetas del archivo original. Usan extensión .bak para evitar conflictos con los includes de Klipper. Las copias antiguas solo se trasladan desde Administrar copias, con tu confirmación.",
   "options.startCollapsedSidebar": "Iniciar con barra colapsada",
   "options.startCollapsedSidebarHelp": "Al abrir K-Editor, muestra solo la barra lateral de iconos hasta pasar el mouse encima.",
   "options.enableTerminal": "Habilitar terminal",
@@ -1252,6 +1256,8 @@ const defaultMessages: Messages = {
   "mmu.actionError": "No se pudo ejecutar la accion MMU",
   "mmu.actionDone": "Accion MMU completada",
   "mmu.idle": "Inactivo",
+  "mmu.printing": "Imprimiendo",
+  "mmu.paused": "Pausada",
   "mmu.selected": "{tool} | Compuerta {gate}",
   "mmu.unknown": "Desconocido",
   "mmu.bypass": "Bypass",
@@ -2148,6 +2154,7 @@ function fallbackIconForPath(path: string) {
 }
 
 function FileIcon({ path, icon }: { path: string; icon?: string }) {
+  if (icon ? icon === "backup-file" : isBackupFilePath(path)) return <MdRestorePage className="file-type-icon backup-file-icon" title="Copia de seguridad" aria-label="Copia de seguridad" />;
   return <MaterialIcon name={icon ?? fallbackIconForPath(path)} className="file-type-icon" />;
 }
 
@@ -2165,22 +2172,11 @@ function collectIconMap(nodes: TreeNode[], icons = new Map<string, string>()) {
   return icons;
 }
 
-function isBackupFilePath(path: string) {
-  const name = basename(path).toLowerCase();
-  return (
-    /-\d{8}[-_]\d{6}(?:-\d+)?(?:\.[^.]+){1,2}$/.test(name) ||
-    /-\d{8}t\d{6}z(?:-\d+)?(?:\.[^.]+){1,2}$/.test(name) ||
-    /\.(bak|backup|bkp|old|orig)$/.test(name) ||
-    /\.(bak|backup|bkp)\.?\d{8}/.test(name) ||
-    /~$/.test(name)
-  );
-}
-
 function filterBackupFiles(nodes: TreeNode[], hideBackups: boolean): TreeNode[] {
   if (!hideBackups) return nodes;
 
   return nodes
-    .filter((node) => node.type !== "file" || !isBackupFilePath(node.path))
+    .filter((node) => !(node.backup ?? (node.type === "directory" ? basename(node.path) === BACKUP_DIRECTORY : isBackupFilePath(node.path))))
     .map((node) =>
       node.children
         ? {
@@ -3068,6 +3064,9 @@ function Editor() {
   const mmuEncoder = objectValue(mmu?.encoder);
   const mmuFlowguard = objectValue(mmu?.flowguard);
   const mmuSyncFeedbackFlowRate = Number(mmu?.sync_feedback_flow_rate) || 100;
+  const mmuActivity = String(mmu?.action ?? "");
+  const mmuActivityKey = mmu?.is_paused || mmu?.print_state === "paused" || printerStatus?.printState === "paused" ? "mmu.paused"
+    : mmuState?.printing || printerStatus?.printing ? "mmu.printing" : "mmu.idle";
   const currentPrintThumbnail = bestThumbnail(printerStatus?.printDetails.metadata?.thumbnails ?? []);
   const currentPrintThumbnailUrl = currentPrintThumbnail
     ? apiPath(`/api/printer/gcode-thumbnail?path=${encodeURIComponent(currentPrintThumbnail.relativePath)}`)
@@ -3385,6 +3384,7 @@ function Editor() {
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error ?? t("errors.loadTree"));
     setTree(payload.children);
+    if (payload.backupRulesError) setMessage(payload.backupRulesError);
   }, [t]);
 
   const loadMacros = useCallback(async () => {
@@ -4242,7 +4242,7 @@ function Editor() {
     });
   };
   const addCustomMacroWidget = () => {
-    const config: MacroWidgetConfig = { id: `custom-macros:${crypto.randomUUID()}`, title: `Macros ${customMacroWidgets.length + 1}`, buttons: [] };
+    const config: MacroWidgetConfig = { id: `custom-macros:${createClientId()}`, title: `Macros ${customMacroWidgets.length + 1}`, buttons: [] };
     saveCustomMacroWidget(config);
     toggleHomeWidget(config.id);
     setCustomMacroEditing(config.id);
@@ -6042,6 +6042,10 @@ function Editor() {
   }, [activeFile, homeWidgetSet, loadMacros]);
 
   useEffect(() => {
+    if (!mmuState?.available || (mmuMenuGate !== null && mmuMenuGate >= mmuGateCount)) setMmuMenuGate(null);
+  }, [mmuState?.available, mmuGateCount, mmuMenuGate]);
+
+  useEffect(() => {
     const homeVisible = activePath === homeTabPath || (!activePath && !activeFile);
     if (!homeVisible || !homeWidgetSet.has("sensors")) return;
     let cancelled = false;
@@ -6075,11 +6079,12 @@ function Editor() {
       const update = objectValue(value);
       if (!update) return;
       setMmuState((current) => {
-        const merged = { ...(current?.mmu ?? {}), ...update };
+        const merged = mergeMmuTelemetry(current?.mmu ?? null, update);
         return {
           available: true,
           printing: isMmuPrintActive(undefined, merged),
           displayName: current?.displayName ?? "MMU",
+          settings: current?.settings,
           mmu: merged,
           websocketUrl: current?.websocketUrl
         };
@@ -7312,7 +7317,7 @@ function Editor() {
                         {mmuState?.available && mmu && <>
                           <div className="mmu-status-line">
                             <span className={mmu?.enabled === false ? "offline" : "online"} />
-                            <strong>{String(mmu.action || t("mmu.idle"))}</strong>
+                            <strong>{mmuActivity && mmuActivity.toLowerCase() !== "idle" ? mmuActivity : t(mmuActivityKey)}</strong>
                             <span>{t("mmu.selected", { tool: mmuSelectedTool >= 0 ? `T${mmuSelectedTool}` : "--", gate: mmuSelectedGate >= 0 ? mmuSelectedGate : "--" })}</span>
                           </div>
                           <div className="mmu-spool-row">
@@ -7335,7 +7340,7 @@ function Editor() {
                                   <span className="mmu-tooltip-vendor"><i style={{ background: gateColor }} aria-hidden="true" />{vendor || "--"}</span>
                                   <span>{gateStatus === 0 ? t("homeGrid.empty") : [material || t("mmu.unknown"), temperature > 0 ? `${temperature} C` : ""].filter(Boolean).join(" | ")}</span>
                                 </span>}>
-                                  <button className="mmu-spool" type="button" onClick={() => setMmuMenuGate((current) => current === gate ? null : gate)}
+                                  <button className="mmu-spool" type="button" data-gate={gate} onClick={() => setMmuMenuGate(gate)}
                                     aria-expanded={mmuMenuGate === gate} aria-label={`${t("mmu.gate")} ${gate}`}>
                                     <img src={apiPath(`/api/printer/mmu/spool?color=${encodeURIComponent(spoolColor)}&material=${encodeURIComponent(spoolMaterial)}&empty=${gateStatus === 0 ? "1" : "0"}&v=2`)}
                                       alt="" aria-hidden="true" draggable={false} />
@@ -7351,21 +7356,19 @@ function Editor() {
                               </div>;
                             })}
                           </div>
-                          <div className="mmu-gate-menu">
-                            <strong>{mmuMenuGate === null ? "G--" : `G${mmuMenuGate}`}</strong>
-                            {([
-                              ["select", mdiSwapHorizontal, "mmu.select"], ["preload", mdiTrayArrowDown, "mmu.preload"],
-                              ["eject", mdiEject, "mmu.eject"], ["check", mdiCheckCircleOutline, "mmu.check"]
-                            ] as const).map(([action, icon, label]) => <RichTooltip key={action} content={t(label)}><button type="button"
-                              disabled={mmuMenuGate === null || mmuManualDisabled || (action === "select" && mmuMenuGate === mmuSelectedGate) || (action === "preload" && mmuMenuGateStatus > 0) || (action === "eject" && mmuMenuGateStatus === 0)}
-                              onClick={() => void runMmuAction(action, { gate: mmuMenuGate })}><MdiIcon path={icon} size={0.75} /><span>{t(label)}</span></button></RichTooltip>)}
-                          </div>
+                          {mmuMenuGate !== null && <MmuGateActions gate={mmuMenuGate} tools={mmuTtgMap.flatMap((gate, tool) => gate === mmuMenuGate ? [tool] : [])}
+                            status={mmuMenuGateStatus} selectedGate={mmuSelectedGate} disabled={mmuManualDisabled}
+                            labels={{ select: t("mmu.select"), preload: t("mmu.preload"), eject: t("mmu.eject"), check: t("mmu.check"), close: t("actions.close") }}
+                            onClose={() => setMmuMenuGate(null)} onAction={(action) => void runMmuAction(action, { gate: mmuMenuGate })} />}
+                          <div className={`mmu-telemetry ${mmuEncoder || mmuFlowguard ? "" : "no-meters"}`}>
                           {(mmuEncoder || mmuFlowguard) && <div className="mmu-monitoring">
                             {mmuEncoder && <MmuEncoderMeter encoder={mmuEncoder} label={t("mmu.flowrate")} />}
                             {mmuFlowguard && <MmuFlowguardMeter flowguard={mmuFlowguard} flowRate={mmuSyncFeedbackFlowRate}
                               labels={{ flow: t("mmu.flow"), guard: t("mmu.guard"), tangle: t("mmu.tangle"), clog: t("mmu.clog"), active: t("mmu.active") }} />}
                             <strong>{t("mmu.clogDetection")}</strong>
                           </div>}
+                          <MmuFilamentPath mmu={mmu} settings={mmuState.settings} color={mmuColor(valueArray(mmu.gate_color)[mmuSelectedGate])} locale={localeCode} />
+                          </div>
                           <div className="mmu-command-bar">
                             {([
                               ["home", mdiHome, "mmu.home", false], ["recover", mdiAutoFix, "mmu.recover", false],
@@ -9714,6 +9717,7 @@ function Editor() {
                       <span>{t("options.createBackupOnSave")}</span>
                     </label>
                     <p className="setting-help">{t("options.createBackupOnSaveHelp")}</p>
+                    <BackupSettings endpoint={apiPath("/api/backups")} protectedPaths={openFiles.map((file) => file.path)} onChanged={() => void loadTree().catch((error) => setMessage(String(error)))} />
                     <label className="setting-checkbox">
                       <input
                         type="checkbox"

@@ -1,0 +1,47 @@
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const vm = require('node:vm');
+const ts = require('typescript');
+const exportsObject = {};
+const source = fs.readFileSync(path.join(__dirname, '../lib/mmu-telemetry.ts'), 'utf8');
+vm.runInNewContext(ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText, { exports: exportsObject });
+const { mmuPathTelemetry: model, mergeMmuTelemetry: merge, mmuTelemetryFields: fields } = exportsObject;
+test('HH stages and real bowden progress drive the path, unknown data never becomes a fake reading', () => {
+  assert.equal(model({}).tip, null);
+  assert.equal(model({ filament_pos: -1 }).tip, null);
+  assert.equal(model({ filament_pos: 10 }).tip, 1);
+  assert.equal(model({ filament_pos: 0 }).tip, .02);
+  assert.equal(model({ filament_pos: 1 }, { gate_homing_endstop: 'extruder' }).tip, .83);
+  assert.ok(Math.abs(model({ filament_pos: 3, bowden_progress: 25 }).tip - .43) < .0001);
+  assert.equal(model({ filament_pos: 3, bowden_progress: 500 }).tip, .76);
+  assert.equal(model({ gate: -2, filament_pos: 0 }).tip, null);
+  assert.equal(model({ gate: -2, filament_pos: 10 }).tip, 1);
+  assert.equal(model({}).encoder, null);
+  assert.equal(model({}).sensors.length, 0);
+  assert.equal(model({ sensors: { mmu_gate: false, toolhead: null } }).sensors[0].detected, false);
+  assert.equal(model({ sensors: { toolhead: null } }).sensors[0].detected, null);
+});
+test('buffer follows actual feedback and only animates active hardware', () => {
+  const loaded = { filament_pos: 10, sync_feedback_enabled: true, sync_feedback_state: 'tension', sync_feedback_bias_modelled: -.36 };
+  assert.equal(model(loaded).displacement, -.36);
+  assert.equal(model({ ...loaded, sync_feedback_bias_modelled: 5 }).displacement, 1);
+  assert.equal(model({ ...loaded, sync_feedback_enabled: false }).displacement, 0);
+  assert.equal(model({ ...loaded, filament_pos: 0 }).bufferActive, false);
+  assert.equal(model({}).hasBuffer, false);
+  assert.equal(model({ filament_pos: 10, sensors: {}, sync_feedback_enabled: true, sync_feedback_bias_modelled: 0 }).hasBuffer, false);
+  assert.equal(model({ action: 'Unloading', filament_direction: -1 }).direction, -1);
+  assert.equal(model({ action: 'Loading', filament_direction: -1 }).direction, -1);
+  assert.equal(model({ action: 'Loading', filament_direction: 0 }).direction, 0);
+  assert.equal(model({ action: 'Idle', filament_direction: 1 }).direction, 0);
+});
+test('partial websocket updates preserve sensor values and accept false/zero/null', () => {
+  const merged = merge({ sensors: { toolhead: true, extruder: true }, encoder: { encoder_pos: 227, enabled: true } }, { sensors: { toolhead: false }, encoder: { encoder_pos: 0 } });
+  assert.equal(merged.sensors.toolhead, false);
+  assert.equal(merged.sensors.extruder, true);
+  assert.equal(merged.encoder.encoder_pos, 0);
+  assert.equal(merged.encoder.enabled, true);
+  assert.equal(merge(merged, { encoder: null }).encoder, null);
+  for (const field of ['sensors', 'bowden_progress', 'filament_position', 'sync_feedback_bias_modelled', 'num_toolchanges', 'sync_drive']) assert.ok(fields.includes(field));
+});

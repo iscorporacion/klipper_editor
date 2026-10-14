@@ -1,6 +1,9 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { NextResponse } from "next/server";
+import { BACKUP_DIRECTORY, isBackupPath } from "@/scripts/backup-paths.mjs";
+import { readBackupRules, validateBackupRules, type BackupRule } from "@/lib/backup-rules";
+import { defaultBackupRules } from "@/scripts/backup-paths.mjs";
 import {
   isBlockedPath,
   resolveWorkspacePath,
@@ -16,6 +19,7 @@ type TreeNode = {
   children?: TreeNode[];
   icon?: string;
   openIcon?: string;
+  backup?: boolean;
 };
 
 const maxDepth = 12;
@@ -57,6 +61,7 @@ function fileIconFor(name: string, manifest: MaterialIconManifest) {
 
 function folderIconFor(name: string, manifest: MaterialIconManifest, expanded: boolean) {
   const lowerName = name.toLowerCase();
+  if (lowerName === BACKUP_DIRECTORY) return expanded ? "folder-backup-open" : "folder-backup";
   if (expanded) {
     return manifest.folderNamesExpanded[lowerName] ?? manifest.folderExpanded;
   }
@@ -68,7 +73,8 @@ async function readNode(
   manifest: MaterialIconManifest,
   relativePath = "",
   depth = 0,
-  seenRealPaths = new Set<string>()
+  seenRealPaths = new Set<string>(),
+  rules: BackupRule[] = []
 ): Promise<TreeNode[]> {
   if (depth > maxDepth) return [];
 
@@ -92,22 +98,25 @@ async function readNode(
       : undefined;
     const isDirectory = dirent.isDirectory() || Boolean(childStat?.isDirectory());
     const isFile = dirent.isFile() || Boolean(childStat?.isFile());
+    const backup = isBackupPath(childRelativePath, isDirectory ? "directory" : "file", rules);
 
     if (isDirectory) {
       nodes.push({
         name: dirent.name,
         path: childRelativePath,
         type: "directory",
-        icon: folderIconFor(dirent.name, manifest, false),
-        openIcon: folderIconFor(dirent.name, manifest, true),
-        children: await readNode(manifest, childRelativePath, depth + 1, nextSeenRealPaths)
+        backup,
+        icon: backup ? "folder-backup" : folderIconFor(dirent.name, manifest, false),
+        openIcon: backup ? "folder-backup-open" : folderIconFor(dirent.name, manifest, true),
+        children: await readNode(manifest, childRelativePath, depth + 1, nextSeenRealPaths, rules)
       });
     } else if (isFile) {
       nodes.push({
         name: dirent.name,
         path: childRelativePath,
         type: "file",
-        icon: fileIconFor(dirent.name, manifest)
+        backup,
+        icon: backup ? "backup-file" : fileIconFor(dirent.name, manifest)
       });
     }
   }
@@ -118,9 +127,15 @@ async function readNode(
 export async function GET() {
   try {
     const manifest = await getMaterialIconManifest();
-    const children = await readNode(manifest);
+    let backupRulesError: string | undefined;
+    const document = await readBackupRules().catch((error) => {
+      backupRulesError = error instanceof Error ? error.message : "Reglas de copias invalidas";
+      return { rules: validateBackupRules(defaultBackupRules) };
+    });
+    const children = await readNode(manifest, "", 0, new Set(), document.rules);
     return NextResponse.json({
       root: WORKSPACE_ROOT,
+      backupRulesError,
       children
     });
   } catch (error) {

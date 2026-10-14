@@ -13,7 +13,7 @@ function load(file, dependencies = {}, globals = {}) {
 }
 function printer(objects = [], status = {}) {
   const scripts = [];
-  const api = load('lib/moonraker.ts', { '@/lib/mmu-state': {} }, { process: { env: {} }, fetch: async (url, init) => {
+  const api = load('lib/moonraker.ts', { '@/lib/mmu-state': {}, '@/lib/mmu-telemetry': load('lib/mmu-telemetry.ts') }, { process: { env: {} }, fetch: async (url, init) => {
     const pathname = new URL(url).pathname;
     if (pathname.endsWith('/gcode/script')) { scripts.push(JSON.parse(init.body).script); return Response.json({ result: 'ok' }); }
     return Response.json({ result: pathname.endsWith('/objects/list') ? { objects } : { status } });

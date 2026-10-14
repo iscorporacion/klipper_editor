@@ -310,10 +310,12 @@ Input:
 
 Writes a text file. Requires `KLIPPER_EDITOR_MCP_ENABLE_WRITE=true`.
 
-If the file already exists, a backup is created next to it:
+If the file already exists, a backup is stored under `.keditor-backups/`,
+preserving the relative directory structure. Its `.bak` extension prevents
+it from matching Klipper `*.cfg` includes:
 
 ```text
-printer.cfg.mcp-backup-20260901-143022
+.keditor-backups/printer.cfg-20261014T143022Z-<unique-id>.bak
 ```
 
 Input:

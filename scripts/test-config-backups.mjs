@@ -81,3 +81,28 @@ test("managed widget updates upload backups only into the separate backup direct
   for (const backup of result.backups) assert.ok(backup.startsWith(`${BACKUP_DIRECTORY}/`) && backup.endsWith(".bak"));
   assert.equal(uploads.filter((item) => item.file.endsWith(".cfg")).length, 1);
 });
+test("status bar update preserves legacy hardware in a separate unmanaged file", async () => {
+  const uploads = [];
+  const legacy = `[neopixel status_bar]\npin: PD15\nchain_count: 18\ncolor_order: GRB\n\n[gcode_macro STATUS_BAR_STATE]\ngcode:\n`;
+  const sync = await load("lib/widget-config-sync.ts", {
+    "@/scripts/backup-paths.mjs": { backupRelativePath },
+    "@/lib/moonraker": {
+      getMoonrakerFileRoots: async () => [{ name: "config", permissions: "rw" }],
+      readMoonrakerConfigFile: async (file) => {
+        if (file === "printer.cfg") return "[include statusbar_leds.cfg]\n";
+        if (file === "statusbar_leds.cfg") return legacy;
+        throw new Error("not found");
+      },
+      uploadMoonrakerConfigFile: async (file, content) => uploads.push({ file, content })
+    }
+  });
+  await sync.installWidgetConfig("statusbar");
+  const hardware = uploads.find((item) => item.file === "statusbar_leds_hardware.cfg");
+  assert.ok(hardware);
+  assert.match(hardware.content, /\[neopixel status_bar\]/);
+  assert.match(hardware.content, /pin:\s*PD15/);
+  assert.doesNotMatch(hardware.content, /STATUS_BAR_STATE/);
+  const logic = uploads.find((item) => item.file === "statusbar_leds.cfg");
+  assert.match(logic.content, /^\[include statusbar_leds_hardware\.cfg\]/);
+  assert.doesNotMatch(logic.content, /pin:\s*PA8/);
+});

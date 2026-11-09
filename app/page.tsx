@@ -7121,8 +7121,8 @@ function Editor() {
         </div>
 
         <div className="editor-panel">
-          {activePath === terminalTabPath && terminalTabOpen ? (
-            <div className="terminal-tab-view">
+          {terminalTabOpen && (
+            <div className="terminal-tab-view" hidden={activePath !== terminalTabPath} aria-hidden={activePath !== terminalTabPath}>
               {terminalMode === "pty" ? <PtyTerminal endpoint={apiPath("/api/terminal/pty")} enabled={terminalEnabled} supported={ptySupported}
                 onClose={closeTerminalTab} onActive={setPtyActive}
                 labels={{ connect: t("actions.connectTerminal"), disconnect: t("actions.disconnectTerminal"), connected: t("status.terminalConnected"),
@@ -7168,7 +7168,8 @@ function Editor() {
                 </form>
               </>}
             </div>
-          ) : !activeFile ? (hasHomeWidgets ? (
+          )}
+          {activePath !== terminalTabPath && (!activeFile ? (hasHomeWidgets ? (
             <div className="home-widgets-scroll">
             <div className="home-grid" style={{ "--home-grid-columns": activeHomeColumns.length } as CSSProperties}
               onDragLeave={(event) => {
@@ -7673,7 +7674,7 @@ function Editor() {
                 </RichTooltip>
               </div>
             </div>
-          )}
+          ))}
         </div>
 
         {terminalOpen && (

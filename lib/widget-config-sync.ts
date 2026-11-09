@@ -19,7 +19,10 @@ const registry = {
   statusbar: {
     source: "mmu_config/statusbar_leds.cfg",
     remote: "statusbar_leds.cfg",
-    include: "[include statusbar_leds.cfg]"
+    include: "[include statusbar_leds.cfg]",
+    hardwareSource: "mmu_config/statusbar_leds_hardware.cfg",
+    hardwareRemote: "statusbar_leds_hardware.cfg",
+    hardwareSection: "neopixel status_bar"
   }
 } as const;
 
@@ -68,6 +71,18 @@ function insertManagedInclude(config: string, include: string) {
   return `${include}${newline}${newline}${config.trimStart()}`;
 }
 
+function extractConfigSection(config: string, section: string) {
+  const escaped = section.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = new RegExp(`^\\s*\\[${escaped}\\]\\s*$`, "im").exec(config);
+  if (match?.index === undefined) return null;
+  const remainder = config.slice(match.index);
+  const next = /^\s*\[[^\]]+\]\s*$/gm;
+  next.lastIndex = match[0].length;
+  const nextMatch = next.exec(remainder);
+  const block = remainder.slice(0, nextMatch?.index ?? remainder.length).trim();
+  return block ? `# Status bar hardware preserved from the existing installation.\n\n${block}\n` : null;
+}
+
 export async function getWidgetConfigSyncStatus(widget: string) {
   if (!widgetConfigSyncEnabled()) return { enabled: false, writable: false, installed: false, current: false };
   const item = definition(widget);
@@ -107,7 +122,10 @@ export async function installWidgetConfig(widget: string) {
   if ("hardwareSource" in item && "hardwareRemote" in item) {
     const existingHardware = await optionalRemoteFile(item.hardwareRemote);
     if (existingHardware === null) {
-      const hardwareSource = await fs.readFile(path.join(process.cwd(), item.hardwareSource), "utf8");
+      const migratedHardware = "hardwareSection" in item && existing !== null
+        ? extractConfigSection(existing, item.hardwareSection)
+        : null;
+      const hardwareSource = migratedHardware ?? await fs.readFile(path.join(process.cwd(), item.hardwareSource), "utf8");
       await uploadMoonrakerConfigFile(item.hardwareRemote, hardwareSource);
     }
   }

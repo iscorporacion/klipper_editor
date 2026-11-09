@@ -7436,7 +7436,7 @@ function Editor() {
                             })}
                           </div>
                           {mmuMenuGate !== null && <MmuGateActions gate={mmuMenuGate} tools={mmuTtgMap.flatMap((gate, tool) => gate === mmuMenuGate ? [tool] : [])}
-                            status={mmuMenuGateStatus} selectedGate={mmuSelectedGate} disabled={mmuManualDisabled} checkDisabled={mmuRecoveryDisabled}
+                            status={mmuMenuGateStatus} selectedGate={mmuSelectedGate} disabled={mmuRecoveryDisabled}
                             labels={{ select: t("mmu.select"), preload: t("mmu.preload"), eject: t("mmu.eject"), check: t("mmu.check"), close: t("actions.close") }}
                             onClose={() => setMmuMenuGate(null)} onAction={(action) => void runMmuAction(action, { gate: mmuMenuGate })} />}
                           <div className={`mmu-telemetry ${mmuEncoder || mmuFlowguard ? "" : "no-meters"}`}>

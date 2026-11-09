@@ -4,8 +4,8 @@ import { MdClose } from "react-icons/md";
 import MdiIcon from "@mdi/react";
 import { mdiCheckCircleOutline, mdiEject, mdiSwapHorizontal, mdiTrayArrowDown } from "@mdi/js";
 
-export default function MmuGateActions({ gate, tools, status, selectedGate, disabled, checkDisabled = disabled, labels, onClose, onAction }: {
-  gate: number; tools: number[]; status: number; selectedGate: number; disabled: boolean; checkDisabled?: boolean;
+export default function MmuGateActions({ gate, tools, status, selectedGate, disabled, labels, onClose, onAction }: {
+  gate: number; tools: number[]; status: number; selectedGate: number; disabled: boolean;
   labels: { select: string; preload: string; eject: string; check: string; close: string };
   onClose: () => void; onAction: (action: string) => void;
 }) {
@@ -41,7 +41,7 @@ export default function MmuGateActions({ gate, tools, status, selectedGate, disa
       ["preload", mdiTrayArrowDown, labels.preload, status > 0],
       ["eject", mdiEject, labels.eject, status === 0],
       ["check", mdiCheckCircleOutline, labels.check, false]
-    ] as const).map(([action, icon, label, blocked]) => <button type="button" key={action} disabled={(action === "check" ? checkDisabled : disabled) || blocked} onClick={() => onAction(action)}>
+    ] as const).map(([action, icon, label, blocked]) => <button type="button" key={action} disabled={disabled || blocked} onClick={() => onAction(action)}>
       <MdiIcon path={icon} size={.8} /><span>{label}</span>
     </button>)}
   </aside>;

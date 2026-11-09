@@ -88,6 +88,12 @@ assert approach.commands.index("PURGE_TRAY_SAFE") < indexes[0]
 assert approach.commands.index("_PURGE_TRAY_CLEAR_TOOLHEAD") < indexes[0]
 assert indexes[-1] < approach.commands.index("_PURGE_TRAY_SET_STATE STATE=purging PROGRESS=15")
 assert "G1 X30 Y350 F9000" not in approach.commands[indexes[0]:indexes[-1]]
+clean = approach.commands.index("_PURGE_TRAY_CLEAN SKIP_SAFE=1 BRUSH_FIRST=1")
+safe_after_clean = approach.commands.index(
+    f"PURGE_TRAY_MOVE POS={approach.vars['safe_position']} SPEED={approach.vars['safe_travel_speed']} QUIET=1",
+    clean,
+)
+assert clean < safe_after_clean < approach.commands.index("RESTORE_GCODE_STATE NAME=PURGE_TRAY_BLOBIFIER_STATE MOVE=1 MOVE_SPEED=150")
 
 for axes in ("", "xy", "xyz"):
     homing_test = Machine()

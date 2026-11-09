@@ -35,13 +35,14 @@ class Machine:
         self.state.update(homed=1, blob_count=80, position=25)
         self.vars.update(calibrated=1, purge_x=30, purge_y=350)
         self.commands = []
+        self.messages = []
         self.fail_extrusion = False
 
     def run(self, name, **params):
         def raise_error(message):
             raise RuntimeError(message)
         rendered = templates[name].render(printer=copy.deepcopy(self.printer), params=params,
-                                          action_raise_error=raise_error)
+                                          action_raise_error=raise_error, action_respond_info=lambda message: self.messages.append(message) or "")
         for line in rendered.splitlines():
             line = line.strip()
             if not line or line.startswith("#"):
@@ -59,6 +60,8 @@ class Machine:
             elif command == "RESUME":
                 self.printer["pause_resume"]["is_paused"] = False
                 self.printer["print_stats"]["state"] = "printing"
+            elif command == "G28":
+                self.printer["toolhead"]["homed_axes"] = "xyz"
             elif command in templates:
                 arguments = dict(item.split("=", 1) for item in line.split()[1:])
                 self.run(command, **arguments)
@@ -71,6 +74,43 @@ def expect_error(machine, name, **params):
         return
     raise AssertionError(f"{name} should have failed")
 
+
+approach = Machine()
+approach.state["blob_count"] = 0
+approach.vars.update(brush_x2=90, brush_y=340, purge_x=30, purge_y=350,
+                     brush_position=6.5, purge_position=2.5)
+approach.run("PURGE_TRAY_BLOBIFIER")
+expected = ["G1 X90 Y340 F9000", "PURGE_TRAY_MOVE POS=6.5 QUIET=1",
+            "G1 X30 F9000", "G1 Y350 F9000", "PURGE_TRAY_MOVE POS=2.5 QUIET=1"]
+indexes = [approach.commands.index(command) for command in expected]
+assert indexes == sorted(indexes)
+assert approach.commands.index("PURGE_TRAY_SAFE") < indexes[0]
+assert approach.commands.index("_PURGE_TRAY_CLEAR_TOOLHEAD") < indexes[0]
+assert indexes[-1] < approach.commands.index("_PURGE_TRAY_SET_STATE STATE=purging PROGRESS=15")
+assert "G1 X30 Y350 F9000" not in approach.commands[indexes[0]:indexes[-1]]
+
+for axes in ("", "xy", "xyz"):
+    homing_test = Machine()
+    homing_test.state["blob_count"] = 0
+    homing_test.printer["toolhead"]["homed_axes"] = axes
+    homing_test.printer["print_stats"]["state"] = "standby"
+    homing_test.printer["pause_resume"]["is_paused"] = False
+    homing_test.run("PURGE_TRAY_BLOBIFIER")
+    assert homing_test.commands.count("G28") == (0 if axes == "xyz" else 1)
+    assert homing_test.messages == ([] if axes == "xyz" else ["Esperando homing XYZ"])
+    if axes != "xyz":
+        assert homing_test.commands.index("G28") < homing_test.commands.index("PURGE_TRAY_SAFE")
+
+for job, paused, mmu in (("printing", False, {}), ("paused", True, {}), ("standby", True, {}),
+                          ("standby", False, {"is_in_print": True}), ("standby", False, {"print_state": "printing"})):
+    homing_test = Machine()
+    homing_test.state["blob_count"] = 0
+    homing_test.printer["toolhead"]["homed_axes"] = "xy"
+    homing_test.printer["print_stats"]["state"] = job
+    homing_test.printer["pause_resume"]["is_paused"] = paused
+    homing_test.printer["mmu"].update(mmu)
+    expect_error(homing_test, "PURGE_TRAY_BLOBIFIER")
+    assert not homing_test.commands and not homing_test.messages
 
 for speed in (0, 128, 255, 300):
     fan_test = Machine()

@@ -6,11 +6,15 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   const browser = await chromium.launch({ channel: 'msedge', headless: true });
   try {
     const context = await browser.newContext({ viewport: { width: 1920, height: 1000 } });
+    const preferences = { 'ratos-viewer-locale': 'es' };
     await context.routeWebSocket('**/websocket', () => {});
     await context.route('**/api/**', async (route) => {
       const pathname = new URL(route.request().url()).pathname;
       let data = {};
-      if (pathname === '/api/preferences') data = { id: 'search-test', values: { 'ratos-viewer-locale': 'es' } };
+      if (pathname === '/api/preferences') {
+        if (route.request().method() === 'PUT') Object.assign(preferences, route.request().postDataJSON().values);
+        data = { id: 'search-test', values: preferences };
+      }
       else if (pathname === '/api/locales') data = new URL(route.request().url()).searchParams.has('locale') ? { code: 'es', name: 'Español', messages: JSON.parse(fs.readFileSync(path.join(__dirname, '../locales/es.json'), 'utf8')).messages } : { locales: [{ code: 'es', name: 'Español' }] };
       else if (pathname === '/api/tree') data = { root: 'test', children: [{ name: 'printer.cfg', path: 'printer.cfg', type: 'file', icon: 'settings' }] };
       else if (pathname === '/api/file') data = { path: 'printer.cfg', content: '[printer]\nkinematics: corexy\n# needle alpha\n# needle beta\n' };
@@ -32,6 +36,9 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     });
     const editor = page.locator('.code-host .cm-content');
     await editor.waitFor();
+    assert.match(await page.locator('.statusbar-message').innerText(), /^Abierto printer\.cfg$/);
+    await page.waitForTimeout(5500);
+    assert.equal(await page.locator('.statusbar-message').innerText(), 'Listo');
     await editor.click();
     await page.keyboard.press('Control+f');
     const search = page.locator('.code-host .cm-search input[name="search"]');
@@ -84,6 +91,25 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
       });
     }), 'Mobile controls stay inside the search panel');
     await page.screenshot({ path: `${process.env.TEMP}/keditor-search-mobile.png` });
+    await page.setViewportSize({ width: 1920, height: 1000 });
+    const initialWidth = (await page.locator('.code-host').boundingBox()).width;
+    await page.getByRole('button', { name: 'Ocultar Includes y Secciones', exact: true }).click();
+    assert.equal(await page.locator('#editor-outline-panel').isVisible(), false);
+    assert.ok((await page.locator('.code-host').boundingBox()).width > initialWidth + 300);
+    assert.ok(await page.evaluate(() => {
+      const code = document.querySelector('.code-host').getBoundingClientRect();
+      const toggle = document.querySelector('.outline-toggle').getBoundingClientRect();
+      return code.right <= toggle.left + 1;
+    }), 'Toggle reserves its own track and never overlays code');
+    await page.screenshot({ path: `${process.env.TEMP}/keditor-outline-collapsed.png` });
+    await page.waitForTimeout(500);
+    assert.equal(preferences['klipper-editor-outline-collapsed'], 'true');
+    await page.reload();
+    await page.locator('.tree-open-button[title="printer.cfg"]').click();
+    await page.getByRole('button', { name: 'Abrir Includes y Secciones', exact: true }).waitFor();
+    assert.equal(await page.locator('#editor-outline-panel').isVisible(), false);
+    await page.getByRole('button', { name: 'Abrir Includes y Secciones', exact: true }).click();
+    assert.equal(await page.locator('#editor-outline-panel').isVisible(), true);
     assert.deepEqual(errors, []);
     console.log('OK: Ctrl+F survives polling and viewport rerenders, finds matches and reopens after Escape');
   } finally { await browser.close(); }

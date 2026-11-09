@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
     const action = typeof body.action === "string" ? body.action : "";
     const status = await getMmuStatus();
     if (!status.available) return NextResponse.json({ error: "Happy Hare MMU is not available" }, { status: 404 });
-    const recoveryAction = ["home", "recover", "load", "unload", "unlock", "check-all"].includes(action);
+    const recoveryAction = ["home", "recover", "load", "unload", "unlock", "check-all", "check"].includes(action);
     if (status.printing && !(recoveryAction && isMmuRecoveryPaused(status.printState, status.mmu))) return NextResponse.json({ error: "MMU manual controls are disabled while printing" }, { status: 409 });
     const gateCount = Math.max(0, Number(status.mmu?.num_gates) || 0);
     const checkedGate = (value: unknown) => {

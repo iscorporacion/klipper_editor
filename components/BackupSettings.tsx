@@ -6,10 +6,12 @@ import type { BackupRule } from "@/lib/backup-rules";
 import type { BackupCandidate } from "@/lib/backup-migration";
 import { defaultBackupRules } from "@/scripts/backup-paths.mjs";
 import { createClientId } from "@/lib/client-id";
+import { translateBackupMessage } from "@/lib/backup-messages";
 
 type Document = { rules: BackupRule[]; revision: string; location: string; rulesFile: string };
 type Preview = { candidates: BackupCandidate[]; revision: string; warnings: string[] };
-export default function BackupSettings({ endpoint, onChanged, protectedPaths = [] }: {
+export default function BackupSettings({ endpoint, onChanged, protectedPaths = [], t }: {
+  t: (key: string, values?: Record<string, string | number>) => string;
   endpoint: string; onChanged: () => void; protectedPaths?: string[];
 }) {
   const [open, setOpen] = useState(false);
@@ -24,10 +26,11 @@ export default function BackupSettings({ endpoint, onChanged, protectedPaths = [
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const dirty = Boolean(document && JSON.stringify(document.rules) !== JSON.stringify(rules));
+  const localize = (value: string) => translateBackupMessage(value, t);
   const request = async (method = "GET", body?: unknown) => {
     const response = await fetch(endpoint, { method, cache: "no-store", ...(body === undefined ? {} : { headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }) });
     const data = await response.json();
-    if (!response.ok) throw new Error(data.error ?? "No se pudo administrar las copias");
+    if (!response.ok) throw new Error(data.error ? localize(data.error) : t("backups.failure"));
     return data;
   };
   const load = async () => {
@@ -45,7 +48,7 @@ export default function BackupSettings({ endpoint, onChanged, protectedPaths = [
     try {
       const data = await request("PUT", { rules, revision: document?.revision });
       setDocument((current) => current ? { ...current, ...data } : current); setRules(data.rules);
-      setPreview(null); setSelected([]); setMessage("Patrones guardados"); onChanged();
+      setPreview(null); setSelected([]); setMessage(t("backups.saved")); onChanged();
     } catch (error) { setError(error instanceof Error ? error.message : String(error)); }
     finally { setBusy(false); }
   };
@@ -55,68 +58,68 @@ export default function BackupSettings({ endpoint, onChanged, protectedPaths = [
     catch (error) { setPreview(null); setError(error instanceof Error ? error.message : String(error)); }
     finally { setBusy(false); }
   };
-  const blocked = (item: BackupCandidate) => item.blockedReason || (protectedPaths.some((file) => file === item.path || file.startsWith(`${item.path}/`)) ? "Abierto en el editor; cierra su pestaña antes de trasladarlo" : "");
+  const blocked = (item: BackupCandidate) => item.blockedReason || (protectedPaths.some((file) => file === item.path || file.startsWith(`${item.path}/`)) ? t("backups.open") : "");
   const move = async (remove = false) => {
     if (!preview) return;
     setBusy(true); setError(""); setMessage("");
     try {
       const items = preview.candidates.filter((item) => selected.includes(item.path));
-      if (items.some(blocked)) throw new Error("Cierra las pestañas de las copias seleccionadas antes de trasladarlas");
+      if (items.some(blocked)) throw new Error(t("backups.closeTabs"));
       const data = await request("POST", { action: remove ? "delete" : "move", confirm: remove, revision: preview.revision, items: items.map(({ path, fingerprint }) => ({ path, fingerprint })) });
       setSelected([]); setPreview(null); setConfirming(false);
       const count = remove ? data.deleted.length : data.moved.length;
-      setMessage(`${count} ${count === 1 ? "copia" : "copias"} ${remove ? (count === 1 ? "eliminada" : "eliminadas") : (count === 1 ? "trasladada" : "trasladadas")}`);
-      if (data.errors.length) setError(data.errors.map((item: { path: string; error: string }) => `${item.path}: ${item.error}`).join("\n"));
+      setMessage(t(`backups.${remove ? "deleted" : "moved"}${count === 1 ? "One" : "Many"}`, { count }));
+      if (data.errors.length) setError(data.errors.map((item: { path: string; error: string }) => `${item.path}: ${localize(item.error)}`).join("\n"));
       onChanged();
     } catch (error) { setConfirming(false); setPreview(null); setSelected([]); setError(error instanceof Error ? error.message : String(error)); }
     finally { setBusy(false); }
   };
   return <>
-    <button className="dialog-button" type="button" onClick={() => { setOpen(true); setView("organize"); setMessage(""); void load(); }}><MdDriveFileMove /> Administrar copias</button>
-    {open && <WidgetDialog title="Copias de seguridad" className="backup-settings-dialog" onClose={() => { if (!busy) setOpen(false); }} footer={<>
-      <button className="dialog-button" type="button" disabled={busy} onClick={() => setOpen(false)}>Cerrar</button>
-      {view === "rules" && <button className="dialog-button primary" type="button" disabled={busy || (!dirty && document?.revision !== "default")} onClick={() => void save()}><MdSave /> Guardar patrones</button>}
+    <button className="dialog-button" type="button" onClick={() => { setOpen(true); setView("organize"); setMessage(""); void load(); }}><MdDriveFileMove /> {t("backups.manage")}</button>
+    {open && <WidgetDialog title={t("backups.title")} closeLabel={t("backups.close")} className="backup-settings-dialog" onClose={() => { if (!busy) setOpen(false); }} footer={<>
+      <button className="dialog-button" type="button" disabled={busy} onClick={() => setOpen(false)}>{t("backups.close")}</button>
+      {view === "rules" && <button className="dialog-button primary" type="button" disabled={busy || (!dirty && document?.revision !== "default")} onClick={() => void save()}><MdSave /> {t("backups.save")}</button>}
     </>}>
       {error && <p className="backup-manager-error" role="alert">{error}</p>}
       {message && <p role="status">{message}</p>}
       {document && <>
-        <dl className="backup-locations"><dt>Copias</dt><dd><code>{document.location}</code></dd><dt>Reglas</dt><dd><code>{document.rulesFile}</code></dd></dl>
-        <div className="backup-view-tabs" role="tablist" aria-label="Administrar copias">
-          <button className={view === "organize" ? "options-tab active" : "options-tab"} type="button" role="tab" aria-selected={view === "organize"} onClick={() => setView("organize")}>Organizar copias</button>
-          <button className={view === "rules" ? "options-tab active" : "options-tab"} type="button" role="tab" aria-selected={view === "rules"} onClick={() => setView("rules")}>Patrones</button>
+        <dl className="backup-locations"><dt>{t("backups.location")}</dt><dd><code>{document.location}</code></dd><dt>{t("backups.rules")}</dt><dd><code>{document.rulesFile}</code></dd></dl>
+        <div className="backup-view-tabs" role="tablist" aria-label={t("backups.manage")}>
+          <button className={view === "organize" ? "options-tab active" : "options-tab"} type="button" role="tab" aria-selected={view === "organize"} onClick={() => setView("organize")}>{t("backups.organize")}</button>
+          <button className={view === "rules" ? "options-tab active" : "options-tab"} type="button" role="tab" aria-selected={view === "rules"} onClick={() => setView("rules")}>{t("backups.patterns")}</button>
         </div>
         {view === "rules" && <section className="backup-rules-section" role="tabpanel">
-          <div className="backup-section-heading"><h3>Patrones de detección</h3><button type="button" className="modal-icon-button" title="Agregar patrón" aria-label="Agregar patrón" disabled={busy || rules.length >= 100} onClick={() => { setRules((current) => [...current, { id: createClientId(), pattern: "", kind: "both", enabled: true }]); setPreview(null); setSelected([]); }}><MdAdd /></button></div>
+          <div className="backup-section-heading"><h3>{t("backups.detection")}</h3><button type="button" className="modal-icon-button" title={t("backups.add")} aria-label={t("backups.add")} disabled={busy || rules.length >= 100} onClick={() => { setRules((current) => [...current, { id: createClientId(), pattern: "", kind: "both", enabled: true }]); setPreview(null); setSelected([]); }}><MdAdd /></button></div>
           <div className="backup-rules-list">{rules.map((rule) => <div className="backup-rule-row" key={rule.id}>
-            <input type="checkbox" checked={rule.enabled} disabled={busy} aria-label={`Activar ${rule.pattern || "patrón"}`} onChange={(event) => change(rule.id, { enabled: event.target.checked })} />
-            <input aria-label="Patrón" value={rule.pattern} disabled={busy} maxLength={160} onChange={(event) => change(rule.id, { pattern: event.target.value })} />
-            <select aria-label={`Tipo de ${rule.pattern || "patrón"}`} value={rule.kind} disabled={busy} onChange={(event) => change(rule.id, { kind: event.target.value as BackupRule["kind"] })}><option value="file">Archivo</option><option value="directory">Carpeta</option><option value="both">Ambos</option></select>
-            <button className="modal-icon-button" type="button" title="Eliminar patrón" aria-label={`Eliminar ${rule.pattern || "patrón"}`} disabled={busy} onClick={() => { setRules((current) => current.filter((item) => item.id !== rule.id)); setPreview(null); setSelected([]); }}><MdDeleteOutline /></button>
+            <input type="checkbox" checked={rule.enabled} disabled={busy} aria-label={t("backups.activate", { pattern: rule.pattern || t("backups.defaultPattern") })} onChange={(event) => change(rule.id, { enabled: event.target.checked })} />
+            <input aria-label={t("backups.pattern")} value={rule.pattern} disabled={busy} maxLength={160} onChange={(event) => change(rule.id, { pattern: event.target.value })} />
+            <select aria-label={t("backups.kind", { pattern: rule.pattern || t("backups.defaultPattern") })} value={rule.kind} disabled={busy} onChange={(event) => change(rule.id, { kind: event.target.value as BackupRule["kind"] })}><option value="file">{t("backups.file")}</option><option value="directory">{t("backups.folder")}</option><option value="both">{t("backups.both")}</option></select>
+            <button className="modal-icon-button" type="button" title={t("backups.deletePattern")} aria-label={t("backups.removePattern", { pattern: rule.pattern || t("backups.defaultPattern") })} disabled={busy} onClick={() => { setRules((current) => current.filter((item) => item.id !== rule.id)); setPreview(null); setSelected([]); }}><MdDeleteOutline /></button>
           </div>)}</div>
-          <button type="button" className="dialog-button backup-reset-rules" disabled={busy} onClick={() => { setRules(defaultBackupRules.map((rule) => ({ ...rule, kind: rule.kind as BackupRule["kind"] }))); setPreview(null); setSelected([]); setConfirming(false); }}>Restaurar patrones predeterminados</button>
+          <button type="button" className="dialog-button backup-reset-rules" disabled={busy} onClick={() => { setRules(defaultBackupRules.map((rule) => ({ ...rule, kind: rule.kind as BackupRule["kind"] }))); setPreview(null); setSelected([]); setConfirming(false); }}>{t("backups.reset")}</button>
         </section>}
         {view === "organize" && <section className="backup-migration-section" role="tabpanel">
-          <div className="backup-section-heading"><h3>Organizar copias existentes</h3><button className="dialog-button" type="button" disabled={busy || dirty} onClick={() => void scan()}><MdRefresh /> Vista previa</button></div>
-          {dirty && <p className="setting-help">Guarda los patrones antes de generar la vista previa.</p>}
+          <div className="backup-section-heading"><h3>{t("backups.existing")}</h3><button className="dialog-button" type="button" disabled={busy || dirty} onClick={() => void scan()}><MdRefresh /> {t("backups.preview")}</button></div>
+          {dirty && <p className="setting-help">{t("backups.dirty")}</p>}
           {preview && <>
-            {preview.warnings.length > 0 && <details><summary>Avisos ({preview.warnings.length})</summary>{preview.warnings.map((warning) => <p className="setting-help" key={warning}>{warning}</p>)}</details>}
-            {preview.candidates.length === 0 ? <p className="empty-note">No hay copias pendientes de traslado.</p> : <>
+            {preview.warnings.length > 0 && <details><summary>{t("backups.warnings")} ({preview.warnings.length})</summary>{preview.warnings.map((warning) => <p className="setting-help" key={warning}>{localize(warning)}</p>)}</details>}
+            {preview.candidates.length === 0 ? <p className="empty-note">{t("backups.empty")}</p> : <>
               <div className="backup-selection-actions">
                 <button type="button" className="dialog-button" disabled={busy || confirming || !preview.candidates.some((item) => !blocked(item))} onClick={() => {
                   const available = preview.candidates.filter((item) => !blocked(item)).map((item) => item.path);
                   setSelected(available.every((file) => selected.includes(file)) ? [] : available);
-                }}>{preview.candidates.filter((item) => !blocked(item)).every((item) => selected.includes(item.path)) ? "Deseleccionar todas" : "Seleccionar todas"}</button>
-                <button type="button" className="dialog-button" disabled={busy || confirming || !selected.length || selected.length > 500} onClick={() => { setDeleting(true); setConfirming(true); }}><MdDeleteOutline /> Eliminar seleccionadas ({selected.length})</button>
+                }}>{preview.candidates.filter((item) => !blocked(item)).every((item) => selected.includes(item.path)) ? t("backups.deselectAll") : t("backups.selectAll")}</button>
+                <button type="button" className="dialog-button" disabled={busy || confirming || !selected.length || selected.length > 500} onClick={() => { setDeleting(true); setConfirming(true); }}><MdDeleteOutline /> {t("backups.deleteSelected")} ({selected.length})</button>
               </div>
               <div className="backup-candidates">{preview.candidates.map((item) => <label key={item.path} className="backup-candidate-row">
-                <input type="checkbox" disabled={busy || Boolean(blocked(item)) || confirming} checked={selected.includes(item.path)} onChange={(event) => setSelected((current) => event.target.checked ? [...current, item.path] : current.filter((file) => file !== item.path))} aria-label={`Trasladar ${item.path}`} />
-                <span><strong>{item.path}</strong><small>{item.type === "directory" ? `Carpeta · ${item.files} archivos` : "Archivo"}</small><code>→ {item.destination}</code>{blocked(item) && <small className="backup-manager-error">{blocked(item)}</small>}</span>
+                <input type="checkbox" disabled={busy || Boolean(blocked(item)) || confirming} checked={selected.includes(item.path)} onChange={(event) => setSelected((current) => event.target.checked ? [...current, item.path] : current.filter((file) => file !== item.path))} aria-label={t("backups.moveItem", { path: item.path })} />
+                <span><strong>{item.path}</strong><small>{item.type === "directory" ? t("backups.folderFiles", { count: item.files }) : t("backups.file")}</small><code>→ {item.destination}</code>{blocked(item) && <small className="backup-manager-error">{localize(blocked(item))}</small>}</span>
               </label>)}</div>
-              {confirming ? <div className="backup-move-confirm" role="alertdialog" aria-label={deleting ? "Confirmar eliminacion" : "Confirmar traslado"}>
-                <p>{deleting ? `Se eliminarán definitivamente ${selected.length} copias de su ubicación actual, incluyendo el contenido de las carpetas seleccionadas. Esta acción no se puede deshacer.` : `Se trasladarán ${selected.length} copias completas a .keditor-backups/. No se cambiará su contenido ni se sobrescribirán destinos existentes.`}</p>
+              {confirming ? <div className="backup-move-confirm" role="alertdialog" aria-label={deleting ? t("backups.confirmDelete") : t("backups.confirmMove")}>
+                <p>{deleting ? t("backups.deleteNotice", { count: selected.length }) : t("backups.moveNotice", { count: selected.length })}</p>
                 {deleting && <ul>{selected.map((file) => <li key={file}>{file}</li>)}</ul>}
-                <button type="button" className="dialog-button" disabled={busy} onClick={() => setConfirming(false)}>Cancelar</button><button type="button" className="dialog-button primary" disabled={busy} onClick={() => void move(deleting)}>{busy ? "Procesando..." : deleting ? "Eliminar definitivamente" : "Confirmar traslado"}</button></div>
-                : <button type="button" className="dialog-button" disabled={busy || !selected.length || selected.length > 500} onClick={() => { setDeleting(false); setConfirming(true); }}><MdDriveFileMove /> Trasladar seleccionadas ({selected.length})</button>}
+                <button type="button" className="dialog-button" disabled={busy} onClick={() => setConfirming(false)}>{t("backups.cancel")}</button><button type="button" className="dialog-button primary" disabled={busy} onClick={() => void move(deleting)}>{busy ? t("backups.working") : deleting ? t("backups.deleteForever") : t("backups.confirmMove")}</button></div>
+                : <button type="button" className="dialog-button" disabled={busy || !selected.length || selected.length > 500} onClick={() => { setDeleting(false); setConfirming(true); }}><MdDriveFileMove /> {t("backups.moveSelected")} ({selected.length})</button>}
             </>}
           </>}
         </section>}

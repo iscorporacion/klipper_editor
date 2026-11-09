@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import PreferencesGate from "@/components/PreferencesGate";
 import { createClientId } from "@/lib/client-id";
+import { transientStatusPatterns } from "@/lib/status-messages";
 import { preferences } from "@/lib/preferences-client";
 import Image from "next/image";
 import PidChart, { type PidSample } from "@/components/PidChart";
@@ -12,6 +13,7 @@ import RichTooltip from "@/components/RichTooltip";
 import CustomMacroWidget from "@/components/CustomMacroWidget";
 import LiveLedColor from "@/components/LiveLedColor";
 import ManualProbeDialog from "@/components/ManualProbeDialog";
+import PrinterPromptDialog from "@/components/PrinterPromptDialog";
 import BackupSettings from "@/components/BackupSettings";
 import MmuFilamentPath from "@/components/MmuFilamentPath";
 import MmuGateActions from "@/components/MmuGateActions";
@@ -118,6 +120,7 @@ const klipperConsoleSingleLineKey = "klipper-editor-klipper-console-single-line"
 const macroFavoritesKey = "klipper-editor-macro-favorites";
 const sectionPreviewDelayKey = "klipper-editor-section-preview-delay";
 const sidebarCollapsedKey = "klipper-editor-sidebar-collapsed";
+const outlineCollapsedKey = "klipper-editor-outline-collapsed";
 const useAccentLogoKey = "klipper-editor-use-accent-logo";
 const themePreferenceKey = "klipper-editor-theme";
 const homeWidgetsKey = "klipper-editor-home-widgets";
@@ -966,6 +969,15 @@ const defaultMessages: Messages = {
   "actions.printedFiles": "Archivos impresos",
   "actions.globalSearch": "Buscar en configuracion",
   "actions.search": "Buscar",
+  "editorOutline.expand": "Abrir Includes y Secciones",
+  "editorOutline.collapse": "Ocultar Includes y Secciones",
+  "printerPrompt.title": "Aviso de la impresora",
+  "printerPrompt.close": "Cerrar",
+  "printerPrompt.disconnected": "No se puede verificar el aviso. Comprueba la conexion antes de continuar.",
+  "printerPrompt.changed": "El aviso cambio o ya termino. Espera la actualizacion antes de continuar.",
+  "printerPrompt.cancelTitle": "Cancelar impresion",
+  "printerPrompt.cancelMessage": "¿Cancelar definitivamente esta impresion?",
+  "printerPrompt.back": "Volver",
   "editorSearch.find": "Buscar",
   "editorSearch.replace": "Reemplazar",
   "editorSearch.next": "Siguiente",
@@ -1200,6 +1212,54 @@ const defaultMessages: Messages = {
   "options.languageHelp": "Los idiomas disponibles salen de los archivos JSON en la carpeta `locales`.",
   "options.createBackupOnSave": "Crear copia de seguridad al guardar",
   "options.createBackupOnSaveHelp": "Las nuevas copias se guardan en .keditor-backups/ dentro de la carpeta de configuración activa, conservando las subcarpetas del archivo original. Usan extensión .bak para evitar conflictos con los includes de Klipper. Las copias antiguas solo se trasladan desde Administrar copias, con tu confirmación.",
+  "backups.manage": "Administrar copias",
+  "backups.title": "Copias de seguridad",
+  "backups.close": "Cerrar",
+  "backups.save": "Guardar patrones",
+  "backups.location": "Copias",
+  "backups.rules": "Reglas",
+  "backups.organize": "Organizar copias",
+  "backups.patterns": "Patrones",
+  "backups.detection": "Patrones de detección",
+  "backups.add": "Agregar patrón",
+  "backups.pattern": "Patrón",
+  "backups.defaultPattern": "patrón",
+  "backups.activate": "Activar {pattern}",
+  "backups.kind": "Tipo de {pattern}",
+  "backups.file": "Archivo",
+  "backups.folder": "Carpeta",
+  "backups.both": "Ambos",
+  "backups.deletePattern": "Eliminar patrón",
+  "backups.removePattern": "Eliminar {pattern}",
+  "backups.reset": "Restaurar patrones predeterminados",
+  "backups.existing": "Organizar copias existentes",
+  "backups.preview": "Vista previa",
+  "backups.dirty": "Guarda los patrones antes de generar la vista previa.",
+  "backups.warnings": "Avisos",
+  "backups.empty": "No hay copias pendientes de traslado.",
+  "backups.selectAll": "Seleccionar todas",
+  "backups.deselectAll": "Deseleccionar todas",
+  "backups.deleteSelected": "Eliminar seleccionadas",
+  "backups.moveSelected": "Trasladar seleccionadas",
+  "backups.moveItem": "Trasladar {path}",
+  "backups.folderFiles": "Carpeta · {count} archivos",
+  "backups.confirmDelete": "Confirmar eliminacion",
+  "backups.confirmMove": "Confirmar traslado",
+  "backups.deleteNotice": "Se eliminarán definitivamente {count} copias de su ubicación actual, incluyendo el contenido de las carpetas seleccionadas. Esta acción no se puede deshacer.",
+  "backups.moveNotice": "Se trasladarán {count} copias completas a .keditor-backups/. No se cambiará su contenido ni se sobrescribirán destinos existentes.",
+  "backups.cancel": "Cancelar",
+  "backups.working": "Procesando...",
+  "backups.deleteForever": "Eliminar definitivamente",
+  "backups.saved": "Patrones guardados",
+  "backups.deletedOne": "1 copia eliminada",
+  "backups.deletedMany": "{count} copias eliminadas",
+  "backups.movedOne": "1 copia trasladada",
+  "backups.movedMany": "{count} copias trasladadas",
+  "backups.failure": "No se pudo administrar las copias",
+  "backups.open": "Abierto en el editor; cierra su pestaña antes de trasladarlo",
+  "backups.closeTabs": "Cierra las pestañas de las copias seleccionadas antes de trasladarlas",
+  "homeGrid.addMacroWidget": "Agregar widget de macros",
+  "homeGrid.deleteWidget": "Eliminar widget",
   "options.startCollapsedSidebar": "Iniciar con barra colapsada",
   "options.startCollapsedSidebarHelp": "Al abrir K-Editor, muestra solo la barra lateral de iconos hasta pasar el mouse encima.",
   "options.enableTerminal": "Habilitar terminal",
@@ -2987,6 +3047,7 @@ function Editor() {
   const [excludeObjectPanelOpen, setExcludeObjectPanelOpen] = useState(false);
   const [xySnapshots, setXySnapshots] = useState<XySnapshot[]>([]);
   const [outlineWidth, setOutlineWidth] = useState(320);
+  const [outlineCollapsed, setOutlineCollapsed] = useState(false);
   const [includePanelHeight, setIncludePanelHeight] = useState(240);
   const [sectionPreview, setSectionPreview] = useState<SectionPreview | null>(null);
   const [pendingJump, setPendingJump] = useState<PendingJump | null>(null);
@@ -3249,25 +3310,10 @@ function Editor() {
     (key: string, values?: Record<string, string | number>) => translate(messages, key, values),
     [messages]
   );
-  const transientStatusMessages = useMemo(() => new Set([
-    "status.gcodeSent",
-    "status.heatersRefreshed",
-    "status.heatersSet",
-    "status.auxiliariesRefreshed",
-    "status.moveDone",
-    "status.extruded",
-    "status.updatesLoaded",
-    "status.firmwareRestarted",
-    "status.terminalConnected",
-    "status.terminalDisconnected",
-    "status.terminalSettingSaved",
-    "status.mcpTunnelStopped",
-    "status.bedMeshActionDone",
-    "status.themeImported"
-  ].map((key) => t(key))), [t]);
+  const transientStatusMessages = useMemo(() => transientStatusPatterns(t), [t]);
 
   useEffect(() => {
-    if (!transientStatusMessages.has(message)) return;
+    if (!transientStatusMessages.some((pattern) => pattern.test(message))) return;
     const timer = window.setTimeout(() => {
       setMessage((current) => current === message ? t("status.ready") : current);
     }, 5000);
@@ -5949,6 +5995,7 @@ function Editor() {
     }
 
     setSidebarCollapsed(preferences.getItem(sidebarCollapsedKey) === "true");
+    setOutlineCollapsed(preferences.getItem(outlineCollapsedKey) === "true");
     let savedCustomWidgets: MacroWidgetConfig[] = [];
     try { savedCustomWidgets = normalizeMacroWidgets(JSON.parse(preferences.getItem(macroWidgetsKey) ?? "[]")); } catch { /* Keep other preferences if custom widget data is invalid. */ }
     setCustomMacroWidgets(savedCustomWidgets);
@@ -6488,6 +6535,7 @@ function Editor() {
   return (
     <main className={sidebarCollapsed ? "workspace-shell sidebar-collapsed" : "workspace-shell"} style={themeStyle}>
       <ManualProbeDialog endpoint={apiPath("/api/printer/manual-probe")} openRequest={manualProbeOpenRequest} onMessage={setMessage} confirm={confirmDialog} />
+      <PrinterPromptDialog endpoint={apiPath("/api/printer/prompts")} t={t} />
       {showPrinterInitializing && (
         <div className="printer-initializing-overlay" role="dialog" aria-modal="true" aria-labelledby="printer-issue-title">
           <div className={`printer-initializing-card severity-${printerIssueSeverity}`}>
@@ -7388,7 +7436,7 @@ function Editor() {
                             })}
                           </div>
                           {mmuMenuGate !== null && <MmuGateActions gate={mmuMenuGate} tools={mmuTtgMap.flatMap((gate, tool) => gate === mmuMenuGate ? [tool] : [])}
-                            status={mmuMenuGateStatus} selectedGate={mmuSelectedGate} disabled={mmuManualDisabled}
+                            status={mmuMenuGateStatus} selectedGate={mmuSelectedGate} disabled={mmuManualDisabled} checkDisabled={mmuRecoveryDisabled}
                             labels={{ select: t("mmu.select"), preload: t("mmu.preload"), eject: t("mmu.eject"), check: t("mmu.check"), close: t("actions.close") }}
                             onClose={() => setMmuMenuGate(null)} onAction={(action) => void runMmuAction(action, { gate: mmuMenuGate })} />}
                           <div className={`mmu-telemetry ${mmuEncoder || mmuFlowguard ? "" : "no-meters"}`}>
@@ -7500,7 +7548,7 @@ function Editor() {
               </div>
             </div>
           ) : (
-            <div className="editor-grid" style={{ "--outline-width": `${outlineWidth}px` } as CSSProperties}>
+            <div className={`editor-grid${outlineCollapsed ? " outline-collapsed" : ""}`} style={{ "--outline-width": `${outlineWidth}px` } as CSSProperties}>
               <div className="code-host">
                 <CodeMirror
                   key={activeFile.path}
@@ -7522,6 +7570,8 @@ function Editor() {
                 onMouseDown={startOutlineWidthResize}
               />
               <aside
+                id="editor-outline-panel"
+                hidden={outlineCollapsed}
                 ref={includePanelRef}
                 className="include-panel"
                 style={{ gridTemplateRows: `${includePanelHeight}px 8px minmax(0, 1fr)` }}
@@ -7610,6 +7660,18 @@ function Editor() {
                   </div>
                 </section>
               </aside>
+              <div className="outline-toggle-rail">
+                <RichTooltip content={t(outlineCollapsed ? "editorOutline.expand" : "editorOutline.collapse")} placement="bottom">
+                  <button type="button" className="outline-toggle" aria-controls="editor-outline-panel" aria-expanded={!outlineCollapsed}
+                    aria-label={t(outlineCollapsed ? "editorOutline.expand" : "editorOutline.collapse")} onClick={() => {
+                      const next = !outlineCollapsed;
+                      setOutlineCollapsed(next);
+                      setSectionPreview(null);
+                      clearPreviewOpenTimer(); clearPreviewCloseTimer();
+                      preferences.setItem(outlineCollapsedKey, String(next));
+                    }}>{outlineCollapsed ? <MdKeyboardArrowLeft /> : <MdKeyboardArrowRight />}</button>
+                </RichTooltip>
+              </div>
             </div>
           )}
         </div>
@@ -8288,7 +8350,7 @@ function Editor() {
               <div className="modal-header">
                 <h2 id="heaters-title">{t("heaters.title")}</h2>
                 <div className="modal-header-actions">
-                  <button className="modal-icon-button" type="button" title={t("pid.title")} aria-label={t("pid.title")}
+                  <button className="modal-icon-button pid-open-button" type="button" title={t("pid.title")} aria-label={t("pid.title")}
                     onClick={() => { if (!pidHeater && heaters[0]) setPidHeater(heaters[0].name); setPidOpen(true); }}>PID</button>
                   <button
                     className="modal-icon-button"
@@ -9735,7 +9797,7 @@ function Editor() {
                       <span>{t("options.createBackupOnSave")}</span>
                     </label>
                     <p className="setting-help">{t("options.createBackupOnSaveHelp")}</p>
-                    <BackupSettings endpoint={apiPath("/api/backups")} protectedPaths={openFiles.map((file) => file.path)} onChanged={() => void loadTree().catch((error) => setMessage(String(error)))} />
+                    <BackupSettings t={t} endpoint={apiPath("/api/backups")} protectedPaths={openFiles.map((file) => file.path)} onChanged={() => void loadTree().catch((error) => setMessage(String(error)))} />
                     <label className="setting-checkbox">
                       <input
                         type="checkbox"
@@ -9791,10 +9853,10 @@ function Editor() {
                             <input type="checkbox" checked={index >= 0} onChange={() => toggleHomeWidget(widget)} />
                             <span>{homeWidgetLabel(widget)}</span>
                           </label>
-                          {isCustomMacroWidget(widget) && <button type="button" className="modal-icon-button" aria-label={localeCode.startsWith("es") ? "Eliminar widget" : "Delete widget"} onClick={() => void deleteCustomMacroWidget(widget)}><MdDeleteOutline /></button>}
+                          {isCustomMacroWidget(widget) && <button type="button" className="modal-icon-button" aria-label={t("homeGrid.deleteWidget")} onClick={() => void deleteCustomMacroWidget(widget)}><MdDeleteOutline /></button>}
                         </div>; })}
                       </div>
-                      <button type="button" className="dialog-button" disabled={customMacroWidgets.length >= 30} onClick={addCustomMacroWidget}><MdAdd />{localeCode.startsWith("es") ? "Agregar widget de macros" : "Add macro widget"}</button>
+                      <button type="button" className="dialog-button" disabled={customMacroWidgets.length >= 30} onClick={addCustomMacroWidget}><MdAdd />{t("homeGrid.addMacroWidget")}</button>
                     </> : optionsTab === "terminal" ? <>
                       <label className="setting-checkbox">
                         <input type="checkbox" checked={terminalEnvEnabled || terminalConfiguredEnabled} disabled={terminalEnvEnabled || terminalModeSaving}

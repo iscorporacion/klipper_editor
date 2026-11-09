@@ -379,7 +379,7 @@ export default function PurgeTrayWidget({ apiBase = "", locale = "es" }: { apiBa
         <button className="icon-only" type="button" title={text.settings} aria-label={text.settings} onClick={() => setSettingsOpen(true)}><MdSettings /></button>
       </div>
     </>}
-    {settingsOpen && typeof document !== "undefined" && createPortal(<div className="modal-backdrop" onMouseDown={() => setSettingsOpen(false)}>
+    {settingsOpen && typeof document !== "undefined" && createPortal(<div className="modal-backdrop">
       <section className="options-modal purge-tray-settings" role="dialog" aria-modal="true" aria-labelledby="purge-tray-settings-title" onMouseDown={(event) => event.stopPropagation()}>
         <header><h2 id="purge-tray-settings-title">{text.settings}</h2><button className="modal-icon-button" type="button" onClick={() => setSettingsOpen(false)} aria-label={text.close}><MdClose /></button></header>
         <div className="purge-tray-settings-body">
@@ -398,8 +398,8 @@ export default function PurgeTrayWidget({ apiBase = "", locale = "es" }: { apiBa
           <fieldset><legend>{text.purgeConfig}</legend>{input("purgeLength", "Filamento (mm)", 0, 500)}{input("blobDescent", "Descenso durante purga (mm)", 0.1, 50)}{input("purgeVelocityFan", es ? "Ventilador descarga" : "Drop fan", 0, 255)}{input("maxBlobs", "Capacidad", 1, 10000)}</fieldset>
           <fieldset className="purge-tray-servo-settings"><legend>{text.servo}</legend>{input("servoReceiveAngle", "Angulo de recepcion", 0, 180)}{input("servoReleaseAngle", "Angulo de descarga", 0, 180)}{input("servoDwell", "Espera (ms)", 100, 10000)}
             <div className="purge-tray-servo-tests">
-              <RichTooltip placement="top" content={text.testReceive}><button type="button" aria-label={text.testReceive} disabled={busy !== "" || !data?.servoAvailable} onClick={() => void run("servo-test", { angle: form.servoReceiveAngle })}><MdiIcon path={mdiArrowCollapseLeft} size={1} /></button></RichTooltip>
-              <RichTooltip placement="top" content={text.testRelease}><button type="button" aria-label={text.testRelease} disabled={busy !== "" || !data?.servoAvailable} onClick={() => void run("servo-test", { angle: form.servoReleaseAngle })}><MdiIcon path={mdiArrowCollapseRight} size={1} /></button></RichTooltip>
+              <RichTooltip placement="top" content={text.testRelease}><button type="button" aria-label={text.testRelease} disabled={busy !== "" || !data?.servoAvailable} onClick={() => void run("servo-test", { angle: form.servoReleaseAngle })}><MdiIcon path={mdiArrowCollapseLeft} size={1} /></button></RichTooltip>
+              <RichTooltip placement="top" content={text.testReceive}><button type="button" aria-label={text.testReceive} disabled={busy !== "" || !data?.servoAvailable} onClick={() => void run("servo-test", { angle: form.servoReceiveAngle })}><MdiIcon path={mdiArrowCollapseRight} size={1} /></button></RichTooltip>
             </div>
             {!data?.servoAvailable && <p className="purge-tray-servo-pending">{text.servoPending}</p>}
           </fieldset>

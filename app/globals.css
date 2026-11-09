@@ -2010,6 +2010,14 @@ h1 {
 .mmu-path-small { font-size: 8px; fill: var(--muted); }
 .mmu-path-bias { font-size: 10px; fill: #36c0ca; }
 .backup-selection-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+.printer-prompt-dialog { width: min(640px, calc(100vw - 28px)); }
+.printer-prompt-text { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.5; }
+.printer-prompt-buttons { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+.printer-prompt-buttons button, .printer-prompt-dialog footer button { white-space: normal; overflow-wrap: anywhere; }
+.printer-prompt-primary { border-color: var(--accent); color: var(--accent); }
+.printer-prompt-error { border-color: #db5656; color: #ff8585; }
+.printer-prompt-warning { border-color: #d7af35; color: #efcc63; }
+.printer-prompt-reopen { position: fixed; bottom: 38px; right: 16px; z-index: 115; display: flex; align-items: center; gap: 8px; max-width: calc(100vw - 32px); padding: 10px 12px; border: 1px solid var(--accent); border-radius: 4px; background: var(--panel); color: var(--text); cursor: pointer; }
 .mmu-path-outline { stroke: #36c0ca; stroke-width: 1.2; }
 .mmu-path-outline.bypass { opacity: .35; }
 .mmu-path-filament { transition: height 180ms ease; }
@@ -2110,12 +2118,19 @@ h1 {
   position: absolute;
   inset: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 7px var(--outline-width, 320px);
+  grid-template-columns: minmax(0, 1fr) 7px var(--outline-width, 320px) 22px;
   width: 100%;
   height: 100%;
   min-height: 0;
   overflow: hidden;
 }
+
+.editor-grid.outline-collapsed { grid-template-columns: minmax(0, 1fr) 0px 0px 22px; }
+.editor-grid.outline-collapsed > .include-panel, .editor-grid.outline-collapsed > .panel-resizer-width { display: none; }
+.outline-toggle-rail { grid-column: 4; display: flex; align-items: center; justify-content: center; min-width: 0; border-left: 1px solid var(--border); background: var(--panel); }
+.outline-toggle { display: flex; align-items: center; justify-content: center; width: 22px; height: 48px; padding: 0; border: 1px solid var(--border); border-right: 0; border-radius: 4px 0 0 4px; color: var(--muted); background: var(--panel-strong); cursor: pointer; }
+.outline-toggle svg { width: 20px; height: 20px; }
+.outline-toggle:hover, .outline-toggle:focus-visible { color: var(--accent); border-color: var(--accent); outline: 0; }
 
 .code-host {
   isolation: isolate;
@@ -2591,6 +2606,8 @@ body.is-resizing-row {
   color: var(--text);
   cursor: pointer;
 }
+
+.modal-icon-button.pid-open-button { width: auto; padding-inline: 12px; }
 
 .modal-icon-button:hover,
 .modal-icon-button:focus-visible,
@@ -6168,11 +6185,12 @@ button.bed-mesh-profile {
     grid-template-columns: 220px minmax(0, 1fr);
   }
 
-  .editor-grid {
+  .editor-grid, .editor-grid.outline-collapsed {
     grid-template-columns: minmax(0, 1fr);
   }
 
   .include-panel,
+  .outline-toggle-rail,
   .panel-resizer-width {
     display: none;
   }

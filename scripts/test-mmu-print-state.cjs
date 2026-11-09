@@ -52,7 +52,7 @@ test('MMU API permits bypass after manual T0 even while idle_timeout reports Pri
   assert.equal(commands.length, 1);
 });
 
-test('paused recovery allows only the six requested MMU actions, never motors or tool changes', async () => {
+test('paused recovery allows recovery and gate check, never motors or tool changes', async () => {
   let status = { available: true, printing: true, printState: 'paused', mmu: { num_gates: 5, print_state: 'paused' } };
   const sent = [];
   const route = load('app/api/printer/mmu/route.ts', {
@@ -61,10 +61,11 @@ test('paused recovery allows only the six requested MMU actions, never motors or
     'next/server': { NextResponse: { json: (value, options) => new Response(JSON.stringify(value), options) } }
   });
   const post = (action) => route.POST(new Request('http://localhost/', { method: 'POST', body: JSON.stringify({ action, tool: 0, gate: 0 }) }));
-  for (const action of ['home', 'recover', 'load', 'unload', 'unlock', 'check-all']) assert.equal((await post(action)).status, 200, action);
+  for (const action of ['home', 'recover', 'load', 'unload', 'unlock', 'check-all', 'check']) assert.equal((await post(action)).status, 200, action);
+  assert.equal(sent.at(-1), 'MMU_CHECK_GATE GATE=0');
   assert.equal(sent[0], 'MMU_HOME');
   for (const action of ['motors-off', 'tool', 'bypass', 'preload', 'reset-ttg-map']) assert.equal((await post(action)).status, 409, action);
   status.printState = 'printing';
-  for (const action of ['home', 'recover', 'load', 'unload', 'unlock', 'check-all']) assert.equal((await post(action)).status, 409, action);
-  assert.equal(sent.length, 6);
+  for (const action of ['home', 'recover', 'load', 'unload', 'unlock', 'check-all', 'check']) assert.equal((await post(action)).status, 409, action);
+  assert.equal(sent.length, 7);
 });

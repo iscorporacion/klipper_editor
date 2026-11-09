@@ -115,6 +115,14 @@ const locale = JSON.parse(fs.readFileSync(path.join(__dirname, '../locales/es.js
     socket.send(JSON.stringify({ method: 'notify_status_update', params: [{ mmu: { filament_pos: 0 } }, 4] }));
     await page.waitForFunction(() => !document.querySelector('.mmu-command-bar button[aria-label="Cargar"]').disabled);
     assert.equal(await widget.getByRole('button', { name: 'Descargar', exact: true }).isDisabled(), true);
+    state.mmu.gate_status[2] = 0;
+    socket.send(JSON.stringify({ method: 'notify_status_update', params: [{ mmu: { gate_status: state.mmu.gate_status } }, 5] }));
+    await spool(2).click();
+    await panel.waitFor();
+    assert.equal(await panel.getByRole('button', { name: 'Comprobar', exact: true }).isEnabled(), true);
+    for (const name of ['Seleccionar', 'Precargar', 'Expulsar']) assert.equal(await panel.getByRole('button', { name, exact: true }).isDisabled(), true);
+    await panel.getByRole('button', { name: 'Comprobar', exact: true }).click();
+    assert.deepEqual(actions.at(-1), { action: 'check', gate: 2 });
     assert.deepEqual(errors, []);
     console.log('OK: compact live MMU path, real websocket updates, drawer repeat/switch/outside/Escape, correct mocked gate command and print guards on desktop/mobile');
   } finally { await browser.close(); }

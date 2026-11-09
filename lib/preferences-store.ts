@@ -8,7 +8,7 @@ export const preferenceKeys = [
   "klipper-editor-hide-backup-files", "klipper-editor-terminal-height",
   "klipper-editor-terminal-history", "klipper-editor-klipper-console-favorites", "klipper-editor-klipper-console-temperature-reports", "klipper-editor-klipper-console-single-line",
   "klipper-editor-macro-favorites", "klipper-editor-section-preview-delay",
-  "klipper-editor-sidebar-collapsed", "klipper-editor-use-accent-logo",
+  "klipper-editor-sidebar-collapsed", "klipper-editor-outline-collapsed", "klipper-editor-use-accent-logo",
   "klipper-editor-heater-cache", "klipper-editor-heater-colors",
   "klipper-editor-theme", "klipper-editor-home-widgets", "klipper-editor-home-grid-layout", "klipper-editor-home-collapsed-widgets",
   "klipper-editor-sensors-show-endstops", "klipper-editor-sensors-hidden",

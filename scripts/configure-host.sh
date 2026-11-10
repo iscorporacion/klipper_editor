@@ -15,6 +15,7 @@ NGINX_SNIPPET="/etc/nginx/snippets/${APP_NAME}.conf"
 SYSTEMD_UNIT="/etc/systemd/system/${SERVICE_NAME}.service"
 APP_DIR="${KLIPPER_EDITOR_APP_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 START_COMMAND="${KLIPPER_EDITOR_START_COMMAND:-/usr/bin/env npm run start -- -p ${APP_PORT}}"
+NODE_BIN="${KLIPPER_EDITOR_NODE_BIN:-$(command -v node || true)}"
 SERVICE_USER="${SUDO_USER:-$USER}"
 SERVICE_GROUP="$(id -gn "${SERVICE_USER}")"
 
@@ -207,7 +208,7 @@ configure_mainsail_link() {
   RATOS_VIEWER_ROOT="${CONFIG_ROOT}" \
   RATOS_MOONRAKER_URL="${MOONRAKER_URL}" \
   NEXT_PUBLIC_BASE_PATH="${BASE_PATH}" \
-  node "${link_script}" || {
+  "${NODE_BIN}" "${link_script}" || {
     log "Mainsail sidebar link could not be configured automatically."
     return 0
   }
@@ -233,7 +234,10 @@ install_cloudflared() {
   fi
 }
 
-require_command node
+if [[ -z "${NODE_BIN}" || ! -x "${NODE_BIN}" ]]; then
+  log "Missing required Node runtime. Use install-release.sh to install the managed runtime."
+  exit 1
+fi
 require_command nginx
 require_command systemctl
 
@@ -245,7 +249,7 @@ CONFIG_ROOT="$(detect_config_root)" || {
 
 MAINSAIL_LINK_EXEC_START_PRE=""
 if [[ "${CONFIGURE_MAINSAIL_LINK}" == "true" ]]; then
-  MAINSAIL_LINK_EXEC_START_PRE="ExecStartPre=-/usr/bin/env node ${APP_DIR}/scripts/configure-mainsail-link.mjs"
+  MAINSAIL_LINK_EXEC_START_PRE="ExecStartPre=-${NODE_BIN} ${APP_DIR}/scripts/configure-mainsail-link.mjs"
 fi
 
 NGINX_SITE_CONFIG="$(find_nginx_site_config)" || {
@@ -278,6 +282,8 @@ KLIPPER_EDITOR_CONFIGURE_MAINSAIL_LINK=${CONFIGURE_MAINSAIL_LINK}
 KLIPPER_EDITOR_ENABLE_TERMINAL=${ENABLE_TERMINAL}
 KLIPPER_EDITOR_TERMINAL_SHELL=${KLIPPER_EDITOR_TERMINAL_SHELL:-}
 KLIPPER_EDITOR_INSTALL_CLOUDFLARED=${INSTALL_CLOUDFLARED}
+KLIPPER_EDITOR_NODE_BIN=${NODE_BIN}
+KLIPPER_EDITOR_RUNTIME_ROOT=${KLIPPER_EDITOR_RUNTIME_ROOT:-}
 KEDITOR_REMOTE_WIDGET_CONFIG=${KEDITOR_REMOTE_WIDGET_CONFIG:-true}
 ENV
 
@@ -298,6 +304,7 @@ ${MAINSAIL_LINK_EXEC_START_PRE}
 ExecStart=${START_COMMAND}
 Restart=always
 RestartSec=5
+TimeoutStartSec=300
 
 [Install]
 WantedBy=multi-user.target

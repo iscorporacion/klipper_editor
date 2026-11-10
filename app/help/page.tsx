@@ -230,10 +230,20 @@ export default function HelpPage() {
         <h2>Instalacion precompilada</h2>
         <p>
           La instalacion recomendada descarga una version ya compilada desde GitHub Releases. Esto evita ejecutar
-          `next build` en la impresora y reduce el uso de memoria.
+          `next build` en la impresora y reduce el uso de memoria. El instalador tambien descarga y verifica una
+          version privada de Node para K-Editor, por lo que no necesita instalar Node o npm de forma global.
         </p>
         <pre>
           <code>{`curl -fsSL https://raw.githubusercontent.com/iscorporacion/klipper_editor/main/install-release.sh | bash`}</code>
+        </pre>
+        <p>
+          La descarga y descompresion se realizan en <code>~/klipper_editor_app/.install-tmp</code>, no en
+          <code>/tmp</code>, y los archivos temporales se eliminan al terminar. Si esa ubicacion tampoco tiene
+          espacio, puede definir otra con <code>KLIPPER_EDITOR_TEMP_ROOT</code>:
+        </p>
+        <pre>
+          <code>{`curl -fsSL https://raw.githubusercontent.com/iscorporacion/klipper_editor/main/install-release.sh -o /tmp/install-keditor.sh
+KLIPPER_EDITOR_TEMP_ROOT=/ruta/con/espacio bash /tmp/install-keditor.sh`}</code>
         </pre>
         <p>
           La aplicacion completa no es candidata para GitHub Pages porque necesita ejecutar APIs del servidor,

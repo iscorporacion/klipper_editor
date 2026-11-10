@@ -497,6 +497,16 @@ type UpdateApp = {
   warnings: string[];
 };
 
+type NodeRuntimeInfo = {
+  activeVersion: string;
+  requiredVersion: string;
+  channel: string;
+  architecture: string;
+  platform: string;
+  managed: boolean;
+  updatePending: boolean;
+};
+
 const fallbackMainsailTheme: MainsailVisualTheme = {
   mode: "dark",
   theme: "mainsail",
@@ -978,6 +988,9 @@ const defaultMessages: Messages = {
   "printerPrompt.cancelTitle": "Cancelar impresion",
   "printerPrompt.cancelMessage": "¿Cancelar definitivamente esta impresion?",
   "printerPrompt.back": "Volver",
+  "printerPrompt.trayNotHomedTitle": "Bandeja de purga sin home",
+  "printerPrompt.trayNotHomedHelp": "La descarga no puede continuar porque la bandeja perdió su referencia. Haz home de la bandeja y vuelve a iniciar la descarga.",
+  "printerPrompt.homeTray": "Hacer home de bandeja",
   "editorSearch.find": "Buscar",
   "editorSearch.replace": "Reemplazar",
   "editorSearch.next": "Siguiente",
@@ -1212,6 +1225,14 @@ const defaultMessages: Messages = {
   "options.languageHelp": "Los idiomas disponibles salen de los archivos JSON en la carpeta `locales`.",
   "options.createBackupOnSave": "Crear copia de seguridad al guardar",
   "options.createBackupOnSaveHelp": "Las nuevas copias se guardan en .keditor-backups/ dentro de la carpeta de configuración activa, conservando las subcarpetas del archivo original. Usan extensión .bak para evitar conflictos con los includes de Klipper. Las copias antiguas solo se trasladan desde Administrar copias, con tu confirmación.",
+  "options.nodeRuntime": "Runtime Node",
+  "options.nodeActive": "Activa",
+  "options.nodeRequired": "Requerida",
+  "options.nodeChannel": "Canal",
+  "options.nodeArchitecture": "Arquitectura",
+  "options.nodeManaged": "Administrada por K-Editor",
+  "options.nodeSystem": "Proporcionada por el sistema",
+  "options.nodePending": "El siguiente reinicio del servicio instalará la versión requerida.",
   "backups.manage": "Administrar copias",
   "backups.title": "Copias de seguridad",
   "backups.close": "Cerrar",
@@ -3026,6 +3047,7 @@ function Editor() {
   const [terminalError, setTerminalError] = useState<string | null>(null);
   const [terminalWarning, setTerminalWarning] = useState<string | null>(null);
   const [terminalHeight, setTerminalHeight] = useState(238);
+  const [nodeRuntime, setNodeRuntime] = useState<NodeRuntimeInfo | null>(null);
   const [mcpTunnel, setMcpTunnel] = useState<McpTunnelStatus>({
     running: false,
     starting: false,
@@ -6211,6 +6233,16 @@ function Editor() {
   useEffect(() => {
     void loadTerminalStatus();
   }, [loadTerminalStatus]);
+
+  useEffect(() => {
+    if (!optionsOpen) return;
+    let cancelled = false;
+    void fetch(apiPath("/api/runtime/node"), { cache: "no-store" })
+      .then(async (response) => response.ok ? response.json() as Promise<NodeRuntimeInfo> : null)
+      .then((payload) => { if (!cancelled) setNodeRuntime(payload); })
+      .catch(() => { if (!cancelled) setNodeRuntime(null); });
+    return () => { cancelled = true; };
+  }, [optionsOpen]);
 
   useEffect(() => {
     void loadMcpTunnelStatus();
@@ -9798,6 +9830,17 @@ function Editor() {
                       <span>{t("options.createBackupOnSave")}</span>
                     </label>
                     <p className="setting-help">{t("options.createBackupOnSaveHelp")}</p>
+                    {nodeRuntime && <section className="node-runtime-card" aria-label={t("options.nodeRuntime")}>
+                      <strong>{t("options.nodeRuntime")}</strong>
+                      <dl>
+                        <div><dt>{t("options.nodeActive")}</dt><dd>v{nodeRuntime.activeVersion}</dd></div>
+                        <div><dt>{t("options.nodeRequired")}</dt><dd>v{nodeRuntime.requiredVersion}</dd></div>
+                        <div><dt>{t("options.nodeChannel")}</dt><dd>{nodeRuntime.channel}</dd></div>
+                        <div><dt>{t("options.nodeArchitecture")}</dt><dd>{nodeRuntime.platform}/{nodeRuntime.architecture}</dd></div>
+                      </dl>
+                      <p className="setting-help">{t(nodeRuntime.managed ? "options.nodeManaged" : "options.nodeSystem")}</p>
+                      {nodeRuntime.updatePending && <p className="node-runtime-pending">{t("options.nodePending")}</p>}
+                    </section>}
                     <BackupSettings t={t} endpoint={apiPath("/api/backups")} protectedPaths={openFiles.map((file) => file.path)} onChanged={() => void loadTree().catch((error) => setMessage(String(error)))} />
                     <label className="setting-checkbox">
                       <input

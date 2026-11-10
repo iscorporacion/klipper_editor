@@ -43,18 +43,20 @@ export default function PrinterPromptDialog({ endpoint, t }: {
       const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: prompt.id, label: button.label, command: button.command, confirmCancel: cancel }) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error === "promptChanged" ? t("printerPrompt.changed") : data.error === "printerNotReady" ? t("printerPrompt.disconnected") : data.error);
+      if (prompt.kind) { active.current = null; setPrompt(null); setOpen(false); }
     } catch (failure) { setError(failure instanceof Error ? failure.message : String(failure)); }
     finally { sending.current = false; setBusy(false); setConfirming(null); }
   };
-  const renderButton = (button: PromptButton, index: number) => <button key={index} type="button" className={`dialog-button printer-prompt-${button.style}`} disabled={busy || Boolean(confirming)} onClick={() => void run(button)}>{button.label}</button>;
+  const renderButton = (button: PromptButton, index: number) => <button key={index} type="button" className={`dialog-button printer-prompt-${button.style}`} disabled={busy || Boolean(confirming)} onClick={() => void run(button)}>{prompt?.kind === "purgeTrayNotHomed" && button.command === "PURGE_TRAY_HOME" ? t("printerPrompt.homeTray") : button.label}</button>;
   const dismiss = () => { if (!busy) { setOpen(false); setConfirming(null); } };
   if (!prompt) return null;
   return <>
-    {!open && <button type="button" className="printer-prompt-reopen" onClick={() => setOpen(true)}><MdAnnouncement />{prompt.title || t("printerPrompt.title")}</button>}
-    {open && <WidgetDialog title={prompt.title || t("printerPrompt.title")} closeLabel={t("printerPrompt.close")} className="printer-prompt-dialog" closeOnBackdrop={false} onClose={dismiss} footer={<>
+    {!open && <button type="button" className="printer-prompt-reopen" onClick={() => setOpen(true)}><MdAnnouncement />{prompt.kind === "purgeTrayNotHomed" ? t("printerPrompt.trayNotHomedTitle") : prompt.title || t("printerPrompt.title")}</button>}
+    {open && <WidgetDialog title={prompt.kind === "purgeTrayNotHomed" ? t("printerPrompt.trayNotHomedTitle") : prompt.title || t("printerPrompt.title")} closeLabel={t("printerPrompt.close")} className="printer-prompt-dialog" closeOnBackdrop={false} onClose={dismiss} footer={<>
       <button type="button" className="dialog-button" disabled={busy} onClick={dismiss}>{t("printerPrompt.close")}</button>
       {prompt.buttons.filter((button) => button.footer).map(renderButton)}
     </>}>
+      {prompt.kind === "purgeTrayNotHomed" && <p className="printer-prompt-text">{t("printerPrompt.trayNotHomedHelp")}</p>}
       {prompt.text.map((text, index) => <p className="printer-prompt-text" key={index}>{text}</p>)}
       {error && <p className="backup-manager-error" role="alert">{error}</p>}
       {confirming && <div role="alertdialog" aria-label={t("printerPrompt.cancelTitle")}><p>{t("printerPrompt.cancelMessage")}</p><div className="printer-prompt-buttons"><button className="dialog-button" disabled={busy} onClick={() => setConfirming(null)}>{t("printerPrompt.back")}</button><button className="dialog-button danger" disabled={busy} onClick={() => void run(confirming, true)}>{t("printerPrompt.cancelTitle")}</button></div></div>}

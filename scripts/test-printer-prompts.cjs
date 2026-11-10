@@ -27,6 +27,12 @@ test('parses streamed prompt text, groups and footer buttons; no command echoes 
   assert.equal(grouped.title, '"Quoted"');
   assert.equal(grouped.buttons[0].group, grouped.buttons[1].group);
 });
+test('purge tray homing errors become actionable printer alerts', () => {
+  const prompt = prompts.readPrinterPrompt([entry('!! MMU issue: Unload sequence failed because:\nError evaluating PURGE_TRAY_MOVE: Purge tray is not homed', 7)]);
+  assert.equal(prompt.kind, 'purgeTrayNotHomed');
+  assert.equal(prompt.buttons[0].command, 'PURGE_TRAY_HOME');
+  assert.equal(prompt.buttons[0].style, 'primary');
+});
 test('server executes only a current received button after explicit click; cancellation and resume are guarded', async () => {
   let current = entries;
   let ready = true;
@@ -53,4 +59,18 @@ test('server executes only a current received button after explicit click; cance
   recovery = true;
   assert.equal((await post({ label: 'Resume', command: 'RESUME' })).status, 502);
   assert.deepEqual(sent, ['MMU_UNLOCK', 'CANCEL_PRINT']);
+});
+test('tray recovery button executes only the detected safe command and acknowledges the alert', async () => {
+  const current = [entry('!! MMU issue: Unload failed\nPurge tray is not homed', 9)];
+  const sent = [];
+  const api = load('app/api/printer/prompts/route.ts', {
+    '@/lib/printer-prompts': prompts,
+    '@/lib/moonraker': { getGcodeStore: async () => current, getMoonrakerStatus: async () => ({ webhooksState: 'ready' }), assertTrayRecoveryComplete: async () => {}, runGcodeScript: async (command) => sent.push(command) },
+    'next/server': { NextResponse: { json: (value, options) => Response.json(value, options) } }
+  });
+  const prompt = (await (await api.GET()).json()).prompt;
+  const response = await api.POST(new Request('http://localhost/', { method: 'POST', body: JSON.stringify({ id: prompt.id, label: prompt.buttons[0].label, command: prompt.buttons[0].command }) }));
+  assert.equal(response.status, 200);
+  assert.deepEqual(sent, ['PURGE_TRAY_HOME']);
+  assert.equal((await (await api.GET()).json()).prompt, null);
 });

@@ -71,7 +71,7 @@ test('custom widget preferences are accepted by both preference registries', () 
   }
 });
 
-test('API validates against current Klipper macros before every execution', async () => {
+test('API reports command availability without blocking syntactically valid commands', async () => {
   const exports = {};
   let registered = ['MY_MACRO', 'RESUME'];
   let pendingRecovery = false;
@@ -94,15 +94,18 @@ test('API validates against current Klipper macros before every execution', asyn
   assert.equal((await post({ command: 'MY_MACRO VALUE=2.5' })).status, 200);
   assert.deepEqual(sent, ['MY_MACRO VALUE=2.5']);
   registered = ['RESUME'];
-  assert.equal((await post({ command: 'MY_MACRO' })).status, 409);
+  const advisory = await (await post({ command: 'MMU_CALIBRATE_BOWDEN BOWDEN_LENGTH=1120', validateOnly: true })).json();
+  assert.equal(advisory.available, false);
+  assert.equal((await post({ command: 'MMU_CALIBRATE_BOWDEN BOWDEN_LENGTH=1120' })).status, 200);
+  assert.equal(sent.at(-1), 'MMU_CALIBRATE_BOWDEN BOWDEN_LENGTH=1120');
   assert.equal((await post({ command: 'RESUME\nMY_MACRO' })).status, 400);
   pendingRecovery = true;
   assert.equal((await post({ command: 'RESUME' })).status, 502);
-  assert.equal(sent.length, 1);
+  assert.equal(sent.length, 2);
   registered = ['PROBE_EDDY_CURRENT_CALIBRATE'];
   const eddy = 'PROBE_EDDY_CURRENT_CALIBRATE CHIP=btt_eddy';
   assert.equal((await post({ command: eddy, validateOnly: true })).status, 200);
-  assert.equal(sent.length, 1);
+  assert.equal(sent.length, 2);
   assert.equal((await post({ command: eddy })).status, 200);
   assert.equal(sent.at(-1), eddy);
 });

@@ -28,6 +28,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Validate managed Node runtime installer
+        run: |
+          bash -n install-release.sh scripts/configure-host.sh scripts/ensure-node-runtime.sh scripts/start-runtime.sh scripts/package-standalone.sh
+          node --test scripts/test-node-runtime.cjs
+
       - name: Test Linux PTY bridge
         run: python3 scripts/test-terminal-pty.py
 

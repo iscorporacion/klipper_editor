@@ -57,15 +57,22 @@ export default function CustomMacroWidget({ config, onChange, editing, onFinishE
   const validate = async (save: boolean) => {
     if (!draft || inFlight.current) return;
     if (!draft.name.trim()) { setError(es ? "Introduce un nombre." : "Enter a name."); return; }
+    try { parseMacroCommand(draft.command); }
+    catch (failure) { setError(failure instanceof Error ? failure.message : String(failure)); return; }
+    if (save) {
+      const button = { ...draft, name: draft.name.trim(), command: draft.command.trim(), showTitle: draft.size !== "1x1" && draft.showTitle };
+      onChange({ ...config, buttons: config.buttons.some((item) => item.id === button.id) ? config.buttons.map((item) => item.id === button.id ? button : item) : [...config.buttons, button] });
+      setDraft(null);
+      return;
+    }
     inFlight.current = true; setBusy("validate"); setError(""); setValidation("");
     try {
-      await requestCommand(draft.command, true);
-      setValidation(es ? "Comando disponible en Klipper" : "Command available in Klipper");
-      if (save) {
-        const button = { ...draft, name: draft.name.trim(), command: draft.command.trim(), showTitle: draft.size !== "1x1" && draft.showTitle };
-        onChange({ ...config, buttons: config.buttons.some((item) => item.id === button.id) ? config.buttons.map((item) => item.id === button.id ? button : item) : [...config.buttons, button] });
-        setDraft(null);
-      }
+      const result = await requestCommand(draft.command, true);
+      setValidation(result.available === true
+        ? (es ? "Comando disponible en Klipper" : "Command available in Klipper")
+        : result.available === false
+          ? (es ? "No confirmado por Klipper; puedes guardarlo y probarlo" : "Not confirmed by Klipper; you can save and test it")
+          : (es ? "No se pudo consultar Klipper; puedes guardarlo igualmente" : "Klipper could not be queried; you can still save it"));
     } catch (failure) { setError(failure instanceof Error ? failure.message : String(failure)); }
     finally { inFlight.current = false; setBusy(""); }
   };
@@ -127,7 +134,7 @@ export default function CustomMacroWidget({ config, onChange, editing, onFinishE
         <label className="macro-form-full">{es ? "Macro y parametros" : "Macro and parameters"}<input list={`macro-names-${config.id}`} maxLength={2000} value={draft.command} spellCheck={false} onChange={(event) => updateDraft({ command: event.target.value })} /></label>
         <datalist id={`macro-names-${config.id}`}>{macroNames?.map((name) => <option value={name} key={name} />)}</datalist>
         <div className="macro-validation macro-form-full"><button type="button" className="dialog-button" disabled={busy !== ""} onClick={() => void validate(false)}><MdCheck />{es ? "Validar macro" : "Validate macro"}</button>
-          <span className={known === false ? "danger" : ""} role="status">{validation || (known === true ? (es ? "Macro encontrada" : "Macro found") : known === false ? (es ? "Macro no registrada" : "Macro not registered") : "")}</span>
+          <span role="status">{validation || (known === true ? (es ? "Comando detectado" : "Command detected") : known === false ? (es ? "No confirmado; se puede guardar" : "Not confirmed; it can be saved") : "")}</span>
           <button type="button" className="modal-icon-button" aria-label={es ? "Actualizar macros" : "Refresh macros"} onClick={() => setRefresh((item) => item + 1)}><MdRefresh /></button>
         </div>
         <div className="macro-form-full macro-appearance-fields">

@@ -670,8 +670,8 @@ export async function getMacroButtonCommands(): Promise<string[]> {
   const payload = await moonrakerFetch("/printer/gcode/help");
   const help = payload?.result ?? payload;
   if (!help || typeof help !== "object" || Array.isArray(help)) throw new Error("Unable to query Klipper commands");
-  const eddy = "PROBE_EDDY_CURRENT_CALIBRATE";
-  return [...new Set([...macros, ...(Object.hasOwn(help, eddy) ? [eddy] : [])])].sort();
+  const commands = Object.keys(help).map((name) => name.trim().toUpperCase()).filter(Boolean);
+  return [...new Set([...macros, ...commands])].sort();
 }
 
 export async function resumePrint() {

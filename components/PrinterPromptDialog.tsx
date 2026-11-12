@@ -51,7 +51,7 @@ export default function PrinterPromptDialog({ endpoint, t }: {
   const dismiss = () => {
     if (busy) return;
     setOpen(false); setConfirming(null);
-    if (!prompt.kind) return;
+    if (!prompt?.kind) return;
     const dismissed = prompt;
     active.current = null; setPrompt(null);
     void fetch(endpoint, {

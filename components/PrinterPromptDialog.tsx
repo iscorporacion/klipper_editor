@@ -42,13 +42,22 @@ export default function PrinterPromptDialog({ endpoint, t }: {
       if (active.current?.id !== prompt.id) throw new Error(t("printerPrompt.changed"));
       const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: prompt.id, label: button.label, command: button.command, confirmCancel: cancel }) });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error === "promptChanged" ? t("printerPrompt.changed") : data.error === "printerNotReady" ? t("printerPrompt.disconnected") : data.error);
+      if (!response.ok) throw new Error(data.error === "promptChanged" ? t("printerPrompt.changed") : data.error === "printerNotReady" ? t("printerPrompt.disconnected") : data.error === "trayHomeNeedsXyzDuringPrint" ? t("printerPrompt.trayHomeNeedsXyzDuringPrint") : data.error);
       if (prompt.kind) { active.current = null; setPrompt(null); setOpen(false); }
     } catch (failure) { setError(failure instanceof Error ? failure.message : String(failure)); }
     finally { sending.current = false; setBusy(false); setConfirming(null); }
   };
   const renderButton = (button: PromptButton, index: number) => <button key={index} type="button" className={`dialog-button printer-prompt-${button.style}`} disabled={busy || Boolean(confirming)} onClick={() => void run(button)}>{prompt?.kind === "purgeTrayNotHomed" && button.command === "PURGE_TRAY_HOME" ? t("printerPrompt.homeTray") : button.label}</button>;
-  const dismiss = () => { if (!busy) { setOpen(false); setConfirming(null); } };
+  const dismiss = () => {
+    if (busy) return;
+    setOpen(false); setConfirming(null);
+    if (!prompt.kind) return;
+    const dismissed = prompt;
+    active.current = null; setPrompt(null);
+    void fetch(endpoint, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: dismissed.id, dismiss: true })
+    }).catch(() => { /* A later poll will restore the alert if acknowledgement failed. */ });
+  };
   if (!prompt) return null;
   return <>
     {!open && <button type="button" className="printer-prompt-reopen" onClick={() => setOpen(true)}><MdAnnouncement />{prompt.kind === "purgeTrayNotHomed" ? t("printerPrompt.trayNotHomedTitle") : prompt.title || t("printerPrompt.title")}</button>}

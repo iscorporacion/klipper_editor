@@ -114,6 +114,7 @@ const heaterColorCacheKey = "klipper-editor-heater-colors";
 const hideBackupFilesKey = "klipper-editor-hide-backup-files";
 const terminalHeightKey = "klipper-editor-terminal-height";
 const terminalHistoryKey = "klipper-editor-terminal-history";
+const klipperConsoleHistoryKey = "klipper-editor-klipper-console-history";
 const klipperConsoleFavoritesKey = "klipper-editor-klipper-console-favorites";
 const klipperConsoleTemperatureReportsKey = "klipper-editor-klipper-console-temperature-reports";
 const klipperConsoleSingleLineKey = "klipper-editor-klipper-console-single-line";
@@ -425,6 +426,11 @@ type KlipperGcodeStoreEntry = {
 type KlipperConsoleFavorite = {
   script: string;
   updatedAt: number;
+};
+
+type KlipperConsoleCommandHistory = {
+  script: string;
+  time: number;
 };
 
 type KlipperConsoleTab = "console" | "favorites";
@@ -990,6 +996,7 @@ const defaultMessages: Messages = {
   "printerPrompt.back": "Volver",
   "printerPrompt.trayNotHomedTitle": "Bandeja de purga sin home",
   "printerPrompt.trayNotHomedHelp": "La descarga no puede continuar porque la bandeja perdió su referencia. Haz home de la bandeja y vuelve a iniciar la descarga.",
+  "printerPrompt.trayHomeNeedsXyzDuringPrint": "No es seguro ejecutar HOME XYZ durante una impresión o pausa. Conserva la impresión pausada, recupera la referencia XYZ por un procedimiento seguro y vuelve a intentarlo.",
   "printerPrompt.homeTray": "Hacer home de bandeja",
   "editorSearch.find": "Buscar",
   "editorSearch.replace": "Reemplazar",
@@ -1631,6 +1638,21 @@ function readKlipperConsoleFavorites() {
 
 function writeKlipperConsoleFavorites(favorites: KlipperConsoleFavorite[]) {
   preferences.setItem(klipperConsoleFavoritesKey, JSON.stringify(favorites));
+}
+
+function readKlipperConsoleHistory() {
+  try {
+    const cached = JSON.parse(preferences.getItem(klipperConsoleHistoryKey) ?? "[]") as unknown;
+    if (!Array.isArray(cached)) return [];
+    return cached
+      .filter((entry): entry is Partial<KlipperConsoleCommandHistory> => Boolean(entry) && typeof entry === "object")
+      .map((entry) => ({ script: typeof entry.script === "string" ? entry.script.trim() : "", time: numericValue(entry.time) }))
+      .filter((entry) => entry.script)
+      .slice(0, 100);
+  } catch {
+    preferences.removeItem(klipperConsoleHistoryKey);
+    return [];
+  }
 }
 
 function readMacroFavorites() {
@@ -2988,6 +3010,8 @@ function Editor() {
   const [runningUpdate, setRunningUpdate] = useState<string | null>(null);
   const [klipperConsoleOpen, setKlipperConsoleOpen] = useState(false);
   const [klipperConsoleInput, setKlipperConsoleInput] = useState("");
+  const [klipperConsoleHistory, setKlipperConsoleHistory] = useState<KlipperConsoleCommandHistory[]>([]);
+  const [klipperConsoleHistoryIndex, setKlipperConsoleHistoryIndex] = useState<number | null>(null);
   const [klipperConsoleLog, setKlipperConsoleLog] = useState<KlipperConsoleEntry[]>([]);
   const [klipperGcodeStore, setKlipperGcodeStore] = useState<KlipperGcodeStoreEntry[]>([]);
   const [klipperConsoleClearedAt, setKlipperConsoleClearedAt] = useState(0);
@@ -3084,6 +3108,7 @@ function Editor() {
   const machinePowerMenuRef = useRef<HTMLDivElement | null>(null);
   const terminalOutputRef = useRef<HTMLPreElement | null>(null);
   const klipperConsoleInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const klipperConsoleHistoryDraftRef = useRef("");
   const reloadOpenTextFilesRef = useRef<(() => Promise<void>) | null>(null);
   const notifiedMcpTunnelUrlRef = useRef("");
 
@@ -4111,11 +4136,43 @@ function Editor() {
 
   const editKlipperConsoleCommand = useCallback((script: string) => {
     setKlipperConsoleInput(script);
+    setKlipperConsoleHistoryIndex(null);
     window.setTimeout(() => {
       klipperConsoleInputRef.current?.focus();
       klipperConsoleInputRef.current?.select();
     }, 0);
   }, []);
+
+  const rememberKlipperConsoleCommand = useCallback((script: string) => {
+    setKlipperConsoleHistory((current) => {
+      const next = [{ script, time: Date.now() / 1000 }, ...current.filter((entry) => entry.script !== script)].slice(0, 100);
+      preferences.setItem(klipperConsoleHistoryKey, JSON.stringify(next));
+      return next;
+    });
+    setKlipperConsoleHistoryIndex(null);
+    klipperConsoleHistoryDraftRef.current = "";
+  }, []);
+
+  const navigateKlipperConsoleHistory = useCallback((direction: "older" | "newer") => {
+    if (!klipperConsoleHistory.length) return false;
+    if (direction === "older") {
+      const nextIndex = klipperConsoleHistoryIndex === null ? 0 : Math.min(klipperConsoleHistoryIndex + 1, klipperConsoleHistory.length - 1);
+      if (klipperConsoleHistoryIndex === null) klipperConsoleHistoryDraftRef.current = klipperConsoleInput;
+      setKlipperConsoleHistoryIndex(nextIndex);
+      setKlipperConsoleInput(klipperConsoleHistory[nextIndex].script);
+      return true;
+    }
+    if (klipperConsoleHistoryIndex === null) return false;
+    const nextIndex = klipperConsoleHistoryIndex - 1;
+    if (nextIndex < 0) {
+      setKlipperConsoleHistoryIndex(null);
+      setKlipperConsoleInput(klipperConsoleHistoryDraftRef.current);
+    } else {
+      setKlipperConsoleHistoryIndex(nextIndex);
+      setKlipperConsoleInput(klipperConsoleHistory[nextIndex].script);
+    }
+    return true;
+  }, [klipperConsoleHistory, klipperConsoleHistoryIndex, klipperConsoleInput]);
 
   const toggleKlipperFavorite = useCallback((script: string) => {
     const normalizedScript = script.trim();
@@ -4136,6 +4193,7 @@ function Editor() {
       const script = scriptInput.trim();
       if (!script || sendingKlipperCommand) return;
 
+      rememberKlipperConsoleCommand(script);
       setSendingKlipperCommand(true);
       setMessage(t("status.runningCommand", { command: script.split(/\s+/)[0] ?? "G-code" }));
 
@@ -4171,7 +4229,7 @@ function Editor() {
         setSendingKlipperCommand(false);
       }
     },
-    [loadKlipperGcodeStore, loadPrinterStatus, loadTree, sendingKlipperCommand, t]
+    [loadKlipperGcodeStore, loadPrinterStatus, loadTree, rememberKlipperConsoleCommand, sendingKlipperCommand, t]
   );
 
   const sendKlipperConsoleCommand = useCallback(
@@ -6063,6 +6121,7 @@ function Editor() {
     }
 
     setKlipperConsoleFavorites(readKlipperConsoleFavorites());
+    setKlipperConsoleHistory(readKlipperConsoleHistory());
     setMacroFavorites(readMacroFavorites());
 
     async function loadLocales() {
@@ -7315,7 +7374,12 @@ function Editor() {
                         </div>
                         <form className="home-console-form" onSubmit={sendKlipperConsoleCommand}>
                           <input aria-label={t("panels.klipperConsole")} value={klipperConsoleInput} placeholder="G-code" spellCheck={false}
-                            onChange={(event) => setKlipperConsoleInput(event.target.value)} />
+                            title={klipperConsoleHistoryIndex === null ? undefined : formatTimestamp(klipperConsoleHistory[klipperConsoleHistoryIndex]?.time ?? 0)}
+                            onChange={(event) => { setKlipperConsoleInput(event.target.value); setKlipperConsoleHistoryIndex(null); }}
+                            onKeyDown={(event) => {
+                              if (event.key === "ArrowUp" && navigateKlipperConsoleHistory("older")) event.preventDefault();
+                              else if (event.key === "ArrowDown" && navigateKlipperConsoleHistory("newer")) event.preventDefault();
+                            }} />
                           <button className="modal-icon-button" type="submit" disabled={sendingKlipperCommand || !klipperConsoleInput.trim()} title={t("homeGrid.send")} aria-label={t("homeGrid.send")}><MdSend /></button>
                         </form>
                         <div className="home-console-favorites">
@@ -9518,10 +9582,19 @@ function Editor() {
                     placeholder={t(klipperConsoleSingleLine ? "klipperConsole.singleLinePlaceholder" : "klipperConsole.placeholder")}
                     spellCheck={false}
                     autoCapitalize="off"
-                    onChange={(event) => setKlipperConsoleInput(event.target.value)}
+                    onChange={(event) => { setKlipperConsoleInput(event.target.value); setKlipperConsoleHistoryIndex(null); }}
                     onKeyDown={(event) => {
                       if (event.key === "Escape") {
                         setKlipperConsoleInput("");
+                        return;
+                      }
+
+                      if ((klipperConsoleSingleLine || !klipperConsoleInput.includes("\n")) && event.key === "ArrowUp" && navigateKlipperConsoleHistory("older")) {
+                        event.preventDefault();
+                        return;
+                      }
+                      if ((klipperConsoleSingleLine || !klipperConsoleInput.includes("\n")) && event.key === "ArrowDown" && navigateKlipperConsoleHistory("newer")) {
+                        event.preventDefault();
                         return;
                       }
 
@@ -9531,6 +9604,7 @@ function Editor() {
                       }
                     }}
                   />
+                  {klipperConsoleHistoryIndex !== null && <small>{formatTimestamp(klipperConsoleHistory[klipperConsoleHistoryIndex]?.time ?? 0)}</small>}
                 </label>
                 <div className="dialog-actions">
                   <label className="klipper-console-single-line">

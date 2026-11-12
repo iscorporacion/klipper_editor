@@ -1,5 +1,15 @@
 export type PromptButton = { label: string; command: string; style: string; group: number; footer: boolean };
 export type PrinterPrompt = { id: string; title: string; text: string[]; buttons: PromptButton[]; shown: boolean; kind?: "purgeTrayNotHomed" };
+
+function conciseTrayError(message: string) {
+  return message
+    .split(/\r?\n/)
+    .map((line) => line.replace(/^\s*!!\s*/, "").trim())
+    .filter(Boolean)
+    .filter((line) => !/^\{/.test(line) && !/traceback|\/moonraker\/|\^\^\^|servererror:/i.test(line))
+    .slice(0, 6);
+}
+
 export function readPrinterPrompt(entries: { time: number; type: string; message: string }[]): PrinterPrompt | null {
   let prompt: PrinterPrompt | null = null;
   let detected: PrinterPrompt | null = null;
@@ -11,7 +21,7 @@ export function readPrinterPrompt(entries: { time: number; type: string; message
       detected = {
         id: `detected:${entry.time}:purge-tray-not-homed`,
         title: "Purge tray is not homed",
-        text: entry.message.split(/\r?\n/).map((line) => line.replace(/^\s*!!\s*/, "").trim()).filter(Boolean).slice(0, 20),
+        text: conciseTrayError(entry.message),
         buttons: [{ label: "Home purge tray", command: "PURGE_TRAY_HOME", style: "primary", group: 0, footer: true }],
         shown: true,
         kind: "purgeTrayNotHomed"

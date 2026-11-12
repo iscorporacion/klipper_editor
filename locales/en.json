@@ -15,6 +15,7 @@
     "printerPrompt.back": "Back",
     "printerPrompt.trayNotHomedTitle": "Purge tray is not homed",
     "printerPrompt.trayNotHomedHelp": "The unload cannot continue because the tray lost its reference. Home the purge tray, then start the unload again.",
+    "printerPrompt.trayHomeNeedsXyzDuringPrint": "Running XYZ home during a print or pause is unsafe. Keep the print paused, restore the XYZ reference with a safe procedure, and try again.",
     "printerPrompt.homeTray": "Home purge tray",
     "editorSearch.find": "Find",
     "editorSearch.replace": "Replace",

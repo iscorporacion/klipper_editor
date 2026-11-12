@@ -15,6 +15,7 @@
     "printerPrompt.back": "Volver",
     "printerPrompt.trayNotHomedTitle": "Bandeja de purga sin home",
     "printerPrompt.trayNotHomedHelp": "La descarga no puede continuar porque la bandeja perdió su referencia. Haz home de la bandeja y vuelve a iniciar la descarga.",
+    "printerPrompt.trayHomeNeedsXyzDuringPrint": "No es seguro ejecutar HOME XYZ durante una impresión o pausa. Conserva la impresión pausada, recupera la referencia XYZ por un procedimiento seguro y vuelve a intentarlo.",
     "printerPrompt.homeTray": "Hacer home de bandeja",
     "editorSearch.find": "Buscar",
     "editorSearch.replace": "Reemplazar",
